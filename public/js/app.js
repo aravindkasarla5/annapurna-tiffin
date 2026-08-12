@@ -8,11 +8,13 @@ const API_BASE = '/api';
 class TiffinApp {
   constructor() {
     this.currentRole = 'CUSTOMER'; // 'CUSTOMER' or 'OWNER'
+    this.authToken = null;
     this.currentUser = null; // Logged in user object
     this.authRole = 'CUSTOMER'; // Modal role tab
     this.authMode = 'LOGIN'; // 'LOGIN' or 'REGISTER'
     this.activeView = 'secCustomerHome';
     this.cart = [];
+    this.favorites = [];
     this.menu = [];
     this.orders = [];
     this.payments = [];
@@ -35,25 +37,43 @@ class TiffinApp {
     this.referralStats = null;
     this.referralLeaderboard = [];
     this.appliedWalletDiscount = 0;
+    this.customerProfile = null;
+  }
 
-    this.customerProfile = {
-      name: 'Ramesh Kumar',
-      phone: '+91 98450 12345',
-      email: 'ramesh.k@example.com',
-      address: '#12, 4th Cross, Gandhi Nagar, Bengaluru, KA'
-    };
+  async fetchWithAuth(url, options = {}) {
+    const headers = options.headers ? { ...options.headers } : {};
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+      headers['X-Auth-Token'] = this.authToken;
+    }
+    try {
+      const res = await fetch(url, { ...options, headers });
+      if (res.status === 401 && this.currentUser) {
+        console.warn('Session expired or 401 Unauthorized returned for', url);
+        this.logout(true);
+      }
+      return res;
+    } catch (err) {
+      console.error(`Fetch error for ${url}:`, err);
+      throw err;
+    }
   }
 
   async init() {
     console.log('Initializing Annapurna Tiffin Center App...');
 
-    // Restore session from localStorage if available
-    const savedUser = localStorage.getItem('tiffin_user');
-    if (savedUser) {
+    // Restore session and token from localStorage if available
+    const savedToken = localStorage.getItem('tiffin_token') || sessionStorage.getItem('tiffin_token');
+    const savedUser = localStorage.getItem('tiffin_user') || sessionStorage.getItem('tiffin_user');
+
+    if (savedUser && savedToken) {
       try {
         this.currentUser = JSON.parse(savedUser);
+        this.authToken = savedToken;
         this.currentRole = this.currentUser.role;
         this.activeView = this.currentRole === 'OWNER' ? 'secOwnerDashboard' : 'secCustomerHome';
+        this.cart = this.currentUser.cart || [];
+        this.favorites = this.currentUser.favorites || [];
       } catch (e) {
         console.error('Failed to parse saved user:', e);
       }
@@ -61,12 +81,11 @@ class TiffinApp {
 
     await this.fetchSettings();
     await this.fetchMenu();
-    await this.fetchOrders();
-    await this.fetchPayments();
-    await this.fetchNotifications();
     await this.fetchFaqs();
-    await this.fetchSupportTickets();
-    this.fetchStats();
+
+    if (this.currentUser) {
+      await this.loadCustomerUserData();
+    }
 
     this.updateUserAuthBadgeUI();
     this.renderNavigation();
@@ -77,16 +96,36 @@ class TiffinApp {
     this.startPolling();
   }
 
+  async loadCustomerUserData() {
+    if (!this.currentUser) return;
+    await this.fetchOrders();
+    await this.fetchNotifications();
+    await this.fetchSupportTickets(true);
+
+    if (this.currentRole === 'CUSTOMER') {
+      await this.fetchPayments();
+      await this.fetchReferralStats();
+      await this.fetchCart();
+      await this.fetchFavorites();
+      this.renderCustomerProfile();
+    } else {
+      await this.fetchStats();
+      await this.fetchPayments();
+    }
+  }
+
   startPolling() {
     if (this.pollingTimer) clearInterval(this.pollingTimer);
     this.pollingTimer = setInterval(async () => {
       await this.fetchMenu(true);
-      await this.fetchOrders(true);
-      await this.fetchNotifications(true);
-      await this.fetchSupportTickets(true);
-      if (this.currentRole === 'OWNER') {
-        this.fetchStats(true);
-        this.fetchPayments(true);
+      if (this.currentUser) {
+        await this.fetchOrders(true);
+        await this.fetchNotifications(true);
+        await this.fetchSupportTickets(true);
+        if (this.currentRole === 'OWNER') {
+          this.fetchStats(true);
+          this.fetchPayments(true);
+        }
       }
     }, 2000);
   }
@@ -124,8 +163,12 @@ class TiffinApp {
   }
 
   async fetchOrders(silent = false) {
+    if (!this.currentUser) {
+      this.orders = [];
+      return;
+    }
     try {
-      const res = await fetch(`${API_BASE}/orders`);
+      const res = await this.fetchWithAuth(`${API_BASE}/orders`);
       const json = await res.json();
       if (json.success) {
         this.orders = json.data;
@@ -139,12 +182,12 @@ class TiffinApp {
   }
 
   async fetchPayments(silent = false) {
+    if (!this.currentUser) {
+      this.payments = [];
+      return;
+    }
     try {
-      let url = `${API_BASE}/payments`;
-      if (this.currentRole === 'CUSTOMER' && this.currentUser) {
-        url += `?role=CUSTOMER&customer_mobile=${encodeURIComponent(this.currentUser.mobile)}`;
-      }
-      const res = await fetch(url);
+      const res = await this.fetchWithAuth(`${API_BASE}/payments`);
       const json = await res.json();
       if (json.success) {
         this.payments = json.data;
@@ -161,8 +204,12 @@ class TiffinApp {
   }
 
   async fetchNotifications(silent = false) {
+    if (!this.currentUser) {
+      this.notifications = [];
+      return;
+    }
     try {
-      const res = await fetch(`${API_BASE}/notifications?role=${this.currentRole}`);
+      const res = await this.fetchWithAuth(`${API_BASE}/notifications`);
       const json = await res.json();
       if (json.success) {
         const oldUnreadCount = this.notifications.filter(n => !n.is_read).length;
@@ -183,8 +230,9 @@ class TiffinApp {
   }
 
   async fetchStats(silent = false) {
+    if (this.currentRole !== 'OWNER') return;
     try {
-      const res = await fetch(`${API_BASE}/stats`);
+      const res = await this.fetchWithAuth(`${API_BASE}/stats`);
       const json = await res.json();
       if (json.success && json.data) {
         const s = json.data;
@@ -263,14 +311,14 @@ class TiffinApp {
     this.setAuthMode('LOGIN');
 
     if (role === 'CUSTOMER') {
-      document.getElementById('loginMobile').value = '9845012345';
-      document.getElementById('loginPassword').value = 'customer123';
+      document.getElementById('loginMobile').value = '';
+      document.getElementById('loginPassword').value = '';
+      this.showToast('Please enter your registered customer mobile number & password.', 'info');
     } else {
       document.getElementById('loginMobile').value = '9876543210';
       document.getElementById('loginPassword').value = 'owner123';
+      this.showToast('Filled Hotel Owner demo credentials', 'info');
     }
-
-    this.showToast(`Filled ${role === 'CUSTOMER' ? 'Customer' : 'Hotel Owner'} demo credentials`, 'info');
   }
 
   async handleLoginSubmit(e) {
@@ -288,27 +336,20 @@ class TiffinApp {
 
       if (json.success) {
         this.currentUser = json.user;
+        this.authToken = json.token;
         this.currentRole = json.user.role;
-        localStorage.setItem('tiffin_user', JSON.stringify(json.user));
 
-        if (this.currentRole === 'CUSTOMER') {
-          this.customerProfile = {
-            name: json.user.name,
-            phone: json.user.mobile,
-            email: json.user.email || '',
-            address: json.user.address || ''
-          };
-        }
+        localStorage.setItem('tiffin_token', json.token);
+        localStorage.setItem('tiffin_user', JSON.stringify(json.user));
 
         this.showToast(json.message, 'success');
         this.toggleAuthModal(false);
         this.updateUserAuthBadgeUI();
 
         this.activeView = this.currentRole === 'OWNER' ? 'secOwnerDashboard' : 'secCustomerHome';
+        await this.loadCustomerUserData();
         this.renderNavigation();
         this.renderCurrentView();
-        await this.fetchNotifications();
-        await this.fetchSupportTickets(true);
       } else {
         this.showToast(json.message || 'Login failed', 'error');
       }
@@ -342,14 +383,26 @@ class TiffinApp {
 
       if (json.success) {
         this.currentUser = json.user;
+        this.authToken = json.token;
         this.currentRole = json.user.role;
+
+        localStorage.setItem('tiffin_token', json.token);
         localStorage.setItem('tiffin_user', JSON.stringify(json.user));
+
+        // Clear previous state for new customer
+        this.cart = [];
+        this.orders = [];
+        this.notifications = [];
+        this.supportTickets = [];
+        this.favorites = [];
+        this.referralStats = null;
 
         this.showToast(json.message, 'success');
         this.toggleAuthModal(false);
         this.updateUserAuthBadgeUI();
 
         this.activeView = this.currentRole === 'OWNER' ? 'secOwnerDashboard' : 'secCustomerHome';
+        await this.loadCustomerUserData();
         this.renderNavigation();
         this.renderCurrentView();
       } else {
@@ -361,52 +414,63 @@ class TiffinApp {
     }
   }
 
-  logout() {
-    this.currentUser = null;
-    this.currentRole = 'CUSTOMER';
-    localStorage.removeItem('tiffin_user');
+  logout(sessionExpired = false) {
+    if (this.authToken) {
+      fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${this.authToken}` }
+      }).catch(() => {});
+    }
 
-    this.showToast('Logged out successfully.', 'info');
-    this.updateUserAuthBadgeUI();
+    this.currentUser = null;
+    this.authToken = null;
+    this.currentRole = 'CUSTOMER';
     this.activeView = 'secCustomerHome';
+    this.cart = [];
+    this.favorites = [];
+    this.orders = [];
+    this.payments = [];
+    this.notifications = [];
+    this.supportTickets = [];
+    this.referralStats = null;
+    this.customerProfile = null;
+
+    localStorage.removeItem('tiffin_token');
+    localStorage.removeItem('tiffin_user');
+    sessionStorage.clear();
+
+    if (sessionExpired) {
+      this.showToast('Session expired. Please login again.', 'info');
+    } else {
+      this.showToast('Logged out successfully.', 'info');
+    }
+
+    this.updateUserAuthBadgeUI();
     this.renderNavigation();
     this.renderCurrentView();
+    this.updateCartUI();
   }
 
   updateUserAuthBadgeUI() {
-    const lbl = document.getElementById('lblLoggedInUser');
+    const guestAuth = document.getElementById('guestAuthWrapper');
     const btnLogin = document.getElementById('btnLoginHeader');
     const btnRegister = document.getElementById('btnRegisterHeader');
     const btnLogout = document.getElementById('btnLogoutHeader');
     const btnCart = document.getElementById('btnCart');
     const btnNotif = document.getElementById('btnNotifications');
+    const btnProfile = document.getElementById('btnHeaderProfile');
+    const lblProfile = document.getElementById('headerProfileLabel');
     const bannerGreeting = document.getElementById('bannerGreeting');
 
     if (this.currentUser) {
-      if (lbl) {
-        lbl.classList.remove('hidden');
-        lbl.innerHTML = `
-          <div class="user-greeting-badge">
-            <div class="greeting-avatar">
-              <i class="${this.currentUser.role === 'OWNER' ? 'fa-solid fa-user-shield' : 'fa-solid fa-user'}"></i>
-            </div>
-            <div class="greeting-info">
-              <span class="greeting-name">${this.currentUser.name}</span>
-              <span class="greeting-role">${this.currentUser.role === 'OWNER' ? 'Hotel Owner' : 'Customer'}</span>
-            </div>
-          </div>
-        `;
-      }
+      if (guestAuth) guestAuth.classList.add('hidden');
       if (btnLogin) btnLogin.classList.add('hidden');
       if (btnRegister) btnRegister.classList.add('hidden');
-      if (btnLogout) btnLogout.classList.remove('hidden');
 
-      if (bannerGreeting) {
-        bannerGreeting.innerText = `Welcome back, ${this.currentUser.name}! 🍲`;
-      }
-
-      // SHOW Bell & Cart icons ONLY when logged in!
+      // 1. Bell Icon (Visible ONLY when logged in)
       if (btnNotif) btnNotif.classList.remove('hidden');
+
+      // 2. Cart Icon (Visible ONLY for customer)
       if (btnCart) {
         if (this.currentUser.role === 'CUSTOMER') {
           btnCart.classList.remove('hidden');
@@ -414,23 +478,177 @@ class TiffinApp {
           btnCart.classList.add('hidden');
         }
       }
-    } else {
-      if (lbl) {
-        lbl.classList.add('hidden');
-        lbl.innerHTML = '';
+
+      // 3. Profile Card Badge with Full Name (Visible ONLY when logged in)
+      if (btnProfile) {
+        btnProfile.classList.remove('hidden');
+        const elFullName = document.getElementById('headerProfileFullName');
+        const elInitial = document.getElementById('headerProfileInitial');
+        const elRoleTag = document.getElementById('headerProfileRoleTag');
+        const fullName = this.currentUser.name || 'Customer';
+
+        if (elFullName) elFullName.innerText = fullName;
+        if (elInitial) elInitial.innerText = fullName.charAt(0).toUpperCase();
+        if (elRoleTag) {
+          elRoleTag.innerText = this.currentUser.role === 'OWNER' ? '👑 Hotel Owner' : '⭐ Foodie Member';
+        }
       }
+
+      // 4. Logout Button (Visible ONLY when logged in)
+      if (btnLogout) btnLogout.classList.remove('hidden');
+
+      if (bannerGreeting) {
+        bannerGreeting.innerText = `Welcome back, ${this.currentUser.name}! 🍲`;
+      }
+    } else {
+      if (guestAuth) guestAuth.classList.remove('hidden');
       if (btnLogin) btnLogin.classList.remove('hidden');
       if (btnRegister) btnRegister.classList.remove('hidden');
+
+      // HIDE all authenticated buttons for Guests
+      if (btnNotif) btnNotif.classList.add('hidden');
+      if (btnCart) btnCart.classList.add('hidden');
+      if (btnProfile) btnProfile.classList.add('hidden');
       if (btnLogout) btnLogout.classList.add('hidden');
 
       if (bannerGreeting) {
         bannerGreeting.innerText = `Welcome to Annapurna Tiffin Center! 🍲`;
       }
-
-      // HIDE Bell & Cart icons for Guests!
-      if (btnNotif) btnNotif.classList.add('hidden');
-      if (btnCart) btnCart.classList.add('hidden');
     }
+  }
+
+  // =========================================================================
+  // NOTIFICATIONS TRAY & CLEAR ALL ACTIONS
+  // =========================================================================
+
+  renderNotificationsUI() {
+    const badge = document.getElementById('notifBadgeCount');
+    const notifs = this.notifications || [];
+    const unreadCount = notifs.filter(n => !n.is_read && !n.read).length;
+
+    if (badge) {
+      badge.innerText = unreadCount;
+      badge.classList.toggle('hidden', unreadCount === 0);
+    }
+
+    this.renderNotificationsTray();
+  }
+
+  toggleNotificationsTray(open = null) {
+    const backdrop = document.getElementById('notifBackdrop');
+    if (!backdrop) return;
+    const currentState = backdrop.classList.contains('open');
+    const newState = open !== null ? open : !currentState;
+    backdrop.classList.toggle('open', newState);
+
+    if (newState) {
+      this.renderNotificationsTray();
+    }
+  }
+
+  renderNotificationsTray() {
+    const container = document.getElementById('notifListContainer');
+    const badge = document.getElementById('notifBadgeCount');
+    const subText = document.getElementById('notifSubCountText');
+    if (!container) return;
+
+    const notifs = this.notifications || [];
+    const unreadCount = notifs.filter(n => !n.is_read && !n.read).length;
+
+    if (badge) {
+      badge.innerText = unreadCount;
+      badge.classList.toggle('hidden', unreadCount === 0);
+    }
+
+    if (subText) {
+      subText.innerText = `${unreadCount} unread alert${unreadCount === 1 ? '' : 's'}`;
+    }
+
+    if (!notifs.length) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+          <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.05); color: var(--text-muted); display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 1rem auto; border: 1.5px dashed var(--border-color);">
+            <i class="fa-regular fa-bell-slash"></i>
+          </div>
+          <h4 style="color: #FFF; font-size: 1rem; margin-bottom: 0.35rem;">No Notifications</h4>
+          <p style="font-size: 0.8rem; max-width: 260px; margin: 0 auto;">You're all caught up! Order status updates & promotional alerts will appear here.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = notifs.map((n, idx) => {
+      const isRead = Boolean(n.is_read || n.read);
+      const notifId = n.id || idx;
+      const title = n.title || (n.order_number ? `Order #${n.order_number}` : 'Notification');
+      const timeStr = n.created_at ? new Date(n.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : (n.time || 'Just now');
+
+      return `
+        <div class="notif-item-card ${isRead ? 'is-read' : 'is-unread'}" onclick="app.handleNotifClick('${notifId}')">
+          <div class="notif-icon-circle info">
+            <i class="fa-solid ${n.icon || 'fa-bell'}"></i>
+          </div>
+          <div class="notif-content-body">
+            <div class="notif-header-line">
+              <strong class="notif-title-text">${title}</strong>
+              <span class="notif-time-text">${timeStr}</span>
+            </div>
+            <p class="notif-msg-text">${n.message || n.text || ''}</p>
+          </div>
+          <button type="button" class="btn-del-single-notif" onclick="event.stopPropagation(); app.deleteSingleNotification('${notifId}')" title="Delete alert">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async markNotificationsRead() {
+    (this.notifications || []).forEach(n => { n.is_read = true; n.read = true; });
+    this.renderNotificationsUI();
+    this.showToast('Marked all notifications as read', 'success');
+
+    try {
+      await this.fetchWithAuth(`${API_BASE}/notifications/read-all`, { method: 'PATCH' });
+    } catch (err) {
+      console.error('Error marking notifications read:', err);
+    }
+  }
+
+  async clearAllNotifications() {
+    this.notifications = [];
+    this.renderNotificationsUI();
+    this.showToast('Cleared all notifications', 'info');
+
+    try {
+      await this.fetchWithAuth(`${API_BASE}/notifications/clear-all`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Error clearing all notifications:', err);
+    }
+  }
+
+  async deleteSingleNotification(idOrIdx) {
+    this.notifications = (this.notifications || []).filter((n, idx) => n.id !== idOrIdx && String(idx) !== String(idOrIdx));
+    this.renderNotificationsUI();
+
+    if (typeof idOrIdx === 'string' && idOrIdx.startsWith('notif_')) {
+      try {
+        await this.fetchWithAuth(`${API_BASE}/notifications/${idOrIdx}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error('Error deleting single notification:', err);
+      }
+    }
+  }
+
+  handleNotifClick(idOrIdx) {
+    const notif = (this.notifications || []).find((n, idx) => n.id === idOrIdx || String(idx) === String(idOrIdx));
+    if (notif) {
+      notif.is_read = true;
+      notif.read = true;
+      this.renderNotificationsUI();
+    }
+    this.toggleNotificationsTray(false);
+    this.switchView('secCustomerOrders');
   }
 
   renderNavigation() {
@@ -438,20 +656,27 @@ class TiffinApp {
     const mobileNav = document.getElementById('mobileBottomNav');
     const btnMobileToggle = document.getElementById('btnMobileMenuToggle');
 
-    // HIDE Sidebar, Mobile Bottom Nav, and Mobile Menu Toggle when NOT logged in (Guest mode)!
+    // Always unhide hamburger menu button so CSS screen width controls it!
+    if (btnMobileToggle) btnMobileToggle.classList.remove('hidden');
+
+    // Render Header Horizontal Nav Links (Always updated for Mobile, Tablet & Desktop)
+    this.renderHeaderNavLinks();
+
+    // Render Mobile Drawer Nav (Always pre-rendered for instant drawer availability!)
+    this.renderMobileDrawerNav();
+
+    // HIDE Sidebar and Mobile Bottom Nav when NOT logged in (Guest mode)
     if (!this.currentUser) {
       document.body.classList.add('guest-mode');
       if (desktopSidebar) desktopSidebar.classList.add('hidden');
       if (mobileNav) mobileNav.classList.add('hidden');
-      if (btnMobileToggle) btnMobileToggle.classList.add('hidden');
       return;
     }
 
-    // ENABLE & SHOW Sidebar, Mobile Bottom Nav, and Mobile Menu Toggle when logged in!
+    // ENABLE & SHOW Sidebar and Mobile Bottom Nav when logged in!
     document.body.classList.remove('guest-mode');
     if (desktopSidebar) desktopSidebar.classList.remove('hidden');
     if (mobileNav) mobileNav.classList.remove('hidden');
-    if (btnMobileToggle) btnMobileToggle.classList.remove('hidden');
 
     const isCustomer = this.currentRole === 'CUSTOMER';
 
@@ -463,7 +688,7 @@ class TiffinApp {
       if (isCustomer) {
         desktopNav.innerHTML = `
           <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')"><i class="fa-solid fa-house"></i> Customer Home</a>
-          <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
+          <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.scrollToMenu()"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
           <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
           <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
           <a class="nav-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.switchView('secCustomerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
@@ -524,6 +749,392 @@ class TiffinApp {
           </a>
         `;
       }
+    }
+  }
+
+  renderHeaderNavLinks() {
+    const navContainer = document.getElementById('headerNavLinks');
+    if (!navContainer) return;
+
+    if (!this.currentUser) {
+      navContainer.innerHTML = `
+        <a class="header-nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')">
+          <i class="fa-solid fa-house"></i> <span>Home</span>
+        </a>
+        <a class="header-nav-item" onclick="app.scrollToMenu()">
+          <i class="fa-solid fa-utensils"></i> <span>Menu</span>
+        </a>
+        <a class="header-nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')">
+          <i class="fa-solid fa-headset"></i> <span>Support</span>
+        </a>
+      `;
+      return;
+    }
+
+    const isCustomer = this.currentRole === 'CUSTOMER';
+    if (isCustomer) {
+      navContainer.innerHTML = `
+        <a class="header-nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')">
+          <i class="fa-solid fa-house"></i> <span>Home</span>
+        </a>
+        <a class="header-nav-item" onclick="app.scrollToMenu()">
+          <i class="fa-solid fa-utensils"></i> <span>Menu</span>
+        </a>
+        <a class="header-nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')">
+          <i class="fa-solid fa-receipt"></i> <span>Orders</span>
+        </a>
+        <a class="header-nav-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.switchView('secCustomerReferral')">
+          <i class="fa-solid fa-gift"></i> <span>Referral</span>
+        </a>
+        <a class="header-nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')">
+          <i class="fa-solid fa-headset"></i> <span>Support</span>
+        </a>
+      `;
+    } else {
+      navContainer.innerHTML = `
+        <a class="header-nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')">
+          <i class="fa-solid fa-chart-line"></i> <span>Dashboard</span>
+        </a>
+        <a class="header-nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')">
+          <i class="fa-solid fa-utensils"></i> <span>Menu</span>
+        </a>
+        <a class="header-nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')">
+          <i class="fa-solid fa-list-check"></i> <span>Orders</span>
+        </a>
+        <a class="header-nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')">
+          <i class="fa-solid fa-headset"></i> <span>Support</span>
+        </a>
+      `;
+    }
+  }
+
+  scrollToMenu() {
+    if (this.activeView !== 'secCustomerHome') {
+      this.switchView('secCustomerHome');
+    }
+    setTimeout(() => {
+      const el = document.getElementById('customerMenuGrid') || document.querySelector('.category-tabs') || document.querySelector('.section-header');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 120);
+  }
+
+  // =========================================================================
+  // NAVIGATION DRAWER (RESPONSIVE HAMBURGER MENU < 1200PX)
+  // =========================================================================
+
+  toggleMobileDrawer(open = null) {
+    const backdrop = document.getElementById('mobileDrawerBackdrop');
+    if (!backdrop) return;
+    const currentState = backdrop.classList.contains('open');
+    const newState = open !== null ? open : !currentState;
+    backdrop.classList.toggle('open', newState);
+
+    if (newState) {
+      this.renderMobileDrawerNav();
+    }
+  }
+
+  renderMobileDrawerNav() {
+    const navContainer = document.getElementById('mobileDrawerNav');
+    const hotelName = document.getElementById('mobileDrawerHotelName');
+    const roleLabel = document.getElementById('mobileDrawerRoleLabel');
+    if (!navContainer) return;
+
+    if (hotelName && this.settings) {
+      hotelName.innerText = this.settings.hotel_name || 'Annapurna Tiffin';
+    }
+
+    const cartCount = (this.cart || []).reduce((a, c) => a + c.quantity, 0);
+    const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read).length;
+
+    if (!this.currentUser) {
+      if (roleLabel) roleLabel.innerText = '👋 GUEST EXPLORER';
+      navContainer.innerHTML = `
+        <div class="drawer-user-info-box guest">
+          <div class="drawer-avatar-circle guest">
+            <i class="fa-solid fa-user-astronaut"></i>
+          </div>
+          <div class="drawer-user-details">
+            <strong class="drawer-user-name">Welcome, Guest!</strong>
+            <span class="drawer-user-role">Sign in to unlock online ordering</span>
+          </div>
+        </div>
+
+        <div class="drawer-menu-list">
+          <a class="drawer-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerHome');">
+            <div class="drawer-icon-box orange"><i class="fa-solid fa-house"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Home</strong>
+              <span class="drawer-item-sub">Fresh South Indian Tiffins</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.scrollToMenu();">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-utensils"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Today's Menu</strong>
+              <span class="drawer-item-sub">Idly, Dosa, Meals & Vada</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item highlight-login" onclick="app.toggleMobileDrawer(false); app.openAuthModal('CUSTOMER', 'LOGIN');">
+            <div class="drawer-icon-box primary"><i class="fa-solid fa-right-to-bracket"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title" style="color: var(--accent-gold);">Login / Register</strong>
+              <span class="drawer-item-sub">Access your account & orders</span>
+            </div>
+            <i class="fa-solid fa-arrow-right drawer-chevron" style="color: var(--accent-gold);"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerSupport');">
+            <div class="drawer-icon-box teal"><i class="fa-solid fa-headset"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Support & FAQs</strong>
+              <span class="drawer-item-sub">Instant answers & helpline</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" href="tel:+919392874900">
+            <div class="drawer-icon-box green"><i class="fa-solid fa-phone-volume"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Call Hotel Helpline</strong>
+              <span class="drawer-item-sub">+91 9392874900 (Open 7 Days)</span>
+            </div>
+            <i class="fa-solid fa-arrow-up-right-from-square drawer-chevron"></i>
+          </a>
+        </div>
+      `;
+      return;
+    }
+
+    const isCustomer = this.currentRole === 'CUSTOMER';
+    if (roleLabel) {
+      roleLabel.innerText = isCustomer ? '👤 VIP CUSTOMER MENU' : '👑 HOTEL MANAGEMENT HUB';
+    }
+
+    if (isCustomer) {
+      const u = this.currentUser;
+      const initial = u.name ? u.name.charAt(0).toUpperCase() : 'C';
+      const walletBal = u.wallet_balance || 0;
+      const points = u.loyalty_points || 0;
+
+      navContainer.innerHTML = `
+        <div class="drawer-user-info-box customer">
+          <div class="drawer-avatar-circle">
+            ${initial}
+          </div>
+          <div class="drawer-user-details">
+            <strong class="drawer-user-name">${u.name}</strong>
+            <span class="drawer-user-role">⭐ VIP Foodie Member</span>
+            <div class="drawer-wallet-pill">
+              <span>💳 ₹${walletBal}</span>
+              <span class="pill-divider">•</span>
+              <span>🏆 ${points} Pts</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="drawer-menu-list">
+          <a class="drawer-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerHome');">
+            <div class="drawer-icon-box orange"><i class="fa-solid fa-house"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Home</strong>
+              <span class="drawer-item-sub">Breakfast & Mini Meals</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.scrollToMenu();">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-utensils"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Today's Menu</strong>
+              <span class="drawer-item-sub">Steaming hot delicacies</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.filterCategory('Specials'); app.scrollToMenu();">
+            <div class="drawer-icon-box flame"><i class="fa-solid fa-fire"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Today's Specials</strong>
+              <span class="drawer-item-sub">Chef's recommended combos</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleCartDrawer();">
+            <div class="drawer-icon-box primary"><i class="fa-solid fa-cart-shopping"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Shopping Cart</strong>
+              <span class="drawer-item-sub">Review items & checkout</span>
+            </div>
+            ${cartCount > 0 ? `<span class="drawer-badge-count">${cartCount}</span>` : ''}
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerOrders');">
+            <div class="drawer-icon-box blue"><i class="fa-solid fa-box-archive"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">My Orders</strong>
+              <span class="drawer-item-sub">Live tracking & KOT history</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerPayments');">
+            <div class="drawer-icon-box purple"><i class="fa-solid fa-wallet"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Payment History</strong>
+              <span class="drawer-item-sub">Verified UPI & Cash receipts</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerReferral');">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-gift"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Refer & Earn</strong>
+              <span class="drawer-item-sub">Earn ₹30 bonus per friend</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleNotificationsTray();">
+            <div class="drawer-icon-box orange"><i class="fa-solid fa-bell"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Notifications</strong>
+              <span class="drawer-item-sub">Order updates & alerts</span>
+            </div>
+            ${unreadNotifCount > 0 ? `<span class="drawer-badge-count danger">${unreadNotifCount}</span>` : ''}
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerSupport');">
+            <div class="drawer-icon-box teal"><i class="fa-solid fa-headset"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Support & FAQs</strong>
+              <span class="drawer-item-sub">24/7 help desk & tickets</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerProfile' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerProfile');">
+            <div class="drawer-icon-box grey"><i class="fa-solid fa-user-gear"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">My Profile</strong>
+              <span class="drawer-item-sub">Personal details & address</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item danger" onclick="app.toggleMobileDrawer(false); app.logout();">
+            <div class="drawer-icon-box danger"><i class="fa-solid fa-power-off"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Logout Account</strong>
+              <span class="drawer-item-sub">Sign out securely</span>
+            </div>
+            <i class="fa-solid fa-right-from-bracket drawer-chevron"></i>
+          </a>
+        </div>
+      `;
+    } else {
+      const u = this.currentUser;
+      const isOpen = this.settings ? this.settings.is_open !== false : true;
+
+      navContainer.innerHTML = `
+        <div class="drawer-user-info-box owner">
+          <div class="drawer-avatar-circle owner">
+            <i class="fa-solid fa-user-shield"></i>
+          </div>
+          <div class="drawer-user-details">
+            <strong class="drawer-user-name">${u.name}</strong>
+            <span class="drawer-user-role">👑 Restaurant Owner / Admin</span>
+            <div class="drawer-status-pill ${isOpen ? 'open' : 'closed'}">
+              <span>${isOpen ? '🟢 HOTEL OPEN' : '🔴 HOTEL CLOSED'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="drawer-menu-list">
+          <a class="drawer-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerDashboard');">
+            <div class="drawer-icon-box primary"><i class="fa-solid fa-chart-line"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Dashboard & Analytics</strong>
+              <span class="drawer-item-sub">Real-time sales & order stats</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerTiffins');">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-utensils"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Manage Tiffins & Menu</strong>
+              <span class="drawer-item-sub">Add, edit pricing & stock</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerOrders');">
+            <div class="drawer-icon-box blue"><i class="fa-solid fa-list-check"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Orders Management</strong>
+              <span class="drawer-item-sub">Accept, prepare & complete</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerPayments');">
+            <div class="drawer-icon-box purple"><i class="fa-solid fa-wallet"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Payment Receipts</strong>
+              <span class="drawer-item-sub">Verify UPI screenshots & cash</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerSupport');">
+            <div class="drawer-icon-box teal"><i class="fa-solid fa-headset"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Customer Support Inbox</strong>
+              <span class="drawer-item-sub">Respond to customer tickets</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerSettings');">
+            <div class="drawer-icon-box grey"><i class="fa-solid fa-sliders"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Business Settings</strong>
+              <span class="drawer-item-sub">Timings, UPI ID & QR Scanner</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleNotificationsTray();">
+            <div class="drawer-icon-box orange"><i class="fa-solid fa-bell"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Notifications</strong>
+              <span class="drawer-item-sub">Live alerts & updates</span>
+            </div>
+            ${unreadNotifCount > 0 ? `<span class="drawer-badge-count danger">${unreadNotifCount}</span>` : ''}
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item danger" onclick="app.toggleMobileDrawer(false); app.logout();">
+            <div class="drawer-icon-box danger"><i class="fa-solid fa-power-off"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Logout Account</strong>
+              <span class="drawer-item-sub">Sign out securely</span>
+            </div>
+            <i class="fa-solid fa-right-from-bracket drawer-chevron"></i>
+          </a>
+        </div>
+      `;
     }
   }
 
@@ -594,6 +1205,9 @@ class TiffinApp {
       this.fetchSupportTickets();
       this.renderFaqs();
     }
+    if (this.activeView === 'secCustomerProfile') {
+      this.renderCustomerProfile();
+    }
     if (this.activeView === 'secOwnerDashboard') {
       this.fetchStats();
       this.renderOrders();
@@ -606,6 +1220,121 @@ class TiffinApp {
     }
     if (this.activeView === 'secOwnerSupport') this.fetchSupportTickets();
     if (this.activeView === 'secOwnerSettings') this.populateSettingsForm();
+  }
+
+  // =========================================================================
+  // CUSTOMER PROFILE, CART & FAVORITES SYNC
+  // =========================================================================
+
+  renderCustomerProfile() {
+    if (!this.currentUser) return;
+    const nameDisp = document.getElementById('profNameDisplay');
+    const phoneDisp = document.getElementById('profPhoneDisplay');
+    const nameInput = document.getElementById('profNameInput');
+    const phoneInput = document.getElementById('profPhoneInput');
+    const emailInput = document.getElementById('profEmailInput');
+    const addrInput = document.getElementById('profAddressInput');
+    const avatarInit = document.getElementById('profAvatarInitials');
+    const statOrders = document.getElementById('profStatOrdersCount');
+    const statWallet = document.getElementById('profStatWalletBal');
+
+    const name = this.currentUser.name || 'Customer';
+    if (nameDisp) nameDisp.innerText = name;
+    if (phoneDisp) phoneDisp.innerText = this.currentUser.mobile || '---';
+    if (nameInput) nameInput.value = name;
+    if (phoneInput) phoneInput.value = this.currentUser.mobile || '';
+    if (emailInput) emailInput.value = this.currentUser.email || '';
+    if (addrInput) addrInput.value = this.currentUser.address || '';
+    if (avatarInit) avatarInit.innerText = name.charAt(0).toUpperCase();
+
+    if (statOrders) statOrders.innerText = (this.orders || []).length;
+    if (statWallet) {
+      const bal = this.referralStats?.wallet_balance || 0;
+      statWallet.innerText = `₹${bal}`;
+    }
+  }
+
+  async saveCustomerProfile(e) {
+    if (e) e.preventDefault();
+    if (!this.currentUser) return;
+
+    const name = document.getElementById('profNameInput')?.value;
+    const email = document.getElementById('profEmailInput')?.value;
+    const address = document.getElementById('profAddressInput')?.value;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, address })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.currentUser = json.data;
+        localStorage.setItem('tiffin_user', JSON.stringify(json.data));
+        this.showToast(json.message || 'Profile saved successfully.', 'success');
+        this.updateUserAuthBadgeUI();
+        this.renderCustomerProfile();
+      } else {
+        this.showToast(json.message || 'Failed to save profile.', 'error');
+      }
+    } catch (err) {
+      console.error('Error saving profile:', err);
+      this.showToast('Server communication error.', 'error');
+    }
+  }
+
+  async fetchCart() {
+    if (!this.currentUser || this.currentRole !== 'CUSTOMER') return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/cart`);
+      const json = await res.json();
+      if (json.success) {
+        this.cart = Array.isArray(json.data) ? json.data : [];
+        this.updateCartUI();
+      }
+    } catch (err) {
+      console.error('Error fetching cart:', err);
+    }
+  }
+
+  async saveCartBackend() {
+    if (!this.currentUser || this.currentRole !== 'CUSTOMER') return;
+    try {
+      await this.fetchWithAuth(`${API_BASE}/cart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cart: this.cart })
+      });
+    } catch (err) {
+      console.error('Error saving cart:', err);
+    }
+  }
+
+  async fetchFavorites() {
+    if (!this.currentUser || this.currentRole !== 'CUSTOMER') return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/favorites`);
+      const json = await res.json();
+      if (json.success) {
+        this.favorites = Array.isArray(json.data) ? json.data : [];
+      }
+    } catch (err) {
+      console.error('Error fetching favorites:', err);
+    }
+  }
+
+  async saveFavoritesBackend() {
+    if (!this.currentUser || this.currentRole !== 'CUSTOMER') return;
+    try {
+      await this.fetchWithAuth(`${API_BASE}/favorites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ favorites: this.favorites })
+      });
+    } catch (err) {
+      console.error('Error saving favorites:', err);
+    }
   }
 
   // =========================================================================
@@ -872,10 +1601,10 @@ class TiffinApp {
     }
 
     this.toggleCartDrawer(false);
-    document.getElementById('ordCustomerName').value = this.customerProfile.name || '';
-    document.getElementById('ordCustomerMobile').value = this.customerProfile.phone || '';
+    document.getElementById('ordCustomerName').value = this.currentUser ? (this.currentUser.name || '') : '';
+    document.getElementById('ordCustomerMobile').value = this.currentUser ? (this.currentUser.mobile || '') : '';
     const addrInput = document.getElementById('ordDeliveryAddress');
-    if (addrInput) addrInput.value = this.customerProfile.address || '';
+    if (addrInput) addrInput.value = this.currentUser ? (this.currentUser.address || '') : '';
 
     // Dynamically load shopkeeper's uploaded QR code scanner image & UPI ID
     if (this.settings) {
@@ -908,8 +1637,8 @@ class TiffinApp {
     } else {
       label.innerHTML = `<i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Delivery Address / Location Details <span style="color: var(--primary);">*</span>`;
       input.placeholder = "House/Flat No, Building, Street, Landmark, Area details...";
-      if (!input.value && this.customerProfile.address) {
-        input.value = this.customerProfile.address;
+      if (!input.value && this.currentUser && this.currentUser.address) {
+        input.value = this.currentUser.address;
       }
     }
   }
@@ -994,7 +1723,7 @@ class TiffinApp {
 
   async verifyOrderPayment(orderId, newStatus) {
     try {
-      const res = await fetch(`${API_BASE}/orders/${orderId}/payment-verify`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/payment-verify`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payment_status: newStatus })
@@ -1036,7 +1765,7 @@ class TiffinApp {
       customer_name: name,
       customer_mobile: mobile,
       order_type: orderType,
-      delivery_address: deliveryAddress || (orderType === 'Delivery' ? (this.customerProfile.address || 'Home Delivery') : 'Counter Pickup'),
+      delivery_address: deliveryAddress || (orderType === 'Delivery' ? (this.currentUser ? this.currentUser.address : 'Home Delivery') : 'Counter Pickup'),
       notes: notes,
       payment_method: this.selectedPaymentMethod,
       payment_screenshot: this.tempPaymentScreenshot || '',
@@ -1046,7 +1775,7 @@ class TiffinApp {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/orders`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1575,13 +2304,14 @@ class TiffinApp {
           </div>
         </div>
 
-        <!-- 2. MIDDLE SECTION: ORDER DETAILS AND 3 BUTTONS SIDE BY SIDE -->
+        <!-- 2. MIDDLE SECTION: ORDER DETAILS AND QUICK ACTIONS SIDE BY SIDE -->
         <div class="co-middle-side-by-side">
-          <!-- Left: Order Details Box (Items list one by one) -->
+          <!-- Left: Order Details Box -->
           <div class="co-order-details-box">
             <div class="co-order-details-title">
-              <i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Order Details
+              <i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Order Details & Items
             </div>
+            
             <div class="co-order-details-list">
               ${(order.items || []).map(i => `
                 <div class="co-item-line">
@@ -1593,31 +2323,45 @@ class TiffinApp {
                 </div>
               `).join('')}
             </div>
+
+            <!-- Delivery / Service Location Tag -->
+            <div class="co-delivery-info-tag">
+              <span class="tag-label"><i class="fa-solid fa-location-dot"></i> ${order.order_type === 'Delivery' ? 'Delivery Address' : order.order_type === 'Dine-in' ? 'Table Location' : 'Pickup Point'}:</span>
+              <span class="tag-val">${order.delivery_address || 'Hotel Counter'}</span>
+            </div>
+
             ${order.notes ? `<div class="co-order-notes"><i class="fa-solid fa-note-sticky"></i> Note: "${order.notes}"</div>` : ''}
+
             ${order.utr_number || order.payment_screenshot ? `
-              <div style="margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed var(--border-color); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 0.78rem;">
-                ${order.utr_number ? `<span style="color: var(--accent-gold); font-weight: 700;"><i class="fa-solid fa-receipt"></i> UTR: <code style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; color: #FFF;">${order.utr_number}</code></span>` : ''}
+              <div class="co-payment-utr-line">
+                ${order.utr_number ? `<span class="utr-code"><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> UTR: <code style="background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; color: #FFF; font-family: monospace;">${order.utr_number}</code></span>` : ''}
                 ${order.payment_screenshot ? `
-                  <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}')" style="background: rgba(41,182,246,0.15); color: #29B6F6; border: 1px solid rgba(41,182,246,0.3); padding: 3px 10px; border-radius: 12px; font-size: 0.72rem; cursor: pointer;">
-                    <i class="fa-solid fa-camera"></i> View Uploaded Screenshot
+                  <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}')" style="background: rgba(41,182,246,0.15); color: #29B6F6; border: 1px solid rgba(41,182,246,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
+                    <i class="fa-solid fa-camera"></i> View Screenshot
                   </button>
                 ` : ''}
               </div>
             ` : ''}
           </div>
 
-          <!-- Right: 3 Action Buttons Side-by-Side Panel -->
+          <!-- Right: Quick Actions Panel Side-by-Side -->
           <div class="co-actions-panel">
-            <div class="co-actions-title"><i class="fa-solid fa-sliders" style="color: var(--accent-gold);"></i> Quick Actions</div>
+            <div class="co-actions-title"><i class="fa-solid fa-bolt" style="color: var(--accent-gold);"></i> Quick Actions</div>
             <div class="co-row-actions">
               <button class="co-row-btn view" onclick="app.showOrderDetail('${order.order_number}')">
-                <i class="fa-solid fa-eye"></i> View Details
+                <i class="fa-solid fa-eye"></i> View Full Details
               </button>
+
               <button class="co-row-btn receipt" onclick="app.downloadOrderReceipt('${order.order_number}')">
-                <i class="fa-solid fa-download"></i> Download Receipt
+                <i class="fa-solid fa-file-invoice"></i> Download Bill / Receipt
               </button>
+
+              <button class="co-row-btn review" onclick="app.openOrderReviewModal('${order.order_number}')">
+                <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rate & Review Order
+              </button>
+
               <button class="co-row-btn support" onclick="app.openOrderSupport('${order.order_number}')">
-                <i class="fa-solid fa-headset"></i> Order Support
+                <i class="fa-solid fa-headset"></i> Order Support & Help
               </button>
             </div>
           </div>
@@ -1834,7 +2578,7 @@ class TiffinApp {
         <div class="receipt-header">
           <h1>🍲 Sri Lakshmi Annapurna Tiffin Center</h1>
           <p>Authentic South Indian Tiffins & Mini Meals</p>
-          <p style="margin-top:4px;">📍 Gandhi Nagar, Bengaluru | 📞 +91 98765 43210</p>
+          <p style="margin-top:4px;">📍 Gandhi Nagar, Bengaluru | 📞 +91 9392874900</p>
         </div>
 
         <div class="order-info">
@@ -2450,6 +3194,11 @@ class TiffinApp {
     if (elUpi) elUpi.value = this.settings.upi_id || '';
     if (elDesc) elDesc.value = this.settings.description || '';
 
+    const qrImg = document.getElementById('setQrPreviewImg');
+    if (qrImg && this.settings.upi_qr_code) {
+      qrImg.src = this.settings.upi_qr_code;
+    }
+
     // Referral Program Settings Controls
     const ref = this.settings.referral || {};
     const swEnabled = document.getElementById('setRefEnabledSwitch');
@@ -2467,6 +3216,10 @@ class TiffinApp {
     if (elLimit) elLimit.value = ref.monthly_limit || 500;
   }
 
+  saveBusinessSettings(e) {
+    return this.saveSettings(e);
+  }
+
   async saveSettings(e) {
     if (e) e.preventDefault();
 
@@ -2482,7 +3235,7 @@ class TiffinApp {
       holidays: document.getElementById('setHolidays')?.value,
       upi_id: document.getElementById('setUpiId')?.value,
       description: document.getElementById('setDesc')?.value,
-      upi_qr_code: this.settings.upi_qr_code,
+      upi_qr_code: this.tempOwnerQrCode || this.settings.upi_qr_code || '',
       is_open: this.settings.is_open,
       referral: {
         enabled: refEnabled,
@@ -2494,7 +3247,7 @@ class TiffinApp {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -2502,11 +3255,21 @@ class TiffinApp {
       const json = await res.json();
       if (json.success) {
         this.settings = json.data;
+        this.tempOwnerQrCode = null;
         this.showToast('Business & Referral settings saved successfully!', 'success');
+      } else {
+        this.showToast(json.message || 'Error saving settings.', 'error');
       }
     } catch (err) {
       console.error('Error saving settings:', err);
+      this.showToast('Failed to save settings.', 'error');
     }
+  }
+
+  zoomCheckoutQrCode() {
+    const qrImg = document.getElementById('checkoutQrScannerImg');
+    const src = qrImg && qrImg.src ? qrImg.src : (this.settings?.upi_qr_code || '/images/upi_qr_scanner.png');
+    this.viewFullScreenshot(src);
   }
 
   // =========================================================================
@@ -3049,11 +3812,11 @@ class TiffinApp {
         reply = `<strong>🤖 Smart Assistant:</strong> You don't have any active orders right now. Explore our fresh breakfast & lunch menu to place a new order!`;
       }
     } else if (topic === 'payment_issue') {
-      reply = `<strong>🤖 Smart Assistant:</strong> Online UPI payments (GPay/PhonePe/Paytm) are instantly verified. If money was deducted but order shows pending, please click 'Raise Support Ticket' with your Order ID or call our helpline (+91 98765 43210).`;
+      reply = `<strong>🤖 Smart Assistant:</strong> Online UPI payments (GPay/PhonePe/Paytm) are instantly verified. If money was deducted but order shows pending, please click 'Raise Support Ticket' with your Order ID or call our helpline (+91 9392874900).`;
     } else if (topic === 'customization') {
       reply = `<strong>🤖 Smart Assistant:</strong> You can add special instructions for extra sambar, coconut chutney, less oil, or extra crispy dosas right in the 'Order Notes' text field during checkout!`;
     } else if (topic === 'catering') {
-      reply = `<strong>🤖 Smart Assistant:</strong> We cater for family functions, office breakfasts, and bulk tiffin orders (10 to 500+ guests). Please raise a support ticket under 'Bulk & Catering Inquiry' or call +91 98765 43210.`;
+      reply = `<strong>🤖 Smart Assistant:</strong> We cater for family functions, office breakfasts, and bulk tiffin orders (10 to 500+ guests). Please raise a support ticket under 'Bulk & Catering Inquiry' or call +91 9392874900.`;
     } else if (topic === 'timings') {
       reply = `<strong>🤖 Smart Assistant:</strong> Our hotel opens at 06:30 AM every morning serving steaming hot tiffins, and remains open until 10:30 PM, 7 days a week including holidays!`;
     }
@@ -3459,10 +4222,9 @@ class TiffinApp {
 
   async fetchReferralStats() {
     if (!this.currentUser) return;
-    const cleanMobile = (this.currentUser.mobile || '').replace(/[^0-9]/g, '');
 
     try {
-      const res = await fetch(`${API_BASE}/referrals/stats?customer_mobile=${cleanMobile}`);
+      const res = await this.fetchWithAuth(`${API_BASE}/referrals/stats`);
       const json = await res.json();
       if (json.success) {
         this.referralStats = json.data;
@@ -3479,7 +4241,7 @@ class TiffinApp {
 
     // Update Hero Referral Code Display
     const elCode = document.getElementById('referralCodeDisplay');
-    if (elCode) elCode.innerText = referral_code || 'RAMESH50';
+    if (elCode) elCode.innerText = referral_code || '---';
 
     // Update KPI Stat Cards
     const elWallet = document.getElementById('refStatWallet');
@@ -3605,7 +4367,7 @@ class TiffinApp {
   }
 
   copyReferralCode() {
-    const code = document.getElementById('referralCodeDisplay')?.innerText || 'RAMESH50';
+    const code = this.referralStats?.referral_code || document.getElementById('referralCodeDisplay')?.innerText || '---';
     navigator.clipboard.writeText(code).then(() => {
       this.showToast(`Referral Code ${code} copied to clipboard!`, 'success');
     }).catch(() => {
@@ -3614,9 +4376,10 @@ class TiffinApp {
   }
 
   shareReferralWhatsApp() {
-    const code = document.getElementById('referralCodeDisplay')?.innerText || 'RAMESH50';
+    const code = this.referralStats?.referral_code || document.getElementById('referralCodeDisplay')?.innerText || '---';
     const hotelName = this.settings.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center';
-    const msg = `Hey! Order delicious, authentic South Indian tiffins from ${hotelName}! Use my Referral Code *${code}* during registration to get ₹30 OFF your first order! 🍲✨ Order here: http://localhost:3000`;
+    const siteUrl = window.location.origin.includes('localhost') ? 'https://annapurna-tiffin.onrender.com' : window.location.origin;
+    const msg = `Hey! Order delicious, authentic South Indian tiffins from ${hotelName}! Use my Referral Code *${code}* during registration to get ₹30 OFF your first order! 🍲✨ Order here: ${siteUrl}`;
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, '_blank');
   }
@@ -3839,51 +4602,6 @@ class TiffinApp {
       backdrop.classList.toggle('open', forceState);
     } else {
       backdrop.classList.toggle('open');
-    }
-    if (backdrop.classList.contains('open')) {
-      this.renderMobileDrawerNav();
-    }
-  }
-
-  renderMobileDrawerNav() {
-    const drawerNav = document.getElementById('mobileDrawerNav');
-    if (!drawerNav) return;
-
-    if (!this.currentUser) {
-      drawerNav.innerHTML = `
-        <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-house"></i> Home Page</a>
-        <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
-        <a class="nav-item" onclick="app.openAuthModal('CUSTOMER', 'LOGIN'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-right-to-bracket" style="color: var(--primary);"></i> Customer Login</a>
-        <a class="nav-item" onclick="app.openAuthModal('CUSTOMER', 'REGISTER'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-user-plus" style="color: var(--accent-gold);"></i> Register New Account</a>
-        <a class="nav-item" onclick="app.openAuthModal('OWNER', 'LOGIN'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-user-tie"></i> Hotel Owner Login</a>
-        <a class="nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-headset"></i> Support & FAQs</a>
-      `;
-      return;
-    }
-
-    const isCustomer = this.currentRole === 'CUSTOMER';
-
-    if (isCustomer) {
-      drawerNav.innerHTML = `
-        <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-house"></i> Home</a>
-        <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-receipt"></i> My Orders</a>
-        <a class="nav-item" onclick="app.toggleCartDrawer(); app.toggleMobileDrawer(false);"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
-        <a class="nav-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.switchView('secCustomerReferral'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-gift" style="color: var(--accent-gold);"></i> Refer & Earn (₹30)</a>
-        <a class="nav-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.switchView('secCustomerPayments'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-wallet"></i> Payment History</a>
-        <a class="nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-headset"></i> Support & FAQs</a>
-        <a class="nav-item ${this.activeView === 'secCustomerProfile' ? 'active' : ''}" onclick="app.switchView('secCustomerProfile'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-user-gear"></i> My Profile</a>
-        <button class="btn-auth-logout" onclick="app.logout(); app.toggleMobileDrawer(false);" style="margin-top: 1rem; width: 100%; justify-content: center;"><i class="fa-solid fa-power-off"></i> Logout</button>
-      `;
-    } else {
-      drawerNav.innerHTML = `
-        <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
-        <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
-        <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-list-check"></i> Orders Management</a>
-        <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-wallet"></i> Payment History</a>
-        <a class="nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-headset"></i> Support Inbox</a>
-        <a class="nav-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.switchView('secOwnerSettings'); app.toggleMobileDrawer(false);"><i class="fa-solid fa-sliders"></i> Business Settings</a>
-        <button class="btn-auth-logout" onclick="app.logout(); app.toggleMobileDrawer(false);" style="margin-top: 1rem; width: 100%; justify-content: center;"><i class="fa-solid fa-power-off"></i> Logout</button>
-      `;
     }
   }
 }

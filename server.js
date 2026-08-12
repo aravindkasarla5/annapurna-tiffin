@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,18 +13,9 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Default Initial Database Seed Data
+// Default Initial Database Seed Data (No Demo Customer Data in Production)
 const defaultSeed = {
   users: [
-    {
-      id: "usr_cust_1",
-      name: "Ramesh Kumar",
-      mobile: "9845012345",
-      password: "customer123",
-      role: "CUSTOMER",
-      email: "ramesh.k@example.com",
-      address: "#12, 4th Cross, Gandhi Nagar, Bengaluru, KA"
-    },
     {
       id: "usr_owner_1",
       name: "Lakshmi Narayana (Owner)",
@@ -37,7 +29,7 @@ const defaultSeed = {
   settings: {
     hotel_name: "Sri Lakshmi Annapurna Tiffin Center",
     hotel_logo: "/images/tiffin_logo.png",
-    phone: "+91 98765 43210",
+    phone: "+91 9392874900",
     address: "#42, Temple Road, Near Gandhi Circle, Bengaluru, KA",
     open_time: "06:30 AM",
     close_time: "10:30 PM",
@@ -151,100 +143,29 @@ const defaultSeed = {
       is_available: true
     },
     {
-      id: "tf_11",
-      name: "Spicy Tomato Rice",
-      description: "Flavorful spicy tomato cooked rice infused with South Indian spices, served with onion raita.",
-      price: 50,
-      category: "Lunch",
-      image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=500&q=80",
-      is_available: true
+      "id": "tf_11",
+      "name": "Spicy Tomato Rice",
+      "description": "Flavorful spicy tomato cooked rice infused with South Indian spices, served with onion raita.",
+      "price": 50,
+      "category": "Lunch",
+      "image": "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=500&q=80",
+      "is_available": true
     },
     {
-      id: "tf_12",
-      name: "Chapati (2 Pieces + Kurma)",
-      description: "Soft whole wheat chapatis served with aromatic mixed vegetable spicy kurma curry.",
-      price: 50,
-      category: "Dinner",
-      image: "https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=500&q=80",
-      is_available: true
+      "id": "tf_12",
+      "name": "Chapati (2 Pieces + Kurma)",
+      "description": "Soft whole wheat chapatis served with aromatic mixed vegetable spicy kurma curry.",
+      "price": 50,
+      "category": "Dinner",
+      "image": "https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=500&q=80",
+      "is_available": true
     }
   ],
-  orders: [
-    {
-      id: "ord_1001",
-      order_number: "TF1024",
-      customer_name: "Ramesh Kumar",
-      customer_mobile: "+91 98450 12345",
-      order_type: "Takeaway",
-      notes: "Please pack sambar separately in extra bag",
-      payment_method: "UPI",
-      payment_status: "Paid",
-      order_status: "Completed",
-      items: [
-        { tiffin_id: "tf_3", name: "Masala Dosa", price: 70, quantity: 2 },
-        { tiffin_id: "tf_1", name: "Idly (4 Pieces)", price: 40, quantity: 1 }
-      ],
-      grand_total: 180,
-      created_at: new Date(Date.now() - 7200000).toISOString()
-    },
-    {
-      id: "ord_1002",
-      order_number: "TF1025",
-      customer_name: "Priya Sharma",
-      customer_mobile: "+91 97312 88990",
-      order_type: "Dine-in",
-      notes: "Extra coconut chutney please",
-      payment_method: "Cash",
-      payment_status: "Pending",
-      order_status: "Preparing",
-      items: [
-        { tiffin_id: "tf_1", name: "Idly (4 Pieces)", price: 40, quantity: 2 },
-        { tiffin_id: "tf_2", name: "Medu Vada (2 Pieces)", price: 45, quantity: 1 }
-      ],
-      grand_total: 125,
-      created_at: new Date(Date.now() - 1800000).toISOString()
-    }
-  ],
-  payments: [
-    {
-      id: "pay_1",
-      order_number: "TF1024",
-      customer_name: "Ramesh Kumar",
-      amount: 180,
-      payment_method: "Online Payment / UPI",
-      payment_status: "Paid",
-      date_time: new Date(Date.now() - 7200000).toLocaleString('en-IN')
-    },
-    {
-      id: "pay_2",
-      order_number: "TF1025",
-      customer_name: "Priya Sharma",
-      amount: 125,
-      payment_method: "Cash",
-      payment_status: "Pending",
-      date_time: new Date(Date.now() - 1800000).toLocaleString('en-IN')
-    }
-  ],
-  notifications: [
-    {
-      id: "notif_1",
-      target_role: "CUSTOMER",
-      order_number: "TF1024",
-      message: "Your order #TF1024 has been completed. Thank you for dining with us!",
-      is_read: false,
-      created_at: new Date(Date.now() - 7200000).toISOString()
-    },
-    {
-      id: "notif_2",
-      target_role: "OWNER",
-      order_number: "TF1025",
-      message: "New order #TF1025 received from Priya Sharma (₹125)",
-      is_read: false,
-      created_at: new Date(Date.now() - 1800000).toISOString()
-    }
-  ],
-  order_counter: 1026,
-  ticket_counter: 1003,
+  orders: [],
+  payments: [],
+  notifications: [],
+  order_counter: 1001,
+  ticket_counter: 1001,
   faqs: [
     {
       id: "faq_1",
@@ -259,92 +180,35 @@ const defaultSeed = {
       answer: "Simply select your items from our menu, add to cart, select Takeaway or Dine-in, choose your payment method (UPI/Cash), and place your order. You can track order status live in real-time!"
     },
     {
-      "id": "faq_3",
-      "category": "Payments & Refunds",
-      "question": "What payment methods do you accept?",
-      "answer": "We accept Google Pay, PhonePe, Paytm, BHIM UPI payments directly to our UPI ID (annapurna.tiffin@upi) as well as Cash on pickup or dine-in."
+      id: "faq_3",
+      category: "Payments & Refunds",
+      question: "What payment methods do you accept?",
+      answer: "We accept Google Pay, PhonePe, Paytm, BHIM UPI payments directly to our UPI ID (annapurna.tiffin@upi) as well as Cash on pickup or dine-in."
     },
     {
-      "id": "faq_4",
-      "category": "Payments & Refunds",
-      "question": "What happens if my payment succeeded but order status is pending?",
-      "answer": "Our system automatically syncs payments within a few seconds. If any issue occurs, simply click 'Raise Support Ticket' with your Order ID, or call our support helpline (+91 98765 43210)."
+      id: "faq_4",
+      category: "Payments & Refunds",
+      question: "What happens if my payment succeeded but order status is pending?",
+      answer: "Our system automatically syncs payments within a few seconds. If any issue occurs, simply click 'Raise Support Ticket' with your Order ID, or call our support helpline (+91 9392874900)."
     },
     {
-      "id": "faq_5",
-      "category": "Food Quality & Customization",
-      "question": "Can I request extra sambar, chutneys, or mild spice levels?",
-      "answer": "Yes! When placing your order, enter your special instructions in the 'Order Notes' field (e.g. 'Pack extra coconut chutney', 'Make dosa extra crispy', 'Less spicy sagu')."
+      id: "faq_5",
+      category: "Food Quality & Customization",
+      question: "Can I request extra sambar, chutneys, or mild spice levels?",
+      answer: "Yes! When placing your order, enter your special instructions in the 'Order Notes' field (e.g. 'Pack extra coconut chutney', 'Make dosa extra crispy', 'Less spicy sagu')."
     },
     {
-      "id": "faq_6",
-      "category": "Bulk & Catering Orders",
-      "question": "Do you accept catering for family functions, office breakfast, or events?",
-      "answer": "Yes, we specialize in bulk tiffin boxes and party catering for 10 to 500+ guests with pure ghee South Indian delicacies. Submit a inquiry ticket under 'Bulk & Catering Inquiry' or call us directly."
+      id: "faq_6",
+      category: "Bulk & Catering Orders",
+      question: "Do you accept catering for family functions, office breakfast, or events?",
+      answer: "Yes, we specialize in bulk tiffin boxes and party catering for 10 to 500+ guests with pure ghee South Indian delicacies. Submit a inquiry ticket under 'Bulk & Catering Inquiry' or call us directly."
     }
   ],
-  support_tickets: [
-    {
-      id: "tkt_1001",
-      ticket_number: "TKT-1001",
-      user_id: "usr_cust_1",
-      customer_name: "Ramesh Kumar",
-      customer_mobile: "9845012345",
-      order_number: "TF1024",
-      category: "Food Quality & Packaging",
-      subject: "Request for extra chutney in takeaway package",
-      priority: "Medium",
-      status: "Resolved",
-      created_at: new Date(Date.now() - 7200000).toISOString(),
-      updated_at: new Date(Date.now() - 5400000).toISOString(),
-      messages: [
-        {
-          id: "msg_1",
-          sender_role: "CUSTOMER",
-          sender_name: "Ramesh Kumar",
-          message: "Hi, for order #TF1024 could you please add an extra container of coconut chutney? Thanks!",
-          timestamp: new Date(Date.now() - 7200000).toISOString()
-        },
-        {
-          id: "msg_2",
-          sender_role: "OWNER",
-          sender_name: "Lakshmi Narayana (Owner)",
-          message: "Hello Ramesh! Noted, we have packed an extra container of freshly ground coconut chutney with your Masala Dosa order.",
-          timestamp: new Date(Date.now() - 5400000).toISOString()
-        }
-      ]
-    },
-    {
-      id: "tkt_1002",
-      ticket_number: "TKT-1002",
-      user_id: "usr_1786420826993",
-      customer_name: "Ananya Rao",
-      customer_mobile: "9123456789",
-      order_number: "TF1028",
-      category: "Takeaway & Delay",
-      subject: "Estimated pickup time inquiry",
-      priority: "High",
-      status: "In Progress",
-      created_at: new Date(Date.now() - 1800000).toISOString(),
-      updated_at: new Date(Date.now() - 1200000).toISOString(),
-      messages: [
-        {
-          id: "msg_3",
-          sender_role: "CUSTOMER",
-          sender_name: "Ananya Rao",
-          message: "Hi team, I placed order #TF1028 for Medu Vada. Is it ready for pickup now?",
-          timestamp: new Date(Date.now() - 1800000).toISOString()
-        },
-        {
-          id: "msg_4",
-          sender_role: "OWNER",
-          sender_name: "Lakshmi Narayana (Owner)",
-          message: "Hi Ananya, your order is ready and hot at the counter! You can pick it up anytime.",
-          timestamp: new Date(Date.now() - 1200000).toISOString()
-        }
-      ]
-    }
-  ]
+  support_tickets: [],
+  referrals: [],
+  wallet_transactions: [],
+  reviews: [],
+  tokens: {}
 };
 
 // Database Initialization & JSON persistence helper
@@ -352,18 +216,25 @@ function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     console.log('db.json not found — creating fresh database from seed data...');
     saveDB(defaultSeed);
-    return JSON.parse(JSON.stringify(defaultSeed)); // deep clone
+    return JSON.parse(JSON.stringify(defaultSeed));
   }
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     const data = JSON.parse(raw);
     const db = { ...defaultSeed, ...data };
+    if (!db.users || !db.users.length) db.users = defaultSeed.users;
     if (!db.faqs || !db.faqs.length) db.faqs = defaultSeed.faqs;
-    if (!db.support_tickets) db.support_tickets = defaultSeed.support_tickets;
-    if (!db.ticket_counter) db.ticket_counter = 1003;
+    if (!db.tiffins || !db.tiffins.length) db.tiffins = defaultSeed.tiffins;
+    if (!db.orders) db.orders = [];
+    if (!db.payments) db.payments = [];
+    if (!db.notifications) db.notifications = [];
+    if (!db.support_tickets) db.support_tickets = [];
     if (!db.referrals) db.referrals = [];
     if (!db.wallet_transactions) db.wallet_transactions = [];
     if (!db.reviews) db.reviews = [];
+    if (!db.tokens) db.tokens = {};
+    if (!db.order_counter) db.order_counter = 1001;
+    if (!db.ticket_counter) db.ticket_counter = 1001;
     if (!db.settings.referral) db.settings.referral = defaultSeed.settings.referral;
     return db;
   } catch (err) {
@@ -381,7 +252,101 @@ function saveDB(data) {
   }
 }
 
+// Generate Auth Token Helper
+function generateToken(userId) {
+  const db = loadDB();
+  const token = 'tok_' + userId + '_' + Date.now() + '_' + crypto.randomBytes(8).toString('hex');
+  if (!db.tokens) db.tokens = {};
+  db.tokens[token] = userId;
+  saveDB(db);
+  return token;
+}
+
+// Authentication Middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const tokenHeader = req.headers['x-auth-token'];
+  let token = null;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (tokenHeader) {
+    token = tokenHeader;
+  }
+
+  if (!token) {
+    return res.status(401).json({ success: false, message: "Authentication required. Please login." });
+  }
+
+  const db = loadDB();
+  const userId = db.tokens ? db.tokens[token] : null;
+
+  if (!userId) {
+    return res.status(401).json({ success: false, message: "Invalid or expired session. Please login again." });
+  }
+
+  const user = (db.users || []).find(u => u.id === userId);
+  if (!user) {
+    return res.status(401).json({ success: false, message: "User account not found." });
+  }
+
+  req.user = user;
+  req.token = token;
+  next();
+}
+
+// Optional Auth Middleware (attaches req.user if token provided)
+function optionalAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const tokenHeader = req.headers['x-auth-token'];
+  let token = null;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (tokenHeader) {
+    token = tokenHeader;
+  }
+
+  if (token) {
+    const db = loadDB();
+    const userId = db.tokens ? db.tokens[token] : null;
+    if (userId) {
+      const user = (db.users || []).find(u => u.id === userId);
+      if (user) {
+        req.user = user;
+        req.token = token;
+      }
+    }
+  }
+  next();
+}
+
+// Role Authorization Middleware
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: "Authentication required." });
+    }
+    if (req.user.role !== role) {
+      return res.status(403).json({ success: false, message: `Access denied. ${role} permissions required.` });
+    }
+    next();
+  };
+}
+
+// Sanitize User Object for Client
+function sanitizeUser(user) {
+  const userSafe = { ...user };
+  delete userSafe.password;
+  if (!userSafe.cart) userSafe.cart = [];
+  if (!userSafe.favorites) userSafe.favorites = [];
+  if (userSafe.loyalty_points === undefined) userSafe.loyalty_points = 0;
+  return userSafe;
+}
+
+// =========================================================================
 // REST API ROUTES
+// =========================================================================
 
 // AUTH 1. Register User (Customer / Owner)
 app.post('/api/auth/register', (req, res) => {
@@ -408,8 +373,9 @@ app.post('/api/auth/register', (req, res) => {
   const randomNum = Math.floor(10 + Math.random() * 90);
   const generatedRefCode = `${namePrefix}${randomNum}`;
 
+  const newUserId = 'usr_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
   const newUser = {
-    id: 'usr_' + Date.now(),
+    id: newUserId,
     name: name.trim(),
     mobile: mobile.trim(),
     password: password.trim(),
@@ -419,6 +385,9 @@ app.post('/api/auth/register', (req, res) => {
     referral_code: generatedRefCode,
     referred_by: null,
     wallet_balance: 0,
+    loyalty_points: 0,
+    cart: [],
+    favorites: [],
     show_on_leaderboard: true,
     created_at: new Date().toISOString()
   };
@@ -437,7 +406,9 @@ app.post('/api/auth/register', (req, res) => {
       if (!db.referrals) db.referrals = [];
       db.referrals.unshift({
         id: 'ref_' + Date.now(),
+        referrer_id: referrer.id,
         referrer_mobile: referrer.mobile,
+        referred_id: newUser.id,
         referred_mobile: newUser.mobile,
         referred_name: newUser.name,
         order_number: null,
@@ -455,13 +426,14 @@ app.post('/api/auth/register', (req, res) => {
   db.users.push(newUser);
   saveDB(db);
 
-  const userSafe = { ...newUser };
-  delete userSafe.password;
+  const token = generateToken(newUser.id);
+  const userSafe = sanitizeUser(newUser);
 
   res.json({
     success: true,
+    token: token,
     user: userSafe,
-    message: `Account registered successfully as ${role === 'CUSTOMER' ? 'Customer' : 'Hotel Owner / Admin'}!${refMessage}`
+    message: `Account registered successfully as ${role === 'CUSTOMER' ? 'Customer' : 'Hotel Owner'}!${refMessage}`
   });
 });
 
@@ -488,24 +460,129 @@ app.post('/api/auth/login', (req, res) => {
     });
   }
 
-  const userSafe = { ...user };
-  delete userSafe.password;
+  const token = generateToken(user.id);
+  const userSafe = sanitizeUser(user);
 
   res.json({
     success: true,
+    token: token,
     user: userSafe,
     message: `Welcome back, ${user.name}!`
   });
 });
 
-// 1. GET Settings
+// AUTH 3. Get Current User Profile (Me)
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    user: sanitizeUser(req.user)
+  });
+});
+
+// AUTH 4. Logout User
+app.post('/api/auth/logout', authenticateToken, (req, res) => {
+  const db = loadDB();
+  if (db.tokens && req.token) {
+    delete db.tokens[req.token];
+    saveDB(db);
+  }
+  res.json({ success: true, message: "Logged out successfully." });
+});
+
+// =========================================================================
+// CUSTOMER PROFILE & STATE ISOLATION (CART & FAVORITES)
+// =========================================================================
+
+// GET Customer Profile
+app.get('/api/profile', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    data: sanitizeUser(req.user)
+  });
+});
+
+// PUT Update Customer Profile
+app.put('/api/profile', authenticateToken, (req, res) => {
+  const db = loadDB();
+  const userIndex = db.users.findIndex(u => u.id === req.user.id);
+  if (userIndex === -1) {
+    return res.status(404).json({ success: false, message: "User profile not found." });
+  }
+
+  const { name, email, address } = req.body;
+  if (name) db.users[userIndex].name = name.trim();
+  if (email !== undefined) db.users[userIndex].email = email.trim();
+  if (address !== undefined) db.users[userIndex].address = address.trim();
+
+  saveDB(db);
+  res.json({
+    success: true,
+    data: sanitizeUser(db.users[userIndex]),
+    message: "Profile details updated successfully."
+  });
+});
+
+// GET Customer Cart
+app.get('/api/cart', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    data: req.user.cart || []
+  });
+});
+
+// POST Save Customer Cart
+app.post('/api/cart', authenticateToken, (req, res) => {
+  const db = loadDB();
+  const userIndex = db.users.findIndex(u => u.id === req.user.id);
+  if (userIndex !== -1) {
+    db.users[userIndex].cart = Array.isArray(req.body.cart) ? req.body.cart : [];
+    saveDB(db);
+  }
+  res.json({ success: true, data: db.users[userIndex]?.cart || [] });
+});
+
+// GET Customer Favorites
+app.get('/api/favorites', authenticateToken, (req, res) => {
+  res.json({
+    success: true,
+    data: req.user.favorites || []
+  });
+});
+
+// POST Save Customer Favorites
+app.post('/api/favorites', authenticateToken, (req, res) => {
+  const db = loadDB();
+  const userIndex = db.users.findIndex(u => u.id === req.user.id);
+  if (userIndex !== -1) {
+    db.users[userIndex].favorites = Array.isArray(req.body.favorites) ? req.body.favorites : [];
+    saveDB(db);
+  }
+  res.json({ success: true, data: db.users[userIndex]?.favorites || [] });
+});
+
+// =========================================================================
+// PUBLIC HOTEL DATA (SETTINGS & MENU & FAQS)
+// =========================================================================
+
+// 1. GET Settings (Public)
 app.get('/api/settings', (req, res) => {
   const db = loadDB();
   res.json({ success: true, data: db.settings });
 });
 
-// 1b. GET Owner Dashboard KPI Stats
-app.get('/api/stats', (req, res) => {
+// 2. PUT / POST Update Settings (Owner Only)
+const updateSettingsHandler = (req, res) => {
+  const db = loadDB();
+  db.settings = { ...db.settings, ...req.body };
+  saveDB(db);
+  res.json({ success: true, data: db.settings, message: "Hotel settings updated successfully." });
+};
+
+app.put('/api/settings', authenticateToken, requireRole('OWNER'), updateSettingsHandler);
+app.post('/api/settings', authenticateToken, requireRole('OWNER'), updateSettingsHandler);
+
+// 3. GET Owner Dashboard KPI Stats (Owner Only)
+app.get('/api/stats', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const allOrders = db.orders || [];
 
@@ -528,22 +605,14 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
-// 2. PUT Update Settings
-app.put('/api/settings', (req, res) => {
-  const db = loadDB();
-  db.settings = { ...db.settings, ...req.body };
-  saveDB(db);
-  res.json({ success: true, data: db.settings, message: "Hotel settings updated successfully." });
-});
-
-// 3. GET Menu Items
+// 4. GET Menu Items (Public)
 app.get('/api/menu', (req, res) => {
   const db = loadDB();
   res.json({ success: true, data: db.tiffins });
 });
 
-// 4. POST Add Tiffin Item
-app.post('/api/menu', (req, res) => {
+// 5. POST Add Tiffin Item (Owner Only)
+app.post('/api/menu', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { name, description, price, category, image, is_available } = req.body;
   if (!name || !price || !category) {
@@ -566,8 +635,8 @@ app.post('/api/menu', (req, res) => {
   res.json({ success: true, data: newItem, message: `${newItem.name} has been added successfully.` });
 });
 
-// 5. PUT Update Tiffin Item
-app.put('/api/menu/:id', (req, res) => {
+// 6. PUT Update Tiffin Item (Owner Only)
+app.put('/api/menu/:id', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const index = db.tiffins.findIndex(item => item.id === id);
@@ -586,8 +655,8 @@ app.put('/api/menu/:id', (req, res) => {
   res.json({ success: true, data: db.tiffins[index], message: `${db.tiffins[index].name} updated successfully.` });
 });
 
-// 6. PATCH Toggle Tiffin Availability
-app.patch('/api/menu/:id/availability', (req, res) => {
+// 7. PATCH Toggle Tiffin Availability (Owner Only)
+app.patch('/api/menu/:id/availability', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const { is_available } = req.body;
@@ -607,8 +676,8 @@ app.patch('/api/menu/:id/availability', (req, res) => {
   });
 });
 
-// 7. DELETE Tiffin Item
-app.delete('/api/menu/:id', (req, res) => {
+// 8. DELETE Tiffin Item (Owner Only)
+app.delete('/api/menu/:id', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const item = db.tiffins.find(item => item.id === id);
@@ -623,14 +692,24 @@ app.delete('/api/menu/:id', (req, res) => {
   res.json({ success: true, message: `${item.name} deleted successfully.` });
 });
 
-// 8. GET Orders
-app.get('/api/orders', (req, res) => {
+// =========================================================================
+// ORDERS & PAYMENTS (STRICT DATA ISOLATION)
+// =========================================================================
+
+// 9. GET Orders (Customer gets OWN orders only; Owner gets ALL orders)
+app.get('/api/orders', authenticateToken, (req, res) => {
   const db = loadDB();
-  res.json({ success: true, data: db.orders });
+  let ordersList = db.orders || [];
+
+  if (req.user.role === 'CUSTOMER') {
+    ordersList = ordersList.filter(o => o.customer_id === req.user.id);
+  }
+
+  res.json({ success: true, data: ordersList });
 });
 
-// 9. POST Create Order (Customer)
-app.post('/api/orders', (req, res) => {
+// 10. POST Create Order (Customer Only — Uses Authenticated User ID)
+app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), (req, res) => {
   const db = loadDB();
 
   // Check if hotel is open
@@ -638,10 +717,10 @@ app.post('/api/orders', (req, res) => {
     return res.status(400).json({ success: false, message: "Hotel is currently closed. Orders are not being accepted." });
   }
 
-  const { customer_name, customer_mobile, order_type, delivery_address, notes, payment_method, payment_screenshot, utr_number, items, used_wallet_amount } = req.body;
+  const { order_type, delivery_address, notes, payment_method, payment_screenshot, utr_number, items, used_wallet_amount } = req.body;
 
-  if (!customer_name || !customer_mobile || !items || !items.length) {
-    return res.status(400).json({ success: false, message: "Name, mobile, and ordered items are required." });
+  if (!items || !items.length) {
+    return res.status(400).json({ success: false, message: "Ordered items are required." });
   }
 
   const orderNum = 'TF' + db.order_counter;
@@ -659,10 +738,9 @@ app.post('/api/orders', (req, res) => {
     };
   });
 
-  // Handle Wallet Balance Redemption
+  // Handle Wallet Balance Redemption for Authenticated User
   let walletDeducted = 0;
-  const cleanMobile = customer_mobile.replace(/[^0-9]/g, '');
-  const customerUser = (db.users || []).find(u => u.mobile.replace(/[^0-9]/g, '') === cleanMobile);
+  const customerUser = db.users.find(u => u.id === req.user.id);
 
   if (used_wallet_amount && Number(used_wallet_amount) > 0 && customerUser) {
     const maxWalletUse = Math.min(Number(customerUser.wallet_balance || 0), Number(used_wallet_amount), grand_total);
@@ -674,6 +752,7 @@ app.post('/api/orders', (req, res) => {
       if (!db.wallet_transactions) db.wallet_transactions = [];
       db.wallet_transactions.unshift({
         id: 'wtx_' + Date.now(),
+        customer_id: customerUser.id,
         customer_mobile: customerUser.mobile,
         type: 'DEBIT',
         amount: walletDeducted,
@@ -683,16 +762,23 @@ app.post('/api/orders', (req, res) => {
     }
   }
 
+  // Award Loyalty Points for order (1 point per ₹10 spent)
+  if (customerUser) {
+    const earnedPoints = Math.floor(grand_total / 10);
+    customerUser.loyalty_points = (customerUser.loyalty_points || 0) + earnedPoints;
+  }
+
   const isUPI = (payment_method || '').includes('UPI') || (payment_method || '').includes('Online');
   const initialPaymentStatus = isUPI ? 'Verification Pending (UPI)' : 'Pending';
 
   const newOrder = {
     id: 'ord_' + Date.now(),
     order_number: orderNum,
-    customer_name: customer_name.trim(),
-    customer_mobile: customer_mobile.trim(),
+    customer_id: req.user.id, // STRICT ISOLATION IDENTIFIER
+    customer_name: req.user.name,
+    customer_mobile: req.user.mobile,
     order_type: order_type || 'Takeaway',
-    delivery_address: (delivery_address || '').trim() || (order_type === 'Delivery' ? 'Home Delivery Address' : 'Counter Pickup'),
+    delivery_address: (delivery_address || '').trim() || (order_type === 'Delivery' ? (req.user.address || 'Home Delivery Address') : 'Counter Pickup'),
     notes: (notes || '').trim(),
     payment_method: payment_method || 'Cash',
     payment_status: initialPaymentStatus,
@@ -707,10 +793,16 @@ app.post('/api/orders', (req, res) => {
 
   db.orders.unshift(newOrder);
 
-  // Record payment
+  // Clear customer cart on successful order
+  if (customerUser) {
+    customerUser.cart = [];
+  }
+
+  // Record payment linked to customer_id
   db.payments.unshift({
     id: 'pay_' + Date.now(),
     order_number: orderNum,
+    customer_id: req.user.id,
     customer_name: newOrder.customer_name,
     customer_mobile: newOrder.customer_mobile,
     amount: grand_total,
@@ -728,6 +820,7 @@ app.post('/api/orders', (req, res) => {
 
   db.notifications.unshift({
     id: 'notif_' + Date.now(),
+    customer_id: null,
     target_role: 'OWNER',
     order_number: orderNum,
     message: ownerMsg,
@@ -735,9 +828,10 @@ app.post('/api/orders', (req, res) => {
     created_at: new Date().toISOString()
   });
 
-  // Customer Notification
+  // Customer Notification (Linked to customer_id)
   db.notifications.unshift({
     id: 'notif_' + (Date.now() + 1),
+    customer_id: req.user.id,
     target_role: 'CUSTOMER',
     order_number: orderNum,
     message: `Your order #${orderNum} has been placed! ${isUPI ? 'UPI Payment verification in progress.' : ''}`,
@@ -754,8 +848,8 @@ app.post('/api/orders', (req, res) => {
   });
 });
 
-// 9b. PATCH Owner Verify UPI Payment
-app.patch('/api/orders/:id/payment-verify', (req, res) => {
+// 11. PATCH Owner Verify UPI Payment (Owner Only)
+app.patch('/api/orders/:id/payment-verify', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const { payment_status } = req.body;
@@ -774,9 +868,10 @@ app.patch('/api/orders/:id/payment-verify', (req, res) => {
     payRecord.payment_status = validStatus;
   }
 
-  // Customer notification
+  // Customer notification linked to customer_id
   db.notifications.unshift({
     id: 'notif_' + Date.now(),
+    customer_id: order.customer_id,
     target_role: 'CUSTOMER',
     order_number: order.order_number,
     message: `Payment update for Order #${order.order_number}: Marked as ${validStatus}!`,
@@ -788,8 +883,8 @@ app.patch('/api/orders/:id/payment-verify', (req, res) => {
   res.json({ success: true, data: order, message: `Payment for Order #${order.order_number} marked as ${validStatus}.` });
 });
 
-// 10. PATCH Order Status (Owner)
-app.patch('/api/orders/:id/status', (req, res) => {
+// 12. PATCH Order Status (Owner Only)
+app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const { order_status } = req.body;
@@ -808,14 +903,13 @@ app.patch('/api/orders/:id/status', (req, res) => {
 
   // Check Referral Reward Trigger upon Order Completion
   if (order_status === 'Completed' && db.settings.referral?.enabled !== false) {
-    const cleanCustMobile = order.customer_mobile.replace(/[^0-9]/g, '');
     const pendingRef = (db.referrals || []).find(r => 
-      r.referred_mobile.replace(/[^0-9]/g, '') === cleanCustMobile && 
+      (r.referred_id === order.customer_id || r.referred_mobile.replace(/[^0-9]/g, '') === order.customer_mobile.replace(/[^0-9]/g, '')) && 
       r.status === 'Pending'
     );
 
     if (pendingRef) {
-      const referrerUser = (db.users || []).find(u => u.mobile.replace(/[^0-9]/g, '') === pendingRef.referrer_mobile.replace(/[^0-9]/g, ''));
+      const referrerUser = (db.users || []).find(u => u.id === pendingRef.referrer_id || u.mobile.replace(/[^0-9]/g, '') === pendingRef.referrer_mobile.replace(/[^0-9]/g, ''));
       if (referrerUser) {
         const rewardVal = Number(pendingRef.reward_amount || db.settings.referral?.referrer_reward || 30);
         referrerUser.wallet_balance = (referrerUser.wallet_balance || 0) + rewardVal;
@@ -826,6 +920,7 @@ app.patch('/api/orders/:id/status', (req, res) => {
         if (!db.wallet_transactions) db.wallet_transactions = [];
         db.wallet_transactions.unshift({
           id: 'wtx_' + Date.now(),
+          customer_id: referrerUser.id,
           customer_mobile: referrerUser.mobile,
           type: 'CREDIT',
           amount: rewardVal,
@@ -835,7 +930,7 @@ app.patch('/api/orders/:id/status', (req, res) => {
 
         // Check Milestone Bonuses (5 & 10 referrals)
         const completedRefsCount = db.referrals.filter(r => 
-          r.referrer_mobile.replace(/[^0-9]/g, '') === referrerUser.mobile.replace(/[^0-9]/g, '') && 
+          (r.referrer_id === referrerUser.id || r.referrer_mobile.replace(/[^0-9]/g, '') === referrerUser.mobile.replace(/[^0-9]/g, '')) && 
           r.status === 'Completed'
         ).length;
 
@@ -844,6 +939,7 @@ app.patch('/api/orders/:id/status', (req, res) => {
           referrerUser.wallet_balance += 100;
           db.wallet_transactions.unshift({
             id: 'wtx_' + (Date.now() + 1),
+            customer_id: referrerUser.id,
             customer_mobile: referrerUser.mobile,
             type: 'CREDIT',
             amount: 100,
@@ -855,6 +951,7 @@ app.patch('/api/orders/:id/status', (req, res) => {
           referrerUser.wallet_balance += 250;
           db.wallet_transactions.unshift({
             id: 'wtx_' + (Date.now() + 2),
+            customer_id: referrerUser.id,
             customer_mobile: referrerUser.mobile,
             type: 'CREDIT',
             amount: 250,
@@ -864,9 +961,10 @@ app.patch('/api/orders/:id/status', (req, res) => {
           bonusMsg = ' Plus ₹250 Milestone Bonus added!';
         }
 
-        // Notify Referrer
+        // Notify Referrer (Linked to referrer's customer_id)
         db.notifications.unshift({
           id: 'notif_' + Date.now(),
+          customer_id: referrerUser.id,
           target_role: 'CUSTOMER',
           order_number: order.order_number,
           message: `🎉 Referral Reward! Your friend ${order.customer_name} completed order #${order.order_number}. ₹${rewardVal} added to your Referral Wallet!${bonusMsg}`,
@@ -876,9 +974,8 @@ app.patch('/api/orders/:id/status', (req, res) => {
       }
     }
   } else if (order_status === 'Rejected' || order_status === 'Cancelled') {
-    const cleanCustMobile = order.customer_mobile.replace(/[^0-9]/g, '');
     const pendingRef = (db.referrals || []).find(r => 
-      r.referred_mobile.replace(/[^0-9]/g, '') === cleanCustMobile && 
+      (r.referred_id === order.customer_id || r.referred_mobile.replace(/[^0-9]/g, '') === order.customer_mobile.replace(/[^0-9]/g, '')) && 
       r.status === 'Pending'
     );
     if (pendingRef) {
@@ -895,6 +992,7 @@ app.patch('/api/orders/:id/status', (req, res) => {
 
   db.notifications.unshift({
     id: 'notif_' + Date.now(),
+    customer_id: order.customer_id,
     target_role: 'CUSTOMER',
     order_number: order.order_number,
     message: notifMsg,
@@ -906,8 +1004,8 @@ app.patch('/api/orders/:id/status', (req, res) => {
   res.json({ success: true, data: order, message: `Order #${order.order_number} marked as ${order_status}.` });
 });
 
-// 10b. DELETE Order Record
-app.delete('/api/orders/:id', (req, res) => {
+// 13. DELETE Order Record (Owner Only)
+app.delete('/api/orders/:id', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const order = db.orders.find(o => o.id === id || o.order_number === id);
@@ -923,29 +1021,20 @@ app.delete('/api/orders/:id', (req, res) => {
   res.json({ success: true, message: `Order #${order.order_number} deleted successfully.` });
 });
 
-// 11. GET Payments
-app.get('/api/payments', (req, res) => {
+// 14. GET Payments (Customer gets OWN payments only; Owner gets ALL payments)
+app.get('/api/payments', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { customer_mobile, role } = req.query;
   let list = db.payments || [];
 
-  if (role === 'CUSTOMER' || customer_mobile) {
-    if (customer_mobile) {
-      const cleanMobile = customer_mobile.replace(/[^0-9]/g, '');
-      list = list.filter(p => {
-        if (p.customer_mobile && p.customer_mobile.replace(/[^0-9]/g, '') === cleanMobile) return true;
-        const matchingOrder = (db.orders || []).find(o => o.order_number === p.order_number);
-        if (matchingOrder && matchingOrder.customer_mobile.replace(/[^0-9]/g, '') === cleanMobile) return true;
-        return false;
-      });
-    }
+  if (req.user.role === 'CUSTOMER') {
+    list = list.filter(p => p.customer_id === req.user.id || (db.orders.find(o => o.order_number === p.order_number)?.customer_id === req.user.id));
   }
 
   res.json({ success: true, data: list });
 });
 
-// 12. PATCH Payment Status
-app.patch('/api/payments/:id/status', (req, res) => {
+// 15. PATCH Payment Status (Owner Only)
+app.patch('/api/payments/:id/status', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const { payment_status } = req.body;
@@ -967,23 +1056,31 @@ app.patch('/api/payments/:id/status', (req, res) => {
   res.json({ success: true, data: payment, message: `Payment status updated to ${payment_status}.` });
 });
 
-// 13. GET Notifications
-app.get('/api/notifications', (req, res) => {
+// =========================================================================
+// NOTIFICATIONS (STRICT DATA ISOLATION)
+// =========================================================================
+
+// 16. GET Notifications (Customer gets OWN notifications; Owner gets OWNER notifications)
+app.get('/api/notifications', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { role } = req.query;
-  let list = db.notifications;
-  if (role) {
-    list = list.filter(n => n.target_role === role.toUpperCase());
+  let list = db.notifications || [];
+
+  if (req.user.role === 'CUSTOMER') {
+    list = list.filter(n => n.target_role === 'CUSTOMER' && (n.customer_id === req.user.id || (!n.customer_id && n.created_at >= req.user.created_at)));
+  } else {
+    list = list.filter(n => n.target_role === 'OWNER');
   }
+
   res.json({ success: true, data: list });
 });
 
-// 14. PATCH Mark Notifications Read
-app.patch('/api/notifications/read-all', (req, res) => {
+// 17. PATCH Mark Notifications Read
+app.patch('/api/notifications/read-all', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { role } = req.body;
-  db.notifications.forEach(n => {
-    if (!role || n.target_role === role.toUpperCase()) {
+  (db.notifications || []).forEach(n => {
+    if (req.user.role === 'CUSTOMER' && n.target_role === 'CUSTOMER' && (n.customer_id === req.user.id || !n.customer_id)) {
+      n.is_read = true;
+    } else if (req.user.role === 'OWNER' && n.target_role === 'OWNER') {
       n.is_read = true;
     }
   });
@@ -991,55 +1088,44 @@ app.patch('/api/notifications/read-all', (req, res) => {
   res.json({ success: true, message: "Notifications marked as read." });
 });
 
-// 15. GET Dashboard Stats (Owner)
-app.get('/api/stats', (req, res) => {
+// 17.1 DELETE Clear All Notifications
+app.delete('/api/notifications/clear-all', authenticateToken, (req, res) => {
   const db = loadDB();
-  const today = new Date().toDateString();
-
-  const todayOrders = db.orders.filter(o => new Date(o.created_at).toDateString() === today);
-  const pendingOrders = db.orders.filter(o => o.order_status === 'Received');
-  const preparingOrders = db.orders.filter(o => o.order_status === 'Preparing');
-  const completedOrders = db.orders.filter(o => o.order_status === 'Completed');
-
-  const todaySales = db.orders.reduce((acc, o) => {
-    if (o.order_status === 'Completed' || o.payment_status === 'Paid' || o.payment_status === 'Cash Received') {
-      return acc + o.grand_total;
-    }
-    return acc;
-  }, 0);
-
-  res.json({
-    success: true,
-    data: {
-      todays_orders: todayOrders.length || db.orders.length,
-      pending_orders: pendingOrders.length,
-      preparing_orders: preparingOrders.length,
-      completed_orders: completedOrders.length,
-      todays_sales: todaySales
-    }
-  });
+  if (req.user.role === 'CUSTOMER') {
+    db.notifications = (db.notifications || []).filter(n => n.target_role !== 'CUSTOMER' || (n.customer_id && n.customer_id !== req.user.id));
+  } else {
+    db.notifications = (db.notifications || []).filter(n => n.target_role !== 'OWNER');
+  }
+  saveDB(db);
+  res.json({ success: true, message: "All notifications cleared." });
 });
 
-// 16. GET Support FAQs
+// 17.2 DELETE Single Notification
+app.delete('/api/notifications/:id', authenticateToken, (req, res) => {
+  const db = loadDB();
+  const { id } = req.params;
+  db.notifications = (db.notifications || []).filter(n => n.id !== id);
+  saveDB(db);
+  res.json({ success: true, message: "Notification deleted." });
+});
+
+// =========================================================================
+// SUPPORT SYSTEM & TICKETS
+// =========================================================================
+
+// 18. GET Support FAQs (Public)
 app.get('/api/support/faqs', (req, res) => {
   const db = loadDB();
   res.json({ success: true, data: db.faqs || [] });
 });
 
-// 17. GET Support Tickets
-app.get('/api/support/tickets', (req, res) => {
+// 19. GET Support Tickets (Customer gets OWN tickets; Owner gets ALL tickets)
+app.get('/api/support/tickets', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { user_id, mobile, role } = req.query;
   let list = db.support_tickets || [];
 
-  if (role === 'CUSTOMER') {
-    if (user_id || mobile) {
-      const cleanMobile = (mobile || '').replace(/[^0-9]/g, '');
-      list = list.filter(t => 
-        (user_id && t.user_id === user_id) || 
-        (cleanMobile && t.customer_mobile.replace(/[^0-9]/g, '') === cleanMobile)
-      );
-    }
+  if (req.user.role === 'CUSTOMER') {
+    list = list.filter(t => t.customer_id === req.user.id || t.user_id === req.user.id);
   }
 
   // Sort by updated_at descending
@@ -1048,16 +1134,16 @@ app.get('/api/support/tickets', (req, res) => {
   res.json({ success: true, data: list });
 });
 
-// 18. POST Create Support Ticket
-app.post('/api/support/tickets', (req, res) => {
+// 20. POST Create Support Ticket (Customer or User)
+app.post('/api/support/tickets', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { user_id, customer_name, customer_mobile, order_number, category, subject, priority, message } = req.body;
+  const { order_number, category, subject, priority, message } = req.body;
 
-  if (!customer_name || !customer_mobile || !subject || !message) {
-    return res.status(400).json({ success: false, message: "Name, mobile, subject, and message are required." });
+  if (!subject || !message) {
+    return res.status(400).json({ success: false, message: "Subject and message are required." });
   }
 
-  if (!db.ticket_counter) db.ticket_counter = 1003;
+  if (!db.ticket_counter) db.ticket_counter = 1001;
   const tktNum = `TKT-${db.ticket_counter}`;
   db.ticket_counter += 1;
 
@@ -1065,9 +1151,10 @@ app.post('/api/support/tickets', (req, res) => {
   const newTicket = {
     id: 'tkt_' + Date.now(),
     ticket_number: tktNum,
-    user_id: user_id || ('usr_' + Date.now()),
-    customer_name: customer_name.trim(),
-    customer_mobile: customer_mobile.trim(),
+    user_id: req.user.id,
+    customer_id: req.user.id,
+    customer_name: req.user.name,
+    customer_mobile: req.user.mobile,
     order_number: (order_number || 'General Inquiry').trim(),
     category: category || 'General Inquiry',
     subject: subject.trim(),
@@ -1079,7 +1166,7 @@ app.post('/api/support/tickets', (req, res) => {
       {
         id: 'msg_' + Date.now(),
         sender_role: 'CUSTOMER',
-        sender_name: customer_name.trim(),
+        sender_name: req.user.name,
         message: message.trim(),
         timestamp: now
       }
@@ -1089,9 +1176,10 @@ app.post('/api/support/tickets', (req, res) => {
   if (!db.support_tickets) db.support_tickets = [];
   db.support_tickets.unshift(newTicket);
 
-  // Notifications
+  // Owner Notification
   db.notifications.unshift({
     id: 'notif_' + Date.now(),
+    customer_id: null,
     target_role: 'OWNER',
     order_number: newTicket.order_number,
     message: `🆘 New support ticket #${tktNum} from ${newTicket.customer_name}: "${subject}"`,
@@ -1099,8 +1187,10 @@ app.post('/api/support/tickets', (req, res) => {
     created_at: now
   });
 
+  // Customer Notification
   db.notifications.unshift({
     id: 'notif_' + (Date.now() + 1),
+    customer_id: req.user.id,
     target_role: 'CUSTOMER',
     order_number: newTicket.order_number,
     message: `Support ticket #${tktNum} created! Our hotel support team will assist you shortly.`,
@@ -1117,11 +1207,11 @@ app.post('/api/support/tickets', (req, res) => {
   });
 });
 
-// 19. POST Add Reply Message to Support Ticket
-app.post('/api/support/tickets/:id/messages', (req, res) => {
+// 21. POST Add Reply Message to Support Ticket
+app.post('/api/support/tickets/:id/messages', authenticateToken, (req, res) => {
   const db = loadDB();
   const { id } = req.params;
-  const { sender_role, sender_name, message } = req.body;
+  const { message } = req.body;
 
   if (!message || !message.trim()) {
     return res.status(400).json({ success: false, message: "Message content cannot be empty." });
@@ -1132,11 +1222,19 @@ app.post('/api/support/tickets/:id/messages', (req, res) => {
     return res.status(404).json({ success: false, message: "Support ticket not found." });
   }
 
+  // Access check for customer
+  if (req.user.role === 'CUSTOMER' && ticket.customer_id !== req.user.id && ticket.user_id !== req.user.id) {
+    return res.status(403).json({ success: false, message: "Forbidden. Ticket does not belong to you." });
+  }
+
   const now = new Date().toISOString();
+  const senderRole = req.user.role;
+  const senderName = req.user.name;
+
   const newMsg = {
     id: 'msg_' + Date.now(),
-    sender_role: sender_role || 'CUSTOMER',
-    sender_name: (sender_name || (sender_role === 'OWNER' ? 'Lakshmi Narayana (Owner)' : 'Customer')).trim(),
+    sender_role: senderRole,
+    sender_name: senderName,
     message: message.trim(),
     timestamp: now
   };
@@ -1144,14 +1242,15 @@ app.post('/api/support/tickets/:id/messages', (req, res) => {
   ticket.messages.push(newMsg);
   ticket.updated_at = now;
 
-  if (sender_role === 'OWNER' && ticket.status === 'Open') {
+  if (senderRole === 'OWNER' && ticket.status === 'Open') {
     ticket.status = 'In Progress';
   }
 
-  // Create notifications
-  if (sender_role === 'OWNER') {
+  // Notifications
+  if (senderRole === 'OWNER') {
     db.notifications.unshift({
       id: 'notif_' + Date.now(),
+      customer_id: ticket.customer_id,
       target_role: 'CUSTOMER',
       order_number: ticket.order_number,
       message: `💬 Hotel reply on Ticket #${ticket.ticket_number}: "${message.trim().slice(0, 45)}..."`,
@@ -1161,9 +1260,10 @@ app.post('/api/support/tickets/:id/messages', (req, res) => {
   } else {
     db.notifications.unshift({
       id: 'notif_' + Date.now(),
+      customer_id: null,
       target_role: 'OWNER',
       order_number: ticket.order_number,
-      message: `💬 New message on Ticket #${ticket.ticket_number} from ${sender_name || 'Customer'}`,
+      message: `💬 New message on Ticket #${ticket.ticket_number} from ${senderName}`,
       is_read: false,
       created_at: now
     });
@@ -1178,8 +1278,8 @@ app.post('/api/support/tickets/:id/messages', (req, res) => {
   });
 });
 
-// 20. PATCH Support Ticket Status
-app.patch('/api/support/tickets/:id/status', (req, res) => {
+// 22. PATCH Support Ticket Status (Owner Only)
+app.patch('/api/support/tickets/:id/status', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const { status } = req.body;
@@ -1195,6 +1295,7 @@ app.patch('/api/support/tickets/:id/status', (req, res) => {
   // Notify customer
   db.notifications.unshift({
     id: 'notif_' + Date.now(),
+    customer_id: ticket.customer_id,
     target_role: 'CUSTOMER',
     order_number: ticket.order_number,
     message: `Ticket #${ticket.ticket_number} status updated to ${status}.`,
@@ -1211,8 +1312,8 @@ app.patch('/api/support/tickets/:id/status', (req, res) => {
   });
 });
 
-// 21. DELETE Support Ticket
-app.delete('/api/support/tickets/:id', (req, res) => {
+// 23. DELETE Support Ticket (Owner Only)
+app.delete('/api/support/tickets/:id', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { id } = req.params;
   const ticket = (db.support_tickets || []).find(t => t.id === id || t.ticket_number === id);
@@ -1231,17 +1332,10 @@ app.delete('/api/support/tickets/:id', (req, res) => {
 // REFERRAL SYSTEM & WALLET API ENDPOINTS
 // =========================================================================
 
-// 22. GET Customer Referral Stats & Wallet
-app.get('/api/referrals/stats', (req, res) => {
+// 24. GET Customer Referral Stats & Wallet (Strictly for Authenticated User)
+app.get('/api/referrals/stats', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { customer_mobile } = req.query;
-
-  if (!customer_mobile) {
-    return res.status(400).json({ success: false, message: "Customer mobile number is required." });
-  }
-
-  const cleanMobile = customer_mobile.replace(/[^0-9]/g, '');
-  const user = (db.users || []).find(u => u.mobile.replace(/[^0-9]/g, '') === cleanMobile);
+  const user = db.users.find(u => u.id === req.user.id);
 
   if (!user) {
     return res.status(404).json({ success: false, message: "Customer account not found." });
@@ -1254,19 +1348,21 @@ app.get('/api/referrals/stats', (req, res) => {
     saveDB(db);
   }
 
-  const userReferrals = (db.referrals || []).filter(r => r.referrer_mobile.replace(/[^0-9]/g, '') === cleanMobile);
+  const cleanMobile = user.mobile.replace(/[^0-9]/g, '');
+  const userReferrals = (db.referrals || []).filter(r => r.referrer_id === user.id || r.referrer_mobile.replace(/[^0-9]/g, '') === cleanMobile);
   const totalCount = userReferrals.length;
   const completedCount = userReferrals.filter(r => r.status === 'Completed').length;
   const pendingCount = userReferrals.filter(r => r.status === 'Pending').length;
   const totalEarned = userReferrals.filter(r => r.status === 'Completed').reduce((s, r) => s + Number(r.reward_amount || 30), 0);
 
-  const walletTx = (db.wallet_transactions || []).filter(w => w.customer_mobile.replace(/[^0-9]/g, '') === cleanMobile);
+  const walletTx = (db.wallet_transactions || []).filter(w => w.customer_id === user.id || w.customer_mobile.replace(/[^0-9]/g, '') === cleanMobile);
 
   res.json({
     success: true,
     data: {
       referral_code: user.referral_code,
       wallet_balance: Number(user.wallet_balance || 0),
+      loyalty_points: Number(user.loyalty_points || 0),
       show_on_leaderboard: user.show_on_leaderboard !== false,
       total_referrals: totalCount,
       completed_referrals: completedCount,
@@ -1279,22 +1375,22 @@ app.get('/api/referrals/stats', (req, res) => {
   });
 });
 
-// 23. GET Monthly Top Referrers Leaderboard
+// 25. GET Monthly Top Referrers Leaderboard (Public)
 app.get('/api/referrals/leaderboard', (req, res) => {
   const db = loadDB();
   const customerMap = {};
 
   (db.referrals || []).filter(r => r.status === 'Completed').forEach(r => {
-    const cleanMobile = r.referrer_mobile.replace(/[^0-9]/g, '');
-    if (!customerMap[cleanMobile]) {
-      customerMap[cleanMobile] = { mobile: cleanMobile, count: 0, rewards: 0 };
+    const key = r.referrer_id || r.referrer_mobile.replace(/[^0-9]/g, '');
+    if (!customerMap[key]) {
+      customerMap[key] = { key: key, count: 0, rewards: 0 };
     }
-    customerMap[cleanMobile].count += 1;
-    customerMap[cleanMobile].rewards += Number(r.reward_amount || 30);
+    customerMap[key].count += 1;
+    customerMap[key].rewards += Number(r.reward_amount || 30);
   });
 
   let leaderboard = Object.values(customerMap).map(item => {
-    const user = (db.users || []).find(u => u.mobile.replace(/[^0-9]/g, '') === item.mobile);
+    const user = (db.users || []).find(u => u.id === item.key || u.mobile.replace(/[^0-9]/g, '') === item.key);
     const showPublic = user ? user.show_on_leaderboard !== false : true;
     let displayName = 'Anonymous Customer';
     if (user && showPublic) {
@@ -1315,16 +1411,11 @@ app.get('/api/referrals/leaderboard', (req, res) => {
   res.json({ success: true, data: leaderboard });
 });
 
-// 24. PATCH Customer Leaderboard Privacy Toggle
-app.patch('/api/referrals/privacy', (req, res) => {
+// 26. PATCH Customer Leaderboard Privacy Toggle
+app.patch('/api/referrals/privacy', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { customer_mobile, show_on_leaderboard } = req.body;
-  if (!customer_mobile) {
-    return res.status(400).json({ success: false, message: "Mobile number is required." });
-  }
-
-  const cleanMobile = customer_mobile.replace(/[^0-9]/g, '');
-  const user = (db.users || []).find(u => u.mobile.replace(/[^0-9]/g, '') === cleanMobile);
+  const { show_on_leaderboard } = req.body;
+  const user = db.users.find(u => u.id === req.user.id);
   if (!user) {
     return res.status(404).json({ success: false, message: "User not found." });
   }
@@ -1334,8 +1425,8 @@ app.patch('/api/referrals/privacy', (req, res) => {
   res.json({ success: true, message: `Leaderboard visibility updated to ${user.show_on_leaderboard ? 'Public' : 'Anonymous'}.` });
 });
 
-// 25. POST Owner Save Referral Program Settings
-app.post('/api/owner/referrals/settings', (req, res) => {
+// 27. POST Owner Save Referral Program Settings (Owner Only)
+app.post('/api/owner/referrals/settings', authenticateToken, requireRole('OWNER'), (req, res) => {
   const db = loadDB();
   const { enabled, referrer_reward, new_customer_discount, min_order_value, monthly_limit } = req.body;
 
@@ -1358,10 +1449,10 @@ app.post('/api/owner/referrals/settings', (req, res) => {
 // POST-ORDER REVIEW & RATING API ENDPOINTS
 // =========================================================================
 
-// 26. POST Submit Order Review & Rating
-app.post('/api/reviews', (req, res) => {
+// 28. POST Submit Order Review & Rating
+app.post('/api/reviews', authenticateToken, (req, res) => {
   const db = loadDB();
-  const { order_number, customer_name, customer_mobile, rating, comment, issues, is_public } = req.body;
+  const { order_number, rating, comment, issues, is_public } = req.body;
 
   if (!order_number || !rating) {
     return res.status(400).json({ success: false, message: "Order number and star rating are required." });
@@ -1375,8 +1466,9 @@ app.post('/api/reviews', (req, res) => {
   const newReview = {
     id: 'rev_' + Date.now(),
     order_number: (order_number || '').trim(),
-    customer_name: (customer_name || 'Valued Customer').trim(),
-    customer_mobile: (customer_mobile || '').trim(),
+    customer_id: req.user.id,
+    customer_name: req.user.name,
+    customer_mobile: req.user.mobile,
     rating: numRating,
     comment: (comment || '').trim(),
     issues: Array.isArray(issues) ? issues : [],
@@ -1400,6 +1492,7 @@ app.post('/api/reviews', (req, res) => {
 
     db.notifications.unshift({
       id: 'notif_' + Date.now(),
+      customer_id: null,
       target_role: 'OWNER',
       order_number: order_number,
       message: ownerAlert,
@@ -1407,15 +1500,15 @@ app.post('/api/reviews', (req, res) => {
       created_at: new Date().toISOString()
     });
 
-    // Auto-create a high priority support ticket for low ratings if issues reported
-    if (!db.ticket_counter) db.ticket_counter = 1003;
+    if (!db.ticket_counter) db.ticket_counter = 1001;
     const tktNum = `TKT-${db.ticket_counter}`;
     db.ticket_counter += 1;
 
     db.support_tickets.unshift({
       id: 'tkt_' + Date.now(),
       ticket_number: tktNum,
-      user_id: 'usr_' + Date.now(),
+      user_id: req.user.id,
+      customer_id: req.user.id,
       customer_name: newReview.customer_name,
       customer_mobile: newReview.customer_mobile,
       order_number: order_number,
@@ -1439,9 +1532,10 @@ app.post('/api/reviews', (req, res) => {
     // 4-5 Stars Thank You Notification
     db.notifications.unshift({
       id: 'notif_' + Date.now(),
+      customer_id: null,
       target_role: 'OWNER',
       order_number: order_number,
-      message: `🌟 5-Star Review Received! Order #${order_number} rated ${numRating}/5 stars by ${newReview.customer_name}!`,
+      message: `🌟 Review Received! Order #${order_number} rated ${numRating}/5 stars by ${newReview.customer_name}!`,
       is_read: false,
       created_at: new Date().toISOString()
     });
@@ -1458,25 +1552,22 @@ app.post('/api/reviews', (req, res) => {
   });
 });
 
-// 27. GET Order Reviews
-app.get('/api/reviews', (req, res) => {
+// 29. GET Order Reviews (Public or Customer Filtered)
+app.get('/api/reviews', optionalAuth, (req, res) => {
   const db = loadDB();
-  const { public_only, mobile } = req.query;
+  const { public_only } = req.query;
   let list = db.reviews || [];
 
   if (public_only === 'true') {
     list = list.filter(r => r.is_public && r.rating >= 4);
-  }
-
-  if (mobile) {
-    const cleanMobile = mobile.replace(/[^0-9]/g, '');
-    list = list.filter(r => r.customer_mobile.replace(/[^0-9]/g, '') === cleanMobile);
+  } else if (req.user && req.user.role === 'CUSTOMER') {
+    list = list.filter(r => r.customer_id === req.user.id);
   }
 
   res.json({ success: true, data: list });
 });
 
-// 28. GET Review Statistics & Metrics
+// 30. GET Review Statistics & Metrics (Public)
 app.get('/api/reviews/stats', (req, res) => {
   const db = loadDB();
   const reviews = db.reviews || [];

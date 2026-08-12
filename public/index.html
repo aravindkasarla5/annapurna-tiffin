@@ -33,36 +33,53 @@
       </div>
     </div>
 
+    <!-- Visible Header Navigation Bar (Especially for Tablet & Mobile) -->
+    <nav class="header-nav-links" id="headerNavLinks">
+      <!-- Injected dynamically by JavaScript based on current role -->
+    </nav>
+
     <div class="header-actions">
-      <!-- User Profile & Auth Buttons (No background container wrapper) -->
-      <div id="userAuthBadge" class="auth-buttons-wrapper">
-        <span id="lblLoggedInUser" class="hidden"></span>
+      <!-- Guest Auth Buttons (Visible ONLY when logged out) -->
+      <div id="guestAuthWrapper" class="auth-buttons-wrapper">
         <button class="btn-auth-primary" id="btnLoginHeader" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')">
           <i class="fa-solid fa-right-to-bracket"></i> Login
         </button>
         <button class="btn-auth-secondary" id="btnRegisterHeader" onclick="app.openAuthModal('CUSTOMER', 'REGISTER')">
           <i class="fa-solid fa-user-plus"></i> Register
         </button>
-        <button class="btn-auth-logout hidden" id="btnLogoutHeader" onclick="app.logout()" title="Logout">
-          <i class="fa-solid fa-power-off"></i> Logout
-        </button>
       </div>
 
-      <!-- Notifications Bell Icon (Visible ONLY after login) -->
-      <button class="icon-btn hidden" id="btnNotifications" onclick="app.toggleNotificationsTray()"
-        title="Notifications">
+      <!-- 1. Notifications Bell Icon (Visible ONLY after login) -->
+      <button class="icon-btn hidden" id="btnNotifications" onclick="app.toggleNotificationsTray()" title="Notifications">
         <i class="fa-regular fa-bell"></i>
         <span class="badge hidden" id="notifBadgeCount">0</span>
       </button>
 
-      <!-- Customer Cart Button (Visible ONLY after customer login) -->
+      <!-- 2. Customer Cart Button (Visible ONLY after customer login) -->
       <button class="icon-btn hidden" id="btnCart" onclick="app.toggleCartDrawer()" title="Shopping Cart">
         <i class="fa-solid fa-cart-shopping"></i>
         <span class="badge hidden" id="cartBadgeCount">0</span>
       </button>
 
-      <!-- Mobile Menu Toggle Button (Visible on screens < 768px) -->
-      <button class="icon-btn hidden" id="btnMobileMenuToggle" onclick="app.toggleMobileDrawer()" title="Open Navigation Menu">
+      <!-- 3. Profile Icon & Badge with Full Name (Visible ONLY after login, clicking switches to My Profile) -->
+      <button class="header-profile-card hidden" id="btnHeaderProfile" onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerSettings' : 'secCustomerProfile')" title="Click to view My Profile">
+        <div class="header-profile-avatar-ring" id="headerProfileAvatarRing">
+          <span id="headerProfileInitial">A</span>
+        </div>
+        <div class="header-profile-text-group">
+          <span class="header-profile-fullname" id="headerProfileFullName">Customer Profile</span>
+          <span class="header-profile-role-tag" id="headerProfileRoleTag">⭐ VIP Foodie</span>
+        </div>
+      </button>
+
+      <!-- 4. Logout Button (Visible ONLY after login) -->
+      <button class="btn-header-logout hidden" id="btnLogoutHeader" onclick="app.logout()" title="Logout">
+        <i class="fa-solid fa-power-off"></i>
+        <span>Logout</span>
+      </button>
+
+      <!-- Mobile Menu Toggle Button (Visible on screens < 1200px) -->
+      <button class="icon-btn" id="btnMobileMenuToggle" onclick="app.toggleMobileDrawer()" title="Open Navigation Menu">
         <i class="fa-solid fa-bars"></i>
       </button>
     </div>
@@ -82,26 +99,107 @@
         <button class="icon-btn" onclick="app.toggleMobileDrawer(false)" style="width: 32px; height: 32px;"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="mobile-drawer-nav" id="mobileDrawerNav" style="padding: 1rem 0; display: flex; flex-direction: column; gap: 8px;">
-        <!-- Rendered by JS -->
+        <div class="drawer-user-info-box guest">
+          <div class="drawer-avatar-circle guest">
+            <i class="fa-solid fa-user-astronaut"></i>
+          </div>
+          <div class="drawer-user-details">
+            <strong class="drawer-user-name">Welcome, Guest!</strong>
+            <span class="drawer-user-role">Sign in to unlock online ordering</span>
+          </div>
+        </div>
+
+        <div class="drawer-menu-list">
+          <a class="drawer-item active" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerHome');">
+            <div class="drawer-icon-box orange"><i class="fa-solid fa-house"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Home</strong>
+              <span class="drawer-item-sub">Fresh South Indian Tiffins</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.scrollToMenu();">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-utensils"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Today's Menu</strong>
+              <span class="drawer-item-sub">Idly, Dosa, Meals & Vada</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item highlight-login" onclick="app.toggleMobileDrawer(false); app.openAuthModal('CUSTOMER', 'LOGIN');">
+            <div class="drawer-icon-box primary"><i class="fa-solid fa-right-to-bracket"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title" style="color: var(--accent-gold);">Login / Register</strong>
+              <span class="drawer-item-sub">Access your account & orders</span>
+            </div>
+            <i class="fa-solid fa-arrow-right drawer-chevron" style="color: var(--accent-gold);"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerSupport');">
+            <div class="drawer-icon-box teal"><i class="fa-solid fa-headset"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Support & FAQs</strong>
+              <span class="drawer-item-sub">Instant answers & helpline</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" href="tel:+919392874900">
+            <div class="drawer-icon-box green"><i class="fa-solid fa-phone-volume"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Call Hotel Helpline</strong>
+              <span class="drawer-item-sub">+91 9392874900 (Open 7 Days)</span>
+            </div>
+            <i class="fa-solid fa-arrow-up-right-from-square drawer-chevron"></i>
+          </a>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Notifications Dropdown Tray -->
+  <!-- Notifications Dropdown Tray Modal -->
   <div class="modal-backdrop" id="notifBackdrop" onclick="app.toggleNotificationsTray(false)">
-    <div class="modal-card" style="max-width: 420px;" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <h3><i class="fa-regular fa-bell" style="color: var(--accent-gold);"></i> Notifications</h3>
-        <button class="icon-btn" onclick="app.toggleNotificationsTray(false)"
-          style="width: 32px; height: 32px; font-size: 0.85rem;"><i class="fa-solid fa-xmark"></i></button>
+    <div class="modal-card" style="max-width: 440px;" onclick="event.stopPropagation()">
+      
+      <!-- Tray Header -->
+      <div class="modal-header" style="justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+            <i class="fa-solid fa-bell"></i>
+          </div>
+          <div>
+            <h3 style="font-size: 1.05rem; color: #FFF; margin: 0;">Notifications</h3>
+            <span style="font-size: 0.74rem; color: var(--text-muted);" id="notifSubCountText">0 new alerts</span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn-clear-notif" onclick="app.clearAllNotifications()" title="Clear all notifications">
+            <i class="fa-solid fa-trash-can"></i> Clear All
+          </button>
+          <button class="icon-btn" onclick="app.toggleNotificationsTray(false)" style="width: 30px; height: 30px; font-size: 0.85rem;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
       </div>
-      <div class="modal-body" id="notifListContainer" style="max-height: 380px; overflow-y: auto;">
-        <!-- Dynamic Notifications -->
+
+      <!-- Notifications List Container -->
+      <div class="modal-body" id="notifListContainer" style="max-height: 380px; overflow-y: auto; padding: 1rem 0.5rem;">
+        <!-- Dynamic Notifications Injected Here -->
       </div>
-      <div style="padding: 10px; border-top: 1px solid var(--border-color); text-align: center;">
-        <button class="role-btn" onclick="app.markNotificationsRead()"
-          style="margin: 0 auto; color: var(--accent-gold);">Mark all as read</button>
+
+      <!-- Tray Footer Actions -->
+      <div style="padding: 10px 16px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(10,10,14,0.4);">
+        <button type="button" class="btn-text-action" onclick="app.markNotificationsRead()">
+          <i class="fa-solid fa-check-double"></i> Mark all as read
+        </button>
+        <button type="button" class="btn-text-action danger" onclick="app.clearAllNotifications()">
+          <i class="fa-solid fa-trash-can"></i> Clear Tray
+        </button>
       </div>
+
     </div>
   </div>
 
@@ -306,7 +404,7 @@
         <div style="background: var(--bg-surface-elevated); border: 2px dashed var(--accent-gold); border-radius: var(--radius-md); padding: 1.25rem; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; align-items: center;">
           <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">YOUR UNIQUE REFERRAL CODE</span>
           <div style="font-family: monospace; font-size: 2.2rem; font-weight: 800; color: var(--accent-gold); letter-spacing: 3px;" id="referralCodeDisplay">
-            RAMESH50
+            ---
           </div>
           <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100%;">
             <button type="button" class="btn-secondary-outline" onclick="app.copyReferralCode()" style="flex: 1; min-width: 140px;">
@@ -455,48 +553,193 @@
 
     <!-- Customer Profile Section -->
     <section id="secCustomerProfile" class="view-section hidden">
-      <div class="section-header">
-        <h2 class="section-title"><i class="fa-solid fa-user-gear" style="color: var(--primary);"></i> My Profile</h2>
-      </div>
-
-      <div class="modal-card" style="max-width: 600px; margin: 0 auto;">
-        <div class="modal-body">
-          <div style="text-align: center; margin-bottom: 1.5rem;">
-            <div
-              style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 0.75rem auto;">
-              <i class="fa-solid fa-user"></i>
+      <div class="profile-container">
+        
+        <!-- Premium Hero Header Banner -->
+        <div class="profile-hero-card">
+          <div class="profile-hero-content">
+            <div class="profile-avatar-wrapper">
+              <div class="profile-avatar-ring">
+                <span class="profile-avatar-text" id="profAvatarInitials">C</span>
+              </div>
+              <span class="profile-verified-badge" title="Verified Customer Account"><i class="fa-solid fa-circle-check"></i></span>
             </div>
-            <h3 id="profNameDisplay">Ramesh Kumar</h3>
-            <p style="color: var(--text-muted); font-size: 0.85rem;" id="profPhoneDisplay">+91 98450 12345</p>
+            
+            <div class="profile-user-details">
+              <div class="profile-name-row">
+                <h2 id="profNameDisplay" class="profile-user-name">Customer Profile</h2>
+                <span class="profile-role-pill"><i class="fa-solid fa-crown" style="color: var(--accent-gold);"></i> Foodie Member</span>
+              </div>
+              <p class="profile-user-phone"><i class="fa-solid fa-mobile-screen-button"></i> <span id="profPhoneDisplay">---</span></p>
+            </div>
           </div>
 
-          <form id="profileForm" onsubmit="app.saveCustomerProfile(event)">
-            <div class="form-group">
-              <label>Full Name</label>
-              <input type="text" class="form-control" id="profNameInput" value="Ramesh Kumar" required>
+          <!-- Quick Activity Stat Badges -->
+          <div class="profile-stats-grid">
+            <div class="profile-stat-box" onclick="app.switchView('secCustomerOrders')">
+              <div class="stat-icon-circle orange"><i class="fa-solid fa-utensils"></i></div>
+              <div class="stat-info">
+                <span class="stat-val" id="profStatOrdersCount">0</span>
+                <span class="stat-lbl">My Orders</span>
+              </div>
+              <i class="fa-solid fa-chevron-right stat-arrow"></i>
             </div>
 
-            <div class="form-group">
-              <label>Mobile Number</label>
-              <input type="tel" class="form-control" id="profPhoneInput" value="+91 98450 12345" required>
+            <div class="profile-stat-box" onclick="app.switchView('secCustomerReferral')">
+              <div class="stat-icon-circle gold"><i class="fa-solid fa-wallet"></i></div>
+              <div class="stat-info">
+                <span class="stat-val" id="profStatWalletBal">₹0</span>
+                <span class="stat-lbl">Wallet & Rewards</span>
+              </div>
+              <i class="fa-solid fa-chevron-right stat-arrow"></i>
             </div>
 
-            <div class="form-group">
-              <label>Email Address (Optional)</label>
-              <input type="email" class="form-control" id="profEmailInput" value="ramesh.k@example.com">
+            <div class="profile-stat-box" onclick="app.switchView('secCustomerSupport')">
+              <div class="stat-icon-circle blue"><i class="fa-solid fa-headset"></i></div>
+              <div class="stat-info">
+                <span class="stat-val">24/7</span>
+                <span class="stat-lbl">Help & Support</span>
+              </div>
+              <i class="fa-solid fa-chevron-right stat-arrow"></i>
             </div>
-
-            <div class="form-group">
-              <label>Delivery Address</label>
-              <textarea class="form-control"
-                id="profAddressInput">#12, 4th Cross, Gandhi Nagar, Bengaluru, KA</textarea>
-            </div>
-
-            <button type="submit" class="btn-primary-block" style="margin-top: 1rem;">
-              <i class="fa-solid fa-floppy-disk"></i> Save Profile Details
-            </button>
-          </form>
+          </div>
         </div>
+
+        <!-- Main Form & Settings Layout -->
+        <div class="profile-grid">
+          
+          <!-- Left Column: Personal Information Form -->
+          <div class="profile-card-panel">
+            <div class="panel-header">
+              <div class="panel-title-icon"><i class="fa-solid fa-user-pen"></i></div>
+              <div>
+                <h3 class="panel-title">Personal Information</h3>
+                <p class="panel-subtitle">Update your personal details and account settings</p>
+              </div>
+            </div>
+
+            <form id="profileForm" onsubmit="app.saveCustomerProfile(event)" class="profile-form-body">
+              
+              <div class="form-group-custom">
+                <label for="profNameInput" class="form-label-custom">
+                  <i class="fa-solid fa-user"></i> Full Name
+                </label>
+                <div class="input-icon-wrapper">
+                  <input type="text" class="form-input-custom" id="profNameInput" placeholder="Enter your full name" required>
+                  <i class="fa-solid fa-pen input-end-icon"></i>
+                </div>
+              </div>
+
+              <div class="form-group-custom">
+                <label for="profPhoneInput" class="form-label-custom">
+                  <i class="fa-solid fa-phone"></i> Registered Mobile Number
+                </label>
+                <div class="input-icon-wrapper disabled">
+                  <input type="tel" class="form-input-custom" id="profPhoneInput" placeholder="Mobile Number" required readonly>
+                  <i class="fa-solid fa-lock input-end-icon" title="Mobile number is locked for security"></i>
+                </div>
+                <span class="field-hint"><i class="fa-solid fa-shield-halved"></i> Linked to your authentication account</span>
+              </div>
+
+              <div class="form-group-custom">
+                <label for="profEmailInput" class="form-label-custom">
+                  <i class="fa-solid fa-envelope"></i> Email Address <span class="opt-tag">(Optional)</span>
+                </label>
+                <div class="input-icon-wrapper">
+                  <input type="email" class="form-input-custom" id="profEmailInput" placeholder="e.g. yourname@gmail.com">
+                  <i class="fa-solid fa-at input-end-icon"></i>
+                </div>
+              </div>
+
+              <div class="form-group-custom">
+                <label for="profAddressInput" class="form-label-custom">
+                  <i class="fa-solid fa-location-dot"></i> Default Delivery Address
+                </label>
+                <div class="input-icon-wrapper">
+                  <textarea class="form-textarea-custom" id="profAddressInput" rows="3" placeholder="Flat / House No, Building Name, Street, Landmark, Area..."></textarea>
+                </div>
+                <span class="field-hint"><i class="fa-solid fa-truck-fast"></i> Saved automatically for faster one-click checkout</span>
+              </div>
+
+              <button type="submit" class="btn-profile-save">
+                <i class="fa-solid fa-floppy-disk"></i> Save Profile Details
+              </button>
+            </form>
+          </div>
+
+          <!-- Right Column: Quick Shortcuts & Security Panel -->
+          <div class="profile-sidebar-panels">
+            
+            <!-- Quick Actions Panel -->
+            <div class="profile-card-panel alt-bg">
+              <div class="panel-header">
+                <div class="panel-title-icon gold"><i class="fa-solid fa-bolt"></i></div>
+                <div>
+                  <h3 class="panel-title">Quick Actions</h3>
+                  <p class="panel-subtitle">Manage orders and earn rewards</p>
+                </div>
+              </div>
+
+              <div class="profile-quick-links">
+                <a class="profile-link-item" onclick="app.switchView('secCustomerOrders')">
+                  <div class="link-icon-box orange"><i class="fa-solid fa-receipt"></i></div>
+                  <div class="link-text">
+                    <span class="link-title">Order History</span>
+                    <span class="link-desc">View past tiffin orders & live status</span>
+                  </div>
+                  <i class="fa-solid fa-arrow-right link-arrow"></i>
+                </a>
+
+                <a class="profile-link-item" onclick="app.switchView('secCustomerReferral')">
+                  <div class="link-icon-box gold"><i class="fa-solid fa-gift"></i></div>
+                  <div class="link-text">
+                    <span class="link-title">Refer & Earn ₹30</span>
+                    <span class="link-desc">Invite friends and claim wallet discount</span>
+                  </div>
+                  <i class="fa-solid fa-arrow-right link-arrow"></i>
+                </a>
+
+                <a class="profile-link-item" onclick="app.switchView('secCustomerPayments')">
+                  <div class="link-icon-box green"><i class="fa-solid fa-file-invoice-dollar"></i></div>
+                  <div class="link-text">
+                    <span class="link-title">Payment Statements</span>
+                    <span class="link-desc">Download payment vouchers & bills</span>
+                  </div>
+                  <i class="fa-solid fa-arrow-right link-arrow"></i>
+                </a>
+              </div>
+            </div>
+
+            <!-- Security & Session Control Panel -->
+            <div class="profile-card-panel alt-bg">
+              <div class="panel-header">
+                <div class="panel-title-icon red"><i class="fa-solid fa-shield-cat"></i></div>
+                <div>
+                  <h3 class="panel-title">Account & Security</h3>
+                  <p class="panel-subtitle">Session security and authentication</p>
+                </div>
+              </div>
+
+              <div class="security-info-list">
+                <div class="security-info-item">
+                  <span class="sec-lbl"><i class="fa-solid fa-user-shield"></i> Account Role</span>
+                  <span class="sec-val badge-customer">Customer</span>
+                </div>
+                <div class="security-info-item">
+                  <span class="sec-lbl"><i class="fa-solid fa-lock"></i> Session Security</span>
+                  <span class="sec-val active-status">● Encrypted Token</span>
+                </div>
+              </div>
+
+              <button type="button" class="btn-profile-logout" onclick="app.logout()">
+                <i class="fa-solid fa-power-off"></i> Logout from Account
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
     </section>
 
@@ -511,20 +754,20 @@
 
       <!-- Quick Contact Grid -->
       <div class="support-contact-grid">
-        <a href="tel:+919876543210" class="support-card-link">
+        <a href="tel:+919392874900" class="support-card-link">
           <div class="support-contact-card">
             <div class="support-card-icon" style="background: rgba(239, 108, 0, 0.15); color: #EF6C00;">
               <i class="fa-solid fa-phone-volume"></i>
             </div>
             <div>
               <h4>Call Support Helpline</h4>
-              <p>+91 98765 43210</p>
+              <p>+91 9392874900</p>
               <span class="support-card-sub">Mon - Sun: 06:30 AM - 10:30 PM</span>
             </div>
           </div>
         </a>
 
-        <a href="https://wa.me/919876543210?text=Hi%20Annapurna%20Tiffin%20Center,%20I%20need%20assistance"
+        <a href="https://wa.me/919392874900?text=Hi%20Annapurna%20Tiffin%20Center,%20I%20need%20assistance"
           target="_blank" class="support-card-link">
           <div class="support-contact-card">
             <div class="support-card-icon" style="background: rgba(46, 125, 50, 0.15); color: #2E7D32;">
@@ -532,8 +775,8 @@
             </div>
             <div>
               <h4>WhatsApp Support</h4>
-              <p>Instant Live Chat</p>
-              <span class="support-card-sub">Click to open WhatsApp</span>
+              <p>+91 9392874900</p>
+              <span class="support-card-sub">Click to chat on WhatsApp</span>
             </div>
           </div>
         </a>
@@ -986,146 +1229,222 @@
       </div>
     </section>
 
-    <!-- Owner Business Settings Section -->
+    <!-- Shop Owner Business Settings & Controls Section -->
     <section id="secOwnerSettings" class="view-section hidden">
-      <div class="section-header">
-        <h2 class="section-title"><i class="fa-solid fa-sliders" style="color: var(--primary);"></i> Business Settings
-        </h2>
-      </div>
-
-      <div class="modal-card" style="max-width: 700px; margin: 0 auto;">
-        <div class="modal-body">
-          <form id="settingsForm" onsubmit="app.saveBusinessSettings(event)">
-
-            <div
-              style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface-elevated); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+      <div class="settings-container">
+        
+        <!-- Executive Header Banner -->
+        <div class="settings-hero-card">
+          <div class="settings-hero-content">
+            <div class="settings-hero-title-group">
+              <div class="settings-hero-icon"><i class="fa-solid fa-sliders"></i></div>
               <div>
-                <h4 style="margin-bottom: 2px;">Hotel Service Status</h4>
-                <p style="font-size: 0.8rem; color: var(--text-muted);">Toggle to open or close customer order intake
-                </p>
+                <h2>Business Settings & Store Controls</h2>
+                <p>Manage restaurant profile, store timings, live UPI payment scanner & referral program</p>
               </div>
-              <div class="availability-switch" id="settingHotelOpenSwitch" onclick="app.toggleSettingsHotelOpen()">
+            </div>
+
+            <!-- Master Hotel Status Toggle -->
+            <div class="hotel-status-toggle-card">
+              <div class="status-toggle-text">
+                <span class="toggle-title">Live Store Intake Status</span>
+                <span class="toggle-desc">Turn OFF to pause customer ordering immediately</span>
+              </div>
+              <div class="availability-switch master-store-switch" id="settingHotelOpenSwitch" onclick="app.toggleSettingsHotelOpen()">
                 <div class="switch-track">
                   <div class="switch-thumb"></div>
                 </div>
-                <span style="font-size: 0.85rem; font-weight: 700;" id="settingHotelOpenLabel">🟢 HOTEL OPEN</span>
+                <span id="settingHotelOpenLabel" class="status-pill-label">🟢 HOTEL OPEN</span>
               </div>
             </div>
-
-            <div class="form-group">
-              <label>Hotel / Tiffin Center Name</label>
-              <input type="text" class="form-control" id="setHotelName" required>
-            </div>
-
-            <div class="form-group">
-              <label>Phone Number</label>
-              <input type="text" class="form-control" id="setPhone" required>
-            </div>
-
-            <div class="form-group">
-              <label>Full Address</label>
-              <textarea class="form-control" id="setAddress" required></textarea>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-              <div class="form-group">
-                <label>Opening Time</label>
-                <input type="text" class="form-control" id="setOpenTime" placeholder="e.g. 06:30 AM" required>
-              </div>
-              <div class="form-group">
-                <label>Closing Time</label>
-                <input type="text" class="form-control" id="setCloseTime" placeholder="e.g. 10:30 PM" required>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Weekly Holidays</label>
-              <input type="text" class="form-control" id="setHolidays" placeholder="e.g. None (Open 7 Days)">
-            </div>
-
-            <div class="form-group">
-              <label>UPI ID (For Online Payments)</label>
-              <input type="text" class="form-control" id="setUpiId" placeholder="e.g. annapurna@upi" required>
-            </div>
-
-            <!-- Shop Owner UPI QR Scanner Image Upload Section -->
-            <div class="form-group"
-              style="background: rgba(10, 10, 14, 0.45); padding: 1.2rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 1.25rem;">
-              <label style="color: var(--accent-gold); font-weight: 800; display: flex; align-items: center; gap: 8px;">
-                <i class="fa-solid fa-qrcode"></i> Payment Gateway - Shop Owner QR Scanner Image
-              </label>
-              <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
-                Upload your hotel's official GPay / PhonePe / Paytm / BHIM UPI QR scanner image. Customers will scan
-                this scanner image to pay.
-              </p>
-
-              <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-                <div
-                  style="width: 130px; height: 130px; background: #FFF; padding: 6px; border-radius: 8px; border: 2px solid var(--accent-gold); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
-                  <img id="setQrPreviewImg" src="/images/upi_qr_scanner.png" alt="Shop Owner QR Code"
-                    style="max-width: 100%; max-height: 100%; object-fit: contain;">
-                </div>
-
-                <div style="flex: 1; min-width: 220px;">
-                  <label class="btn-secondary-outline"
-                    style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer; padding: 8px 14px; margin-bottom: 6px;">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload New QR Scanner Image
-                    <input type="file" id="setQrFileInput" accept="image/*" onchange="app.handleOwnerQrUpload(event)"
-                      style="display: none;">
-                  </label>
-                  <p style="font-size: 0.74rem; color: var(--text-muted);">Supports PNG, JPG, WEBP. High resolution QR
-                    scanner images recommended.</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>Restaurant Description</label>
-              <textarea class="form-control" id="setDesc"></textarea>
-            </div>
-
-            <!-- Shop Owner Referral Program Controls -->
-            <div class="form-group" style="background: rgba(10, 10, 14, 0.45); padding: 1.2rem; border-radius: var(--radius-md); border: 1px solid var(--accent-gold); margin-top: 1.25rem;">
-              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
-                <label style="color: var(--accent-gold); font-weight: 800; display: flex; align-items: center; gap: 8px; margin: 0;">
-                  <i class="fa-solid fa-gift"></i> Referral Program Settings (Refer & Earn)
-                </label>
-                <div class="availability-switch" id="setRefEnabledSwitch" onclick="app.toggleOwnerReferralProgram()">
-                  <div class="switch-track">
-                    <div class="switch-thumb"></div>
-                  </div>
-                  <span style="font-size: 0.8rem; font-weight: 700;" id="setRefEnabledLabel">🟢 PROGRAM ON</span>
-                </div>
-              </div>
-
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.75rem;">
-                <div class="form-group">
-                  <label>Referrer Reward (₹)</label>
-                  <input type="number" class="form-control" id="setRefReferrerReward" min="0" placeholder="30">
-                </div>
-                <div class="form-group">
-                  <label>New Customer Discount (₹)</label>
-                  <input type="number" class="form-control" id="setRefCustomerDiscount" min="0" placeholder="30">
-                </div>
-              </div>
-
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div class="form-group">
-                  <label>Min First-Order Value (₹)</label>
-                  <input type="number" class="form-control" id="setRefMinOrderValue" min="0" placeholder="150">
-                </div>
-                <div class="form-group">
-                  <label>Max Monthly Limit / Customer (₹)</label>
-                  <input type="number" class="form-control" id="setRefMonthlyLimit" min="0" placeholder="500">
-                </div>
-              </div>
-            </div>
-
-            <button type="submit" class="btn-primary-block" style="margin-top: 1rem;">
-              <i class="fa-solid fa-floppy-disk"></i> Save Business Settings
-            </button>
-          </form>
+          </div>
         </div>
+
+        <!-- Main Form Grid Layout -->
+        <form id="settingsForm" onsubmit="app.saveSettings(event)">
+          <div class="settings-grid">
+            
+            <!-- Panel 1: Restaurant Profile & Timings -->
+            <div class="settings-card-panel">
+              <div class="panel-header">
+                <div class="panel-title-icon orange"><i class="fa-solid fa-store"></i></div>
+                <div>
+                  <h3 class="panel-title">Restaurant Info & Timings</h3>
+                  <p class="panel-subtitle">Business details, contact & operating hours</p>
+                </div>
+              </div>
+
+              <div class="settings-form-body">
+                <div class="form-group-custom">
+                  <label for="setHotelName" class="form-label-custom">
+                    <i class="fa-solid fa-utensils"></i> Hotel / Tiffin Center Name
+                  </label>
+                  <div class="input-icon-wrapper">
+                    <input type="text" class="form-input-custom" id="setHotelName" placeholder="e.g. Sri Lakshmi Annapurna Tiffin Center" required>
+                    <i class="fa-solid fa-pen input-end-icon"></i>
+                  </div>
+                </div>
+
+                <div class="form-group-custom">
+                  <label for="setPhone" class="form-label-custom">
+                    <i class="fa-solid fa-phone"></i> Helpline Phone Number
+                  </label>
+                  <div class="input-icon-wrapper">
+                    <input type="text" class="form-input-custom" id="setPhone" placeholder="+91 9392874900" required>
+                    <i class="fa-solid fa-headset input-end-icon"></i>
+                  </div>
+                </div>
+
+                <div class="form-group-custom">
+                  <label for="setAddr" class="form-label-custom">
+                    <i class="fa-solid fa-location-dot"></i> Restaurant Full Address
+                  </label>
+                  <div class="input-icon-wrapper">
+                    <textarea class="form-textarea-custom" id="setAddr" rows="2" placeholder="#42, Temple Road, Near Gandhi Circle, Bengaluru, KA" required></textarea>
+                  </div>
+                </div>
+
+                <div class="form-row-2col">
+                  <div class="form-group-custom">
+                    <label for="setOpenTime" class="form-label-custom">
+                      <i class="fa-regular fa-clock"></i> Opening Time
+                    </label>
+                    <div class="input-icon-wrapper">
+                      <input type="text" class="form-input-custom" id="setOpenTime" placeholder="e.g. 06:30 AM" required>
+                    </div>
+                  </div>
+
+                  <div class="form-group-custom">
+                    <label for="setCloseTime" class="form-label-custom">
+                      <i class="fa-solid fa-clock"></i> Closing Time
+                    </label>
+                    <div class="input-icon-wrapper">
+                      <input type="text" class="form-input-custom" id="setCloseTime" placeholder="e.g. 10:30 PM" required>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-group-custom">
+                  <label for="setHolidays" class="form-label-custom">
+                    <i class="fa-solid fa-calendar-xmark"></i> Weekly Holidays
+                  </label>
+                  <div class="input-icon-wrapper">
+                    <input type="text" class="form-input-custom" id="setHolidays" placeholder="e.g. None (Open 7 Days)">
+                  </div>
+                </div>
+
+                <div class="form-group-custom">
+                  <label for="setDesc" class="form-label-custom">
+                    <i class="fa-solid fa-align-left"></i> Hotel Description & Tagline
+                  </label>
+                  <div class="input-icon-wrapper">
+                    <textarea class="form-textarea-custom" id="setDesc" rows="2" placeholder="Fresh, hot, and authentic South Indian tiffins served daily with traditional family love."></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column Stack: Payment Gateway & Referral Engine -->
+            <div class="settings-sidebar-stack">
+              
+              <!-- Panel 2: Digital Payment Gateway & QR Scanner -->
+              <div class="settings-card-panel">
+                <div class="panel-header">
+                  <div class="panel-title-icon gold"><i class="fa-solid fa-qrcode"></i></div>
+                  <div>
+                    <h3 class="panel-title">UPI Payment Scanner</h3>
+                    <p class="panel-subtitle">Official GPay / PhonePe / Paytm scanner image</p>
+                  </div>
+                </div>
+
+                <div class="settings-form-body">
+                  <div class="form-group-custom">
+                    <label for="setUpiId" class="form-label-custom">
+                      <i class="fa-solid fa-at"></i> Official Hotel UPI VPA Address
+                    </label>
+                    <div class="input-icon-wrapper">
+                      <input type="text" class="form-input-custom" id="setUpiId" placeholder="e.g. annapurna.tiffin@upi" required>
+                      <i class="fa-solid fa-shield-halved input-end-icon" style="color: var(--accent-gold);"></i>
+                    </div>
+                  </div>
+
+                  <!-- Interactive QR Upload Card -->
+                  <div class="owner-qr-upload-card">
+                    <div class="qr-preview-frame">
+                      <img id="setQrPreviewImg" src="/images/upi_qr_scanner.png" alt="Shop Owner QR Code">
+                      <span class="qr-active-chip"><i class="fa-solid fa-circle-check"></i> Live</span>
+                    </div>
+
+                    <div class="qr-upload-info">
+                      <span class="qr-upload-title">Scanner Image</span>
+                      <p class="qr-upload-sub">Uploaded QR image displays directly on customer checkout modal.</p>
+                      
+                      <label class="btn-qr-upload">
+                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload New Scanner
+                        <input type="file" id="setQrFileInput" accept="image/*" onchange="app.handleOwnerQrUpload(event)" style="display: none;">
+                      </label>
+                      <span class="qr-fmt-hint">PNG, JPG, WEBP formats supported</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Panel 3: Referral Program & Customer Rewards -->
+              <div class="settings-card-panel">
+                <div class="panel-header" style="justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 14px;">
+                    <div class="panel-title-icon green"><i class="fa-solid fa-gift"></i></div>
+                    <div>
+                      <h3 class="panel-title">Referral & Growth Engine</h3>
+                      <p class="panel-subtitle">Refer & Earn customer incentives</p>
+                    </div>
+                  </div>
+
+                  <div class="availability-switch" id="setRefEnabledSwitch" onclick="app.toggleOwnerReferralProgram()">
+                    <div class="switch-track">
+                      <div class="switch-thumb"></div>
+                    </div>
+                    <span id="setRefEnabledLabel" style="font-size: 0.76rem; font-weight: 800;">🟢 PROGRAM ON</span>
+                  </div>
+                </div>
+
+                <div class="settings-form-body">
+                  <div class="form-row-2col">
+                    <div class="form-group-custom">
+                      <label for="setRefReferrerReward" class="form-label-custom">Referrer Reward (₹)</label>
+                      <input type="number" class="form-input-custom" id="setRefReferrerReward" min="0" placeholder="30">
+                    </div>
+                    <div class="form-group-custom">
+                      <label for="setRefCustomerDiscount" class="form-label-custom">New Customer Off (₹)</label>
+                      <input type="number" class="form-input-custom" id="setRefCustomerDiscount" min="0" placeholder="30">
+                    </div>
+                  </div>
+
+                  <div class="form-row-2col">
+                    <div class="form-group-custom">
+                      <label for="setRefMinOrderValue" class="form-label-custom">Min First Order (₹)</label>
+                      <input type="number" class="form-input-custom" id="setRefMinOrderValue" min="0" placeholder="150">
+                    </div>
+                    <div class="form-group-custom">
+                      <label for="setRefMonthlyLimit" class="form-label-custom">Max Monthly Cap (₹)</label>
+                      <input type="number" class="form-input-custom" id="setRefMonthlyLimit" min="0" placeholder="500">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- Master Save Actions Bar -->
+          <div class="settings-actions-bar">
+            <button type="submit" class="btn-save-settings">
+              <i class="fa-solid fa-floppy-disk"></i> Save & Publish All Business Settings
+            </button>
+          </div>
+        </form>
+
       </div>
     </section>
 
@@ -1221,11 +1540,11 @@
           family recipes and pure ghee since 1998.
         </p>
         <div class="footer-socials">
-          <a href="https://wa.me/919876543210" target="_blank" title="WhatsApp Order"><i
+          <a href="https://wa.me/919392874900" target="_blank" title="WhatsApp Order"><i
               class="fa-brands fa-whatsapp"></i></a>
           <a href="#" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
           <a href="#" title="Facebook"><i class="fa-brands fa-facebook"></i></a>
-          <a href="tel:+919876543210" title="Call Us"><i class="fa-solid fa-phone"></i></a>
+          <a href="tel:+919392874900" title="Call Us"><i class="fa-solid fa-phone"></i></a>
         </div>
       </div>
 
@@ -1253,7 +1572,7 @@
 
       <div class="footer-col">
         <h4><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Contact & Location</h4>
-        <p class="contact-line"><i class="fa-solid fa-phone"></i> +91 98765 43210</p>
+        <p class="contact-line"><i class="fa-solid fa-phone"></i> +91 9392874900</p>
         <p class="contact-line"><i class="fa-solid fa-map-pin"></i> #42, Temple Road, Near Gandhi Circle, Bengaluru, KA
         </p>
         <p class="contact-line"><i class="fa-solid fa-qrcode"></i> UPI: <span
@@ -1378,11 +1697,15 @@
               </span>
             </div>
 
-            <!-- Shop Owner's Uploaded QR Code Display -->
-            <div
-              style="background: #FFFFFF; padding: 10px; border-radius: 12px; width: 170px; margin: 0 auto 0.85rem; border: 2px solid var(--accent-gold); text-align: center; box-shadow: 0 6px 18px rgba(0,0,0,0.4);">
-              <img id="checkoutQrScannerImg" src="/images/upi_qr_scanner.png" alt="Shop Owner UPI QR Code"
-                style="width: 150px; height: 150px; object-fit: contain;">
+            <!-- Shop Owner's Uploaded QR Code Display with Interactive Zoom Button -->
+            <div class="checkout-qr-wrapper" style="position: relative; width: 190px; margin: 0 auto 1.2rem; cursor: pointer;" onclick="app.zoomCheckoutQrCode()">
+              <div class="qr-card-box" style="background: #FFFFFF; padding: 12px; border-radius: 14px; border: 2px solid var(--accent-gold); text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: transform 0.2s ease;">
+                <img id="checkoutQrScannerImg" src="/images/upi_qr_scanner.png" alt="Shop Owner UPI QR Code"
+                  style="width: 160px; height: 160px; object-fit: contain; display: block; margin: 0 auto;">
+              </div>
+              <button type="button" class="btn-qr-zoom" title="Click to zoom QR Code scanner" onclick="event.stopPropagation(); app.zoomCheckoutQrCode()">
+                <i class="fa-solid fa-magnifying-glass-plus"></i> <span>Zoom QR Code</span>
+              </button>
             </div>
 
             <!-- UPI ID & Copy Bar -->
@@ -1833,14 +2156,14 @@
             <span>Instant answers to quick questions</span>
           </div>
         </button>
-        <a href="tel:+919876543210" class="popover-menu-item">
+        <a href="tel:+919392874900" class="popover-menu-item">
           <i class="fa-solid fa-phone" style="color: #4CAF50;"></i>
           <div>
-            <strong>Call Helpline (+91 98765 43210)</strong>
+            <strong>Call Helpline (+91 9392874900)</strong>
             <span>Speak directly with our hotel team</span>
           </div>
         </a>
-        <a href="https://wa.me/919876543210?text=Hi%20Annapurna%20Tiffin%20Center,%20I%20need%20assistance"
+        <a href="https://wa.me/919392874900?text=Hi%20Annapurna%20Tiffin%20Center,%20I%20need%20assistance"
           target="_blank" class="popover-menu-item">
           <i class="fa-brands fa-whatsapp" style="color: #25D366;"></i>
           <div>
