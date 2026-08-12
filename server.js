@@ -350,8 +350,9 @@ const defaultSeed = {
 // Database Initialization & JSON persistence helper
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
+    console.log('db.json not found — creating fresh database from seed data...');
     saveDB(defaultSeed);
-    return defaultSeed;
+    return JSON.parse(JSON.stringify(defaultSeed)); // deep clone
   }
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
@@ -368,7 +369,7 @@ function loadDB() {
   } catch (err) {
     console.error('Error reading db.json, resetting to seed:', err);
     saveDB(defaultSeed);
-    return defaultSeed;
+    return JSON.parse(JSON.stringify(defaultSeed));
   }
 }
 
@@ -1521,7 +1522,22 @@ app.get('/api/reviews/stats', (req, res) => {
 });
 
 // Start the Server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`✅ Sri Lakshmi Annapurna Tiffin Center server running on port ${PORT}`);
   console.log(`🌐 Open: http://localhost:${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Please free the port and restart.`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
 });
