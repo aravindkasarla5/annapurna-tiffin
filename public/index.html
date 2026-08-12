@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sri Lakshmi Annapurna Tiffin Center | Authentic Indian Tiffins & Meals</title>
+  <meta name="description"
+    content="Hot, fresh, authentic South Indian tiffins & meals delivered with traditional family love. Order online for takeaway, dine-in, or home delivery.">
+
+  <!-- Google Fonts & FontAwesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Custom Design System CSS -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body class="guest-mode">
+
+  <!-- Top Header Navigation -->
+  <header class="top-header">
+    <div class="brand-wrapper">
+      <img src="images/tiffin_logo.png" alt="Annapurna Tiffin Center" class="brand-logo" id="headerLogo">
+      <div class="brand-text">
+        <h1 id="headerHotelName">Annapurna Tiffin Center</h1>
+        <p><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> <span id="headerAddress">Temple Road,
+            Bengaluru</span></p>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <!-- User Profile & Auth Buttons (No background container wrapper) -->
+      <div id="userAuthBadge" class="auth-buttons-wrapper">
+        <span id="lblLoggedInUser" class="hidden"></span>
+        <button class="btn-auth-primary" id="btnLoginHeader" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')">
+          <i class="fa-solid fa-right-to-bracket"></i> Login
+        </button>
+        <button class="btn-auth-secondary" id="btnRegisterHeader" onclick="app.openAuthModal('CUSTOMER', 'REGISTER')">
+          <i class="fa-solid fa-user-plus"></i> Register
+        </button>
+        <button class="btn-auth-logout hidden" id="btnLogoutHeader" onclick="app.logout()" title="Logout">
+          <i class="fa-solid fa-power-off"></i> Logout
+        </button>
+      </div>
+
+      <!-- Notifications Bell Icon (Visible ONLY after login) -->
+      <button class="icon-btn hidden" id="btnNotifications" onclick="app.toggleNotificationsTray()"
+        title="Notifications">
+        <i class="fa-regular fa-bell"></i>
+        <span class="badge hidden" id="notifBadgeCount">0</span>
+      </button>
+
+      <!-- Customer Cart Button (Visible ONLY after customer login) -->
+      <button class="icon-btn hidden" id="btnCart" onclick="app.toggleCartDrawer()" title="Shopping Cart">
+        <i class="fa-solid fa-cart-shopping"></i>
+        <span class="badge hidden" id="cartBadgeCount">0</span>
+      </button>
+
+      <!-- Mobile Menu Toggle Button (Visible on screens < 768px) -->
+      <button class="icon-btn hidden" id="btnMobileMenuToggle" onclick="app.toggleMobileDrawer()" title="Open Navigation Menu">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Slide-out Menu Drawer Backdrop -->
+  <div class="modal-backdrop" id="mobileDrawerBackdrop" onclick="app.toggleMobileDrawer(false)">
+    <div class="mobile-drawer-card" onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <img src="images/tiffin_logo.png" alt="Logo" style="width: 38px; height: 38px; border-radius: 8px; border: 1.5px solid var(--accent-gold);">
+          <div>
+            <h4 style="font-size: 1rem; color: #FFF;" id="mobileDrawerHotelName">Annapurna Tiffin</h4>
+            <p style="font-size: 0.72rem; color: var(--accent-gold); font-weight: 700;" id="mobileDrawerRoleLabel">NAV MENU</p>
+          </div>
+        </div>
+        <button class="icon-btn" onclick="app.toggleMobileDrawer(false)" style="width: 32px; height: 32px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="mobile-drawer-nav" id="mobileDrawerNav" style="padding: 1rem 0; display: flex; flex-direction: column; gap: 8px;">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Notifications Dropdown Tray -->
+  <div class="modal-backdrop" id="notifBackdrop" onclick="app.toggleNotificationsTray(false)">
+    <div class="modal-card" style="max-width: 420px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fa-regular fa-bell" style="color: var(--accent-gold);"></i> Notifications</h3>
+        <button class="icon-btn" onclick="app.toggleNotificationsTray(false)"
+          style="width: 32px; height: 32px; font-size: 0.85rem;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body" id="notifListContainer" style="max-height: 380px; overflow-y: auto;">
+        <!-- Dynamic Notifications -->
+      </div>
+      <div style="padding: 10px; border-top: 1px solid var(--border-color); text-align: center;">
+        <button class="role-btn" onclick="app.markNotificationsRead()"
+          style="margin: 0 auto; color: var(--accent-gold);">Mark all as read</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desktop Fixed Sidebar Nav (Visible ONLY after login) -->
+  <aside class="desktop-sidebar hidden">
+    <div class="sidebar-header">
+      <img src="images/tiffin_logo.png" alt="Logo" class="sidebar-logo" id="sidebarLogo">
+      <div>
+        <h3 style="font-size: 1rem;" id="sidebarHotelName">Annapurna Tiffin</h3>
+        <p style="font-size: 0.72rem; color: var(--text-muted);" id="sidebarRoleLabel">CUSTOMER DASHBOARD</p>
+      </div>
+    </div>
+
+    <!-- Dynamic Sidebar Menu -->
+    <nav class="sidebar-nav" id="desktopSidebarNav">
+      <!-- Injected by JavaScript based on current role -->
+    </nav>
+
+    <!-- Sidebar Master Hotel Status Switch -->
+    <div class="hotel-status-banner">
+      <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px;">MASTER HOTEL STATUS</p>
+      <div class="availability-switch" id="masterHotelSwitch" onclick="app.toggleMasterHotelStatus()">
+        <div class="switch-track">
+          <div class="switch-thumb"></div>
+        </div>
+        <span style="font-size: 0.8rem; font-weight: 700;" id="masterHotelStatusText">🟢 HOTEL OPEN</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Mobile Bottom Navigation Bar (Visible ONLY after login) -->
+  <nav class="bottom-nav hidden" id="mobileBottomNav">
+    <!-- Injected by JavaScript based on active role -->
+  </nav>
+
+  <!-- MAIN VIEWPORT CONTAINER -->
+  <main class="main-content">
+
+    <!-- =========================================================================
+         CUSTOMER VIEW SECTIONS
+         ========================================================================= -->
+
+    <!-- Customer Home Section -->
+    <section id="secCustomerHome" class="view-section">
+      <!-- Hero Welcome Banner -->
+      <div class="hero-banner">
+        <div class="hero-text">
+          <h2 id="bannerGreeting">Welcome to Annapurna Tiffin Center! 🍲</h2>
+          <p id="bannerDesc">
+            Fresh, hot, and authentic <span class="highlight-gold">South Indian tiffins</span> served daily with
+            traditional family love.
+          </p>
+          <div class="hero-badges-wrapper">
+            <span class="hero-badge"><i class="fa-solid fa-fire-flame-curved" style="color: var(--primary);"></i> Hot &
+              Fresh Daily</span>
+            <span class="hero-badge"><i class="fa-solid fa-mortar-pestle" style="color: var(--accent-gold);"></i>
+              Heritage Spices</span>
+            <span class="hero-badge"><i class="fa-solid fa-heart" style="color: #FF5252;"></i> Pure Ghee Tiffins</span>
+            <span class="hero-badge"><i class="fa-solid fa-bolt" style="color: #4CAF50;"></i> Fast Takeaway &
+              Order</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section Title & Search Toolbar -->
+      <div class="section-header">
+        <h3 class="section-title"><i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Today's Menu</h3>
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="searchInput" placeholder="Search Idly, Dosa, Meals..." oninput="app.filterMenu()">
+        </div>
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div class="category-tabs" id="categoryTabs">
+        <button class="tab-btn active" onclick="app.filterCategory('All')">All Items</button>
+        <button class="tab-btn" onclick="app.filterCategory('Breakfast')">Breakfast</button>
+        <button class="tab-btn" onclick="app.filterCategory('Lunch')">Lunch</button>
+        <button class="tab-btn" onclick="app.filterCategory('Dinner')">Dinner</button>
+        <button class="tab-btn" onclick="app.filterCategory('Snacks')">Snacks</button>
+        <button class="tab-btn" onclick="app.filterCategory('Specials')">Specials</button>
+      </div>
+
+      <!-- Tiffins Food Cards Grid -->
+      <div class="food-grid" id="customerMenuGrid">
+        <!-- Rendered dynamically by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Customer Orders Section -->
+    <section id="secCustomerOrders" class="view-section hidden">
+      <div class="section-header">
+        <h2 class="section-title"><i class="fa-solid fa-receipt" style="color: var(--primary);"></i> My Orders</h2>
+      </div>
+
+      <div class="orders-list" id="customerOrdersList">
+        <!-- Dynamic Orders List -->
+      </div>
+    </section>
+
+    <!-- Customer Payment History Section -->
+    <section id="secCustomerPayments" class="view-section hidden">
+      <div class="section-header" style="margin-bottom: 1.25rem; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i> My Payment History</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Track your online UPI payments, cash receipts, and download tax invoices</p>
+        </div>
+        <button class="btn-primary-block" onclick="app.downloadCustomerPaymentStatementCSV()"
+          style="width: auto; padding: 9px 20px; background: linear-gradient(135deg, #EAA221, #D9531E);">
+          <i class="fa-solid fa-file-csv"></i> Download Payment Statement (CSV)
+        </button>
+      </div>
+
+      <!-- Customer Financial Summary Cards Grid -->
+      <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card"
+          style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.12), rgba(217, 83, 30, 0.12)); border: 1.5px solid var(--accent-gold);">
+          <div class="stat-header">
+            <span class="stat-label" style="color: var(--accent-gold);">TOTAL SPENT</span>
+            <div class="stat-icon-wrapper" style="background: rgba(234, 162, 33, 0.25); color: var(--accent-gold);">
+              <i class="fa-solid fa-indian-rupee-sign"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="custPayStatTotal" style="color: var(--accent-gold);">₹0</div>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Lifetime order total</span>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">SUCCESSFUL PAYMENTS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50;">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="custPayStatPaid" style="color: #4CAF50;">0</div>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Verified receipts</span>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">PENDING VERIFICATION</span>
+            <div class="stat-icon-wrapper" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold);">
+              <i class="fa-solid fa-hourglass-half"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="custPayStatPending" style="color: var(--accent-gold);">0</div>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">UPI verification queue</span>
+        </div>
+      </div>
+
+      <!-- Payment Filter Tabs Bar & Search Box -->
+      <div class="owner-tkt-toolbar" style="margin-bottom: 1.25rem;">
+        <div class="filter-chips">
+          <button type="button" class="tab-pill active" id="custPayTabAll" onclick="app.filterCustomerPayments('All')">All Payments</button>
+          <button type="button" class="tab-pill" id="custPayTabUPI" onclick="app.filterCustomerPayments('UPI')">UPI / Online</button>
+          <button type="button" class="tab-pill" id="custPayTabCash" onclick="app.filterCustomerPayments('Cash')">Cash</button>
+          <button type="button" class="tab-pill" id="custPayTabVerified" onclick="app.filterCustomerPayments('Verified')">Verified / Paid</button>
+          <button type="button" class="tab-pill" id="custPayTabPending" onclick="app.filterCustomerPayments('Pending')">Pending</button>
+        </div>
+
+        <div style="position: relative; width: 280px;">
+          <i class="fa-solid fa-magnifying-glass"
+            style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+          <input type="text" id="custPaySearchInput" oninput="app.filterCustomerPayments()"
+            placeholder="Search Order #, UTR, Status..."
+            style="width: 100%; padding: 8px 12px 8px 34px; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-full); color: #FFF; font-size: 0.82rem;">
+        </div>
+      </div>
+
+      <!-- Customer Side Payment History Table -->
+      <div class="payment-history-table-wrapper" style="overflow-x: auto; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 0.5rem; box-shadow: var(--shadow-sm);">
+        <table class="payment-history-table" style="width: 100%; border-collapse: collapse; min-width: 800px; font-size: 0.88rem;">
+          <thead>
+            <tr style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--accent-gold); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(0,0,0,0.25);">
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-receipt"></i> Order ID & Date</th>
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-hashtag"></i> Transaction ID / UTR</th>
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-camera"></i> Screenshot</th>
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-signal"></i> Payment Status</th>
+              <th style="padding: 14px 16px; text-align: center;"><i class="fa-solid fa-file-invoice"></i> Download Invoice</th>
+            </tr>
+          </thead>
+          <tbody id="custPaymentsTableBody">
+            <!-- Rendered dynamically by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Customer Refer & Earn Section -->
+    <section id="secCustomerReferral" class="view-section hidden">
+      <!-- Referral Hero Banner -->
+      <div class="referral-hero-banner" style="background: linear-gradient(135deg, rgba(255, 179, 0, 0.15) 0%, rgba(255, 87, 34, 0.15) 100%); border: 1.5px solid var(--accent-gold); border-radius: var(--radius-lg); padding: 2rem 1.5rem; margin-bottom: 1.5rem; text-align: center;">
+        <span class="status-badge" style="background: rgba(255, 179, 0, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.85rem; padding: 4px 14px; border-radius: 12px; font-weight: 800;">
+          🎁 REFER FRIENDS & EARN WALLET REWARDS
+        </span>
+        <h2 style="font-size: 1.8rem; color: #FFF; margin: 0.75rem 0 0.5rem 0;">Give ₹30 OFF, Get ₹30 Reward!</h2>
+        <p style="font-size: 0.9rem; color: var(--text-muted); max-width: 620px; margin: 0 auto 1.25rem auto;">
+          Invite your friends, family, and office colleagues to order fresh tiffins! They get <strong>₹30 OFF</strong> their first order, and you earn <strong>₹30</strong> in your Referral Wallet when their order completes!
+        </p>
+
+        <!-- Referral Code Share Card -->
+        <div style="background: var(--bg-surface-elevated); border: 2px dashed var(--accent-gold); border-radius: var(--radius-md); padding: 1.25rem; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; align-items: center;">
+          <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">YOUR UNIQUE REFERRAL CODE</span>
+          <div style="font-family: monospace; font-size: 2.2rem; font-weight: 800; color: var(--accent-gold); letter-spacing: 3px;" id="referralCodeDisplay">
+            RAMESH50
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 100%;">
+            <button type="button" class="btn-secondary-outline" onclick="app.copyReferralCode()" style="flex: 1; min-width: 140px;">
+              <i class="fa-regular fa-copy"></i> Copy Code
+            </button>
+            <button type="button" class="btn-primary-block" onclick="app.shareReferralWhatsApp()" style="flex: 1; min-width: 160px; background: #25D366; box-shadow: 0 4px 14px rgba(37, 211, 102, 0.4);">
+              <i class="fa-brands fa-whatsapp"></i> Share on WhatsApp
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Referral KPI Stat Cards Grid -->
+      <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card" style="border: 1.5px solid var(--accent-gold);">
+          <div class="stat-header">
+            <span class="stat-label" style="color: var(--accent-gold);">REFERRAL WALLET BALANCE</span>
+            <div class="stat-icon-wrapper" style="background: rgba(255, 179, 0, 0.2); color: var(--accent-gold);">
+              <i class="fa-solid fa-wallet"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="refStatWallet" style="color: var(--accent-gold);">₹0</div>
+          <span style="font-size: 0.72rem; color: var(--text-muted);">Use for instant order discounts</span>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">TOTAL REFERRALS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(41, 182, 246, 0.15); color: #29B6F6;">
+              <i class="fa-solid fa-users"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="refStatTotal">0</div>
+          <span style="font-size: 0.72rem; color: var(--text-muted);">Invited friends count</span>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">SUCCESSFUL (PAID)</span>
+            <div class="stat-icon-wrapper" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50;">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="refStatCompleted" style="color: #4CAF50;">0</div>
+          <span style="font-size: 0.72rem; color: var(--text-muted);">First order completed</span>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">TOTAL REWARDS EARNED</span>
+            <div class="stat-icon-wrapper" style="background: rgba(255, 87, 34, 0.15); color: var(--primary);">
+              <i class="fa-solid fa-trophy"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="refStatEarned">₹0</div>
+          <span style="font-size: 0.72rem; color: var(--text-muted);">Lifetime referral earnings</span>
+        </div>
+      </div>
+
+      <!-- Referral Milestones Progress Bar -->
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 8px;">
+          <h4 style="color: var(--accent-gold); font-size: 0.98rem; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-award"></i> Referral Champions Milestone Bonuses
+          </h4>
+          <span style="font-size: 0.8rem; color: var(--text-muted);" id="milestoneProgressLabel">0 / 10 Completed Referrals</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+          <div style="background: rgba(10, 10, 14, 0.4); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);" id="milestoneBox1">
+            <div style="display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700; color: #FFF;">
+              <span>1st Referral</span>
+              <span style="color: var(--accent-gold);">+₹30 Reward</span>
+            </div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Earn ₹30 on 1st successful order</p>
+          </div>
+
+          <div style="background: rgba(10, 10, 14, 0.4); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);" id="milestoneBox5">
+            <div style="display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700; color: #FFF;">
+              <span>5 Referrals</span>
+              <span style="color: var(--accent-gold);">+₹100 Bonus!</span>
+            </div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Unlock ₹100 extra milestone bonus</p>
+          </div>
+
+          <div style="background: rgba(10, 10, 14, 0.4); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);" id="milestoneBox10">
+            <div style="display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700; color: #FFF;">
+              <span>10 Referrals</span>
+              <span style="color: var(--accent-gold);">+₹250 Bonus!</span>
+            </div>
+            <p style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">Unlock ₹250 mega milestone bonus</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- How It Works & Top Referrers Side-by-Side Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.25rem; margin-bottom: 1.5rem;" class="referral-grid-responsive">
+        <!-- Left: Referral History Table -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
+          <h3 style="font-size: 1.05rem; color: #FFF; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-list-check" style="color: var(--primary);"></i> My Referred Friends & Rewards History
+          </h3>
+
+          <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+              <thead>
+                <tr style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--accent-gold); font-size: 0.78rem; text-transform: uppercase;">
+                  <th style="padding: 10px;">Friend Name</th>
+                  <th style="padding: 10px;">Date & Time</th>
+                  <th style="padding: 10px;">First Order Status</th>
+                  <th style="padding: 10px; text-align: right;">Reward</th>
+                </tr>
+              </thead>
+              <tbody id="refHistoryTableBody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Monthly Leaderboard & Privacy Control -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
+            <h3 style="font-size: 1rem; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-trophy"></i> Top Referrers
+            </h3>
+            <span style="font-size: 0.7rem; color: var(--text-muted); background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 10px;">This Month</span>
+          </div>
+
+          <!-- Leaderboard Privacy Toggle -->
+          <div style="background: rgba(10, 10, 14, 0.5); padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.76rem; color: var(--text-muted);">Show my name on public leaderboard</span>
+            <div class="availability-switch" id="leaderboardPrivacySwitch" onclick="app.toggleLeaderboardPrivacy()">
+              <div class="switch-track" style="width: 38px; height: 22px;">
+                <div class="switch-thumb" style="width: 16px; height: 16px; top: 3px; left: 3px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="referralLeaderboardContainer" style="display: flex; flex-direction: column; gap: 8px; flex: 1;">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Customer Profile Section -->
+    <section id="secCustomerProfile" class="view-section hidden">
+      <div class="section-header">
+        <h2 class="section-title"><i class="fa-solid fa-user-gear" style="color: var(--primary);"></i> My Profile</h2>
+      </div>
+
+      <div class="modal-card" style="max-width: 600px; margin: 0 auto;">
+        <div class="modal-body">
+          <div style="text-align: center; margin-bottom: 1.5rem;">
+            <div
+              style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 0.75rem auto;">
+              <i class="fa-solid fa-user"></i>
+            </div>
+            <h3 id="profNameDisplay">Ramesh Kumar</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem;" id="profPhoneDisplay">+91 98450 12345</p>
+          </div>
+
+          <form id="profileForm" onsubmit="app.saveCustomerProfile(event)">
+            <div class="form-group">
+              <label>Full Name</label>
+              <input type="text" class="form-control" id="profNameInput" value="Ramesh Kumar" required>
+            </div>
+
+            <div class="form-group">
+              <label>Mobile Number</label>
+              <input type="tel" class="form-control" id="profPhoneInput" value="+91 98450 12345" required>
+            </div>
+
+            <div class="form-group">
+              <label>Email Address (Optional)</label>
+              <input type="email" class="form-control" id="profEmailInput" value="ramesh.k@example.com">
+            </div>
+
+            <div class="form-group">
+              <label>Delivery Address</label>
+              <textarea class="form-control"
+                id="profAddressInput">#12, 4th Cross, Gandhi Nagar, Bengaluru, KA</textarea>
+            </div>
+
+            <button type="submit" class="btn-primary-block" style="margin-top: 1rem;">
+              <i class="fa-solid fa-floppy-disk"></i> Save Profile Details
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Customer Support & Help Center Section -->
+    <section id="secCustomerSupport" class="view-section hidden">
+      <div class="support-hero-banner">
+        <div class="support-hero-content">
+          <h2><i class="fa-solid fa-headset" style="color: var(--accent-gold);"></i> Customer Support & Help Center</h2>
+          <p>Have questions about your order, delivery timing, or payments? We are here to assist you 7 days a week!</p>
+        </div>
+      </div>
+
+      <!-- Quick Contact Grid -->
+      <div class="support-contact-grid">
+        <a href="tel:+919876543210" class="support-card-link">
+          <div class="support-contact-card">
+            <div class="support-card-icon" style="background: rgba(239, 108, 0, 0.15); color: #EF6C00;">
+              <i class="fa-solid fa-phone-volume"></i>
+            </div>
+            <div>
+              <h4>Call Support Helpline</h4>
+              <p>+91 98765 43210</p>
+              <span class="support-card-sub">Mon - Sun: 06:30 AM - 10:30 PM</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="https://wa.me/919876543210?text=Hi%20Annapurna%20Tiffin%20Center,%20I%20need%20assistance"
+          target="_blank" class="support-card-link">
+          <div class="support-contact-card">
+            <div class="support-card-icon" style="background: rgba(46, 125, 50, 0.15); color: #2E7D32;">
+              <i class="fa-brands fa-whatsapp"></i>
+            </div>
+            <div>
+              <h4>WhatsApp Support</h4>
+              <p>Instant Live Chat</p>
+              <span class="support-card-sub">Click to open WhatsApp</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="mailto:support@annapurna.com" class="support-card-link">
+          <div class="support-contact-card">
+            <div class="support-card-icon" style="background: rgba(2, 136, 209, 0.15); color: #0288D1;">
+              <i class="fa-solid fa-envelope"></i>
+            </div>
+            <div>
+              <h4>Email Support</h4>
+              <p>support@annapurna.com</p>
+              <span class="support-card-sub">24/7 Inquiry Responses</span>
+            </div>
+          </div>
+        </a>
+
+        <div class="support-contact-card">
+          <div class="support-card-icon" style="background: rgba(156, 39, 176, 0.15); color: #AB47BC;">
+            <i class="fa-solid fa-location-dot"></i>
+          </div>
+          <div>
+            <h4>Hotel Address</h4>
+            <p>#42, Temple Road</p>
+            <span class="support-card-sub">Near Gandhi Circle, Bengaluru</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Support Toolbar & Actions -->
+      <div class="support-actions-bar" style="margin-top: 1.5rem; display: flex; gap: 12px; flex-wrap: wrap;">
+        <button class="btn-primary-block" onclick="app.openRaiseTicketModal()"
+          style="width: auto; padding: 10px 22px; font-weight: 700;">
+          <i class="fa-solid fa-circle-plus"></i> Raise Support Ticket / Report Issue
+        </button>
+        <button class="btn-secondary-outline" onclick="app.triggerQuickAiBotPrompt()"
+          style="width: auto; padding: 10px 22px; font-weight: 700; border: 1.5px solid var(--accent-gold); color: var(--accent-gold); background: rgba(234,162,33,0.1); border-radius: var(--radius-md); cursor: pointer;">
+          <i class="fa-solid fa-robot"></i> Quick AI Assistant Help
+        </button>
+      </div>
+
+      <!-- Quick AI Bot Interactive Box -->
+      <div class="ai-bot-box hidden" id="aiBotBox" style="margin-top: 1.25rem;">
+        <div class="ai-bot-header"
+          style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+          <div>
+            <h4 style="font-size: 1rem;"><i class="fa-solid fa-robot" style="color: var(--accent-gold);"></i> Annapurna
+              Smart Tiffin Assistant</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted);">Choose a quick query topic for instant automated
+              answer</p>
+          </div>
+          <button class="icon-btn" onclick="app.closeQuickAiBotPrompt()" style="width: 28px; height: 28px;"><i
+              class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="ai-bot-prompts" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 0.75rem;">
+          <button class="ai-prompt-chip" onclick="app.runAiQuery('track_order')">📦 Where is my order?</button>
+          <button class="ai-prompt-chip" onclick="app.runAiQuery('payment_issue')">💳 Payment / UPI Status</button>
+          <button class="ai-prompt-chip" onclick="app.runAiQuery('customization')">🌶️ Sambar & Chutney Request</button>
+          <button class="ai-prompt-chip" onclick="app.runAiQuery('catering')">🎉 Bulk Catering Inquiry</button>
+          <button class="ai-prompt-chip" onclick="app.runAiQuery('timings')">⏰ Kitchen Operating Timings</button>
+        </div>
+        <div class="ai-bot-response hidden" id="aiBotResponseArea">
+          <!-- Response text -->
+        </div>
+      </div>
+
+      <!-- My Support Tickets Section -->
+      <div class="section-header" style="margin-top: 2rem;">
+        <h3 class="section-title"><i class="fa-solid fa-ticket" style="color: var(--accent-gold);"></i> My Support
+          Tickets</h3>
+        <div class="ticket-filter-chips" style="display: flex; gap: 8px;">
+          <button class="filter-chip active" id="chipTktFilterAll"
+            onclick="app.filterCustomerTickets('All')">All</button>
+          <button class="filter-chip" id="chipTktFilterOpen" onclick="app.filterCustomerTickets('Open')">Open</button>
+          <button class="filter-chip" id="chipTktFilterInProgress" onclick="app.filterCustomerTickets('In Progress')">In
+            Progress</button>
+          <button class="filter-chip" id="chipTktFilterResolved"
+            onclick="app.filterCustomerTickets('Resolved')">Resolved</button>
+        </div>
+      </div>
+
+      <div class="support-tickets-list" id="customerTicketsList" style="display: grid; gap: 1rem; margin-top: 1rem;">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Frequently Asked Questions (FAQ) Accordion -->
+      <div class="faq-section" style="margin-top: 2.5rem;">
+        <div class="section-header">
+          <div>
+            <h3 class="section-title"><i class="fa-solid fa-circle-question" style="color: var(--primary);"></i>
+              Frequently Asked Questions</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Instant answers to common customer inquiries</p>
+          </div>
+        </div>
+
+        <div class="faq-search-wrapper" style="margin-bottom: 1rem; position: relative;">
+          <i class="fa-solid fa-magnifying-glass search-icon"
+            style="position: absolute; left: 14px; top: 13px; color: var(--text-muted);"></i>
+          <input type="text" class="form-control search-input" id="faqSearchInput"
+            placeholder="Search FAQ (e.g. refund, takeaway, extra sambar, catering)..." oninput="app.filterFaqs()"
+            style="padding-left: 40px;">
+        </div>
+
+        <div class="faq-accordion-container" id="faqAccordionContainer"
+          style="display: flex; flex-direction: column; gap: 12px;">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================================
+         HOTEL OWNER VIEW SECTIONS
+         ========================================================================= -->
+
+    <!-- Owner Dashboard Section -->
+    <!-- Shop Owner Dashboard & Sales Analytics -->
+    <section id="secOwnerDashboard" class="view-section hidden">
+      <div class="section-header" style="margin-bottom: 1.25rem;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-chart-line" style="color: var(--accent-gold);"></i> Hotel
+            Sales Analytics & Overview</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Real-time revenue metrics, order distribution, and
+            sales performance</p>
+        </div>
+        <button class="btn-primary-block" onclick="app.openAddTiffinModal()" style="width: auto; padding: 8px 18px;">
+          <i class="fa-solid fa-plus"></i> Add New Tiffin
+        </button>
+      </div>
+
+      <!-- Owner Statistics KPI Grid -->
+      <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card" onclick="app.setOwnerOrderFilter('ALL')" style="cursor: pointer;"
+          title="Click to view all orders">
+          <div class="stat-header">
+            <span class="stat-label">TOTAL ORDERS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(217, 83, 30, 0.15); color: var(--primary);">
+              <i class="fa-solid fa-bag-shopping"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statTodayOrders">0</div>
+        </div>
+
+        <div class="stat-card" onclick="app.setOwnerOrderFilter('ACTIVE')" style="cursor: pointer;"
+          title="Click to view active orders">
+          <div class="stat-header">
+            <span class="stat-label">ACTIVE ORDERS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(234, 162, 33, 0.15); color: var(--status-received);">
+              <i class="fa-solid fa-bell"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statPendingOrders" style="color: var(--accent-gold);">0</div>
+        </div>
+
+        <div class="stat-card" onclick="app.setOwnerOrderFilter('COMPLETED')" style="cursor: pointer;"
+          title="Click to view completed orders">
+          <div class="stat-header">
+            <span class="stat-label">COMPLETED</span>
+            <div class="stat-icon-wrapper" style="background: rgba(76, 175, 80, 0.15); color: var(--status-completed);">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statCompletedOrders" style="color: #4CAF50;">0</div>
+        </div>
+
+        <div class="stat-card" onclick="app.setOwnerOrderFilter('REJECTED')" style="cursor: pointer;"
+          title="Click to view rejected orders">
+          <div class="stat-header">
+            <span class="stat-label">REJECTED</span>
+            <div class="stat-icon-wrapper" style="background: rgba(229, 57, 53, 0.15); color: #E53935;">
+              <i class="fa-solid fa-ban"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statRejectedOrders" style="color: #E53935;">0</div>
+        </div>
+
+        <div class="stat-card"
+          style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.12), rgba(217, 83, 30, 0.12)); border: 1.5px solid var(--accent-gold);">
+          <div class="stat-header">
+            <span class="stat-label" style="color: var(--accent-gold);">TOTAL REVENUE</span>
+            <div class="stat-icon-wrapper" style="background: rgba(234, 162, 33, 0.25); color: var(--accent-gold);">
+              <i class="fa-solid fa-indian-rupee-sign"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statTodaySales" style="color: var(--accent-gold);">₹0</div>
+        </div>
+
+        <!-- Customer Rating Analytics Card -->
+        <div class="stat-card" style="border: 1px solid var(--accent-gold);">
+          <div class="stat-header">
+            <span class="stat-label" style="color: var(--accent-gold);">CUSTOMER RATING</span>
+            <div class="stat-icon-wrapper" style="background: rgba(255, 179, 0, 0.2); color: var(--accent-gold);">
+              <i class="fa-solid fa-star"></i>
+            </div>
+          </div>
+          <div style="display: flex; align-items: baseline; gap: 6px;">
+            <div class="stat-val" id="ownerAvgRatingVal" style="color: var(--accent-gold);">5.0</div>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">/ 5.0 (<span id="ownerTotalReviewsCount">0</span> reviews)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detailed Sales Analytics & Performance Breakdown Box -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 2rem;">
+        <!-- Left: Payment Method & Order Type Breakdown -->
+        <div
+          style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
+          <h4
+            style="font-size: 0.95rem; color: var(--accent-gold); margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-chart-pie"></i> Payment & Order Type Distribution
+          </h4>
+
+          <!-- UPI vs Cash Sales Progress -->
+          <div style="margin-bottom: 1.2rem;">
+            <div
+              style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 6px; font-weight: 700;">
+              <span><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> UPI / Online (<span
+                  id="upiSalesVal">₹0</span>)</span>
+              <span><i class="fa-solid fa-money-bill" style="color: #66BB6A;"></i> Cash (<span
+                  id="cashSalesVal">₹0</span>)</span>
+            </div>
+            <div
+              style="height: 10px; background: rgba(255,255,255,0.08); border-radius: 5px; overflow: hidden; display: flex;">
+              <div id="upiSalesBar"
+                style="width: 50%; background: linear-gradient(90deg, #EAA221, #FFB74D); transition: width 0.5s ease;">
+              </div>
+              <div id="cashSalesBar"
+                style="width: 50%; background: linear-gradient(90deg, #4CAF50, #81C784); transition: width 0.5s ease;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Order Type Breakdown List -->
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <div
+              style="flex: 1; min-width: 100px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+              <span style="font-size: 0.74rem; color: var(--text-muted); display: block;"><i
+                  class="fa-solid fa-motorcycle" style="color: var(--primary);"></i> Home Delivery</span>
+              <strong style="font-size: 1.1rem; color: #FFF;" id="countDeliveryOrders">0</strong>
+            </div>
+            <div
+              style="flex: 1; min-width: 100px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+              <span style="font-size: 0.74rem; color: var(--text-muted); display: block;"><i class="fa-solid fa-box"
+                  style="color: var(--accent-gold);"></i> Takeaway</span>
+              <strong style="font-size: 1.1rem; color: #FFF;" id="countTakeawayOrders">0</strong>
+            </div>
+            <div
+              style="flex: 1; min-width: 100px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
+              <span style="font-size: 0.74rem; color: var(--text-muted); display: block;"><i
+                  class="fa-solid fa-utensils" style="color: #29B6F6;"></i> Dine-in</span>
+              <strong style="font-size: 1.1rem; color: #FFF;" id="countDineinOrders">0</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Top Selling Tiffins & Average Order Value -->
+        <div
+          style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h4
+              style="font-size: 0.95rem; color: var(--accent-gold); display: flex; align-items: center; gap: 8px; margin: 0;">
+              <i class="fa-solid fa-fire"></i> Top Selling Tiffins
+            </h4>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">Avg Order: <strong id="statAovVal"
+                style="color: var(--accent-gold);">₹0</strong></span>
+          </div>
+
+          <div id="topSellingItemsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+            <!-- Rendered by JavaScript -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Urgent Incoming Orders with Order Management Filter Tabs -->
+      <div
+        style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 1rem;">
+        <h3 style="font-size: 1.1rem; margin: 0;"><i class="fa-solid fa-bell" style="color: var(--primary);"></i> Orders
+          Management</h3>
+
+        <!-- Filter Tabs Bar -->
+        <div class="owner-order-tabs-bar"
+          style="display: flex; gap: 6px; background: rgba(10,10,14,0.6); padding: 4px; border-radius: var(--radius-full); border: 1px solid var(--border-color);">
+          <button type="button" class="tab-pill active" id="tabFilterAll" onclick="app.setOwnerOrderFilter('ALL')">All
+            (<span id="cntTabAll">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabFilterActive" onclick="app.setOwnerOrderFilter('ACTIVE')">Active
+            (<span id="cntTabActive">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabFilterCompleted"
+            onclick="app.setOwnerOrderFilter('COMPLETED')">Completed (<span id="cntTabCompleted">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabFilterRejected"
+            onclick="app.setOwnerOrderFilter('REJECTED')">Rejected (<span id="cntTabRejected">0</span>)</button>
+        </div>
+      </div>
+
+      <div class="orders-list" id="ownerDashboardOrdersList">
+        <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Owner Manage Tiffins Section -->
+    <section id="secOwnerTiffins" class="view-section hidden">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Manage Tiffins
+            Menu</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Add, edit, or toggle availability of menu items in
+            real-time.</p>
+        </div>
+        <button class="btn-primary-block" onclick="app.openAddTiffinModal()" style="width: auto; padding: 10px 20px;">
+          <i class="fa-solid fa-plus"></i> Add New Tiffin
+        </button>
+      </div>
+
+      <!-- Tiffin Menu Grid with Owner Controls -->
+      <div class="food-grid" id="ownerTiffinGrid">
+        <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Owner Orders Management Section -->
+    <section id="secOwnerOrders" class="view-section hidden">
+      <div class="section-header" style="margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-list-check" style="color: var(--primary);"></i> Orders
+            Management Hub</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Manage incoming kitchen orders, verify payments &
+            track order status</p>
+        </div>
+
+        <!-- Filter Tabs Bar -->
+        <div class="owner-order-tabs-bar"
+          style="display: flex; gap: 6px; background: rgba(10,10,14,0.6); padding: 4px; border-radius: var(--radius-full); border: 1px solid var(--border-color);">
+          <button type="button" class="tab-pill active" id="tabMgmtFilterAll"
+            onclick="app.setOwnerOrderFilter('ALL')">All (<span id="cntMgmtTabAll">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabMgmtFilterActive"
+            onclick="app.setOwnerOrderFilter('ACTIVE')">Active (<span id="cntMgmtTabActive">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabMgmtFilterCompleted"
+            onclick="app.setOwnerOrderFilter('COMPLETED')">Completed (<span id="cntMgmtTabCompleted">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabMgmtFilterRejected"
+            onclick="app.setOwnerOrderFilter('REJECTED')">Rejected (<span id="cntMgmtTabRejected">0</span>)</button>
+        </div>
+      </div>
+
+      <div class="orders-list" id="ownerOrdersList">
+        <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Owner Payments Management Section -->
+    <section id="secOwnerPayments" class="view-section hidden">
+      <div class="section-header"
+        style="margin-bottom: 1.25rem; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i> Financial
+            Ledger & Payment History</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Track customer payments, UPI verification statements,
+            and download financial reports</p>
+        </div>
+        <button class="btn-primary-block" onclick="app.downloadPaymentStatementCSV()"
+          style="width: auto; padding: 9px 20px; background: linear-gradient(135deg, #4CAF50, #2E7D32);">
+          <i class="fa-solid fa-file-csv"></i> Download Statement (CSV)
+        </button>
+      </div>
+
+      <!-- Financial Metrics Summary Grid -->
+      <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card"
+          style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.12), rgba(217, 83, 30, 0.12)); border: 1.5px solid var(--accent-gold);">
+          <div class="stat-header">
+            <span class="stat-label" style="color: var(--accent-gold);">TOTAL COLLECTIONS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(234, 162, 33, 0.25); color: var(--accent-gold);">
+              <i class="fa-solid fa-indian-rupee-sign"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="payStatTotal" style="color: var(--accent-gold);">₹0</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">UPI / ONLINE PAYMENTS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(41, 182, 246, 0.15); color: #29B6F6;">
+              <i class="fa-solid fa-qrcode"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="payStatUpi" style="color: #29B6F6;">₹0</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">CASH COLLECTIONS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50;">
+              <i class="fa-solid fa-money-bill-wave"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="payStatCash" style="color: #4CAF50;">₹0</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">PENDING VERIFICATIONS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(229, 57, 53, 0.15); color: #E53935;">
+              <i class="fa-solid fa-hourglass-half"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="payStatPending" style="color: #FF5252;">0</div>
+        </div>
+      </div>
+
+      <!-- Payment Filter & Search Toolbar -->
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 1.25rem;">
+        <!-- Filter Tabs Bar -->
+        <div class="owner-order-tabs-bar"
+          style="display: flex; gap: 6px; background: rgba(10,10,14,0.6); padding: 4px; border-radius: var(--radius-full); border: 1px solid var(--border-color);">
+          <button type="button" class="tab-pill active" id="payTabAll" onclick="app.filterOwnerPayments('All')">All
+            Payments</button>
+          <button type="button" class="tab-pill" id="payTabUpi" onclick="app.filterOwnerPayments('UPI')">UPI /
+            Online</button>
+          <button type="button" class="tab-pill" id="payTabCash" onclick="app.filterOwnerPayments('Cash')">Cash</button>
+          <button type="button" class="tab-pill" id="payTabVerified"
+            onclick="app.filterOwnerPayments('Verified')">Verified / Paid</button>
+          <button type="button" class="tab-pill" id="payTabPending"
+            onclick="app.filterOwnerPayments('Pending')">Pending</button>
+        </div>
+
+        <!-- Search Box -->
+        <div style="position: relative; width: 280px;">
+          <i class="fa-solid fa-magnifying-glass"
+            style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.85rem;"></i>
+          <input type="text" id="ownerPaySearchInput" oninput="app.filterOwnerPayments()"
+            placeholder="Search Order #, UTR, Name..."
+            style="width: 100%; padding: 8px 12px 8px 34px; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-full); color: #FFF; font-size: 0.82rem;">
+        </div>
+      </div>
+
+      <!-- Owner Side Payment History Table View -->
+      <div class="payment-history-table-wrapper" style="overflow-x: auto; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 0.5rem; box-shadow: var(--shadow-sm);">
+        <table class="payment-history-table" style="width: 100%; border-collapse: collapse; min-width: 800px; font-size: 0.88rem;">
+          <thead>
+            <tr style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--accent-gold); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; background: rgba(0,0,0,0.25);">
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-receipt"></i> Order ID</th>
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-hashtag"></i> Transaction ID / UTR</th>
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-camera"></i> Screenshot</th>
+              <th style="padding: 14px 16px;"><i class="fa-solid fa-signal"></i> Status</th>
+              <th style="padding: 14px 16px; text-align: center;"><i class="fa-solid fa-file-invoice"></i> Action (Bill)</th>
+            </tr>
+          </thead>
+          <tbody id="paymentsTableBody">
+            <!-- Rendered dynamically by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Owner Business Settings Section -->
+    <section id="secOwnerSettings" class="view-section hidden">
+      <div class="section-header">
+        <h2 class="section-title"><i class="fa-solid fa-sliders" style="color: var(--primary);"></i> Business Settings
+        </h2>
+      </div>
+
+      <div class="modal-card" style="max-width: 700px; margin: 0 auto;">
+        <div class="modal-body">
+          <form id="settingsForm" onsubmit="app.saveBusinessSettings(event)">
+
+            <div
+              style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface-elevated); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+              <div>
+                <h4 style="margin-bottom: 2px;">Hotel Service Status</h4>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Toggle to open or close customer order intake
+                </p>
+              </div>
+              <div class="availability-switch" id="settingHotelOpenSwitch" onclick="app.toggleSettingsHotelOpen()">
+                <div class="switch-track">
+                  <div class="switch-thumb"></div>
+                </div>
+                <span style="font-size: 0.85rem; font-weight: 700;" id="settingHotelOpenLabel">🟢 HOTEL OPEN</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Hotel / Tiffin Center Name</label>
+              <input type="text" class="form-control" id="setHotelName" required>
+            </div>
+
+            <div class="form-group">
+              <label>Phone Number</label>
+              <input type="text" class="form-control" id="setPhone" required>
+            </div>
+
+            <div class="form-group">
+              <label>Full Address</label>
+              <textarea class="form-control" id="setAddress" required></textarea>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div class="form-group">
+                <label>Opening Time</label>
+                <input type="text" class="form-control" id="setOpenTime" placeholder="e.g. 06:30 AM" required>
+              </div>
+              <div class="form-group">
+                <label>Closing Time</label>
+                <input type="text" class="form-control" id="setCloseTime" placeholder="e.g. 10:30 PM" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Weekly Holidays</label>
+              <input type="text" class="form-control" id="setHolidays" placeholder="e.g. None (Open 7 Days)">
+            </div>
+
+            <div class="form-group">
+              <label>UPI ID (For Online Payments)</label>
+              <input type="text" class="form-control" id="setUpiId" placeholder="e.g. annapurna@upi" required>
+            </div>
+
+            <!-- Shop Owner UPI QR Scanner Image Upload Section -->
+            <div class="form-group"
+              style="background: rgba(10, 10, 14, 0.45); padding: 1.2rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-bottom: 1.25rem;">
+              <label style="color: var(--accent-gold); font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-qrcode"></i> Payment Gateway - Shop Owner QR Scanner Image
+              </label>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem;">
+                Upload your hotel's official GPay / PhonePe / Paytm / BHIM UPI QR scanner image. Customers will scan
+                this scanner image to pay.
+              </p>
+
+              <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                <div
+                  style="width: 130px; height: 130px; background: #FFF; padding: 6px; border-radius: 8px; border: 2px solid var(--accent-gold); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                  <img id="setQrPreviewImg" src="/images/upi_qr_scanner.png" alt="Shop Owner QR Code"
+                    style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                </div>
+
+                <div style="flex: 1; min-width: 220px;">
+                  <label class="btn-secondary-outline"
+                    style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer; padding: 8px 14px; margin-bottom: 6px;">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload New QR Scanner Image
+                    <input type="file" id="setQrFileInput" accept="image/*" onchange="app.handleOwnerQrUpload(event)"
+                      style="display: none;">
+                  </label>
+                  <p style="font-size: 0.74rem; color: var(--text-muted);">Supports PNG, JPG, WEBP. High resolution QR
+                    scanner images recommended.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Restaurant Description</label>
+              <textarea class="form-control" id="setDesc"></textarea>
+            </div>
+
+            <!-- Shop Owner Referral Program Controls -->
+            <div class="form-group" style="background: rgba(10, 10, 14, 0.45); padding: 1.2rem; border-radius: var(--radius-md); border: 1px solid var(--accent-gold); margin-top: 1.25rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
+                <label style="color: var(--accent-gold); font-weight: 800; display: flex; align-items: center; gap: 8px; margin: 0;">
+                  <i class="fa-solid fa-gift"></i> Referral Program Settings (Refer & Earn)
+                </label>
+                <div class="availability-switch" id="setRefEnabledSwitch" onclick="app.toggleOwnerReferralProgram()">
+                  <div class="switch-track">
+                    <div class="switch-thumb"></div>
+                  </div>
+                  <span style="font-size: 0.8rem; font-weight: 700;" id="setRefEnabledLabel">🟢 PROGRAM ON</span>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.75rem;">
+                <div class="form-group">
+                  <label>Referrer Reward (₹)</label>
+                  <input type="number" class="form-control" id="setRefReferrerReward" min="0" placeholder="30">
+                </div>
+                <div class="form-group">
+                  <label>New Customer Discount (₹)</label>
+                  <input type="number" class="form-control" id="setRefCustomerDiscount" min="0" placeholder="30">
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                  <label>Min First-Order Value (₹)</label>
+                  <input type="number" class="form-control" id="setRefMinOrderValue" min="0" placeholder="150">
+                </div>
+                <div class="form-group">
+                  <label>Max Monthly Limit / Customer (₹)</label>
+                  <input type="number" class="form-control" id="setRefMonthlyLimit" min="0" placeholder="500">
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-primary-block" style="margin-top: 1rem;">
+              <i class="fa-solid fa-floppy-disk"></i> Save Business Settings
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Owner Support Inbox Section -->
+    <section id="secOwnerSupport" class="view-section hidden">
+      <div class="owner-support-header">
+        <div class="owner-support-title-group">
+          <h2 class="section-title"><i class="fa-solid fa-headset" style="color: var(--accent-gold);"></i> Support Inbox
+            & Ticket Hub</h2>
+          <p class="owner-support-sub">Real-time customer query resolution, complaint tracking & live chat support</p>
+        </div>
+        <button class="btn-secondary-outline" onclick="app.fetchSupportTickets()"
+          style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; padding: 8px 16px;">
+          <i class="fa-solid fa-rotate"></i> Refresh Inbox
+        </button>
+      </div>
+
+      <!-- Owner Support KPI Stats Bar -->
+      <div class="owner-kpi-grid">
+        <div class="owner-kpi-card gold-glow">
+          <div class="kpi-icon-box gold"><i class="fa-solid fa-receipt"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Total Tickets</span>
+            <h3 class="kpi-value" id="statTotalTickets">0</h3>
+          </div>
+        </div>
+
+        <div class="owner-kpi-card red-glow">
+          <div class="kpi-icon-box red"><i class="fa-solid fa-envelope-open-text"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Open / Action Needed</span>
+            <h3 class="kpi-value" id="statOpenTickets">0</h3>
+          </div>
+        </div>
+
+        <div class="owner-kpi-card blue-glow">
+          <div class="kpi-icon-box blue"><i class="fa-solid fa-spinner"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">In Progress</span>
+            <h3 class="kpi-value" id="statInProgressTickets">0</h3>
+          </div>
+        </div>
+
+        <div class="owner-kpi-card green-glow">
+          <div class="kpi-icon-box green"><i class="fa-solid fa-circle-check"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-label">Resolved Tickets</span>
+            <h3 class="kpi-value" id="statResolvedTickets">0</h3>
+          </div>
+        </div>
+      </div>
+
+      <!-- Owner Tickets Toolbar -->
+      <div class="owner-tkt-toolbar">
+        <div class="filter-chips">
+          <button class="filter-chip active" id="chipOwnerTktAll" onclick="app.filterOwnerTickets('All')">All
+            Tickets</button>
+          <button class="filter-chip" id="chipOwnerTktOpen" onclick="app.filterOwnerTickets('Open')">Open</button>
+          <button class="filter-chip" id="chipOwnerTktInProgress" onclick="app.filterOwnerTickets('In Progress')">In
+            Progress</button>
+          <button class="filter-chip" id="chipOwnerTktResolved"
+            onclick="app.filterOwnerTickets('Resolved')">Resolved</button>
+          <button class="filter-chip" id="chipOwnerTktClosed" onclick="app.filterOwnerTickets('Closed')">Closed</button>
+        </div>
+
+        <div class="toolbar-right-controls">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" class="form-control search-input" id="ownerTktSearchInput"
+              placeholder="Search ticket #, customer, order..." oninput="app.filterOwnerTickets()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Owner Tickets Vertical Cards View -->
+      <div class="owner-tickets-grid" id="ownerTicketsCardsContainer">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="app-footer">
+    <div class="footer-container">
+      <div class="footer-col brand-col">
+        <div class="footer-brand">
+          <img src="images/tiffin_logo.png" alt="Logo" class="footer-logo">
+          <h3>Sri Lakshmi Annapurna Tiffin Center</h3>
+        </div>
+        <p class="footer-desc">
+          Serving authentic, steaming hot, home-style South Indian tiffins & mini meals prepared fresh with traditional
+          family recipes and pure ghee since 1998.
+        </p>
+        <div class="footer-socials">
+          <a href="https://wa.me/919876543210" target="_blank" title="WhatsApp Order"><i
+              class="fa-brands fa-whatsapp"></i></a>
+          <a href="#" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
+          <a href="#" title="Facebook"><i class="fa-brands fa-facebook"></i></a>
+          <a href="tel:+919876543210" title="Call Us"><i class="fa-solid fa-phone"></i></a>
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <h4><i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Menu Categories</h4>
+        <ul class="footer-links">
+          <li><a onclick="app.switchView('secCustomerHome'); app.filterCategory('Breakfast');">Breakfast Tiffins</a>
+          </li>
+          <li><a onclick="app.switchView('secCustomerHome'); app.filterCategory('Lunch');">South Indian Meals</a></li>
+          <li><a onclick="app.switchView('secCustomerHome'); app.filterCategory('Dinner');">Dinner Specialities</a></li>
+          <li><a onclick="app.switchView('secCustomerHome'); app.filterCategory('Specials');">Chef's Specials</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h4><i class="fa-solid fa-clock" style="color: var(--accent-gold);"></i> Timings & Service</h4>
+        <div class="timing-info">
+          <p><strong>Opening Time:</strong> 06:30 AM</p>
+          <p><strong>Closing Time:</strong> 10:30 PM</p>
+          <p><strong>Holidays:</strong> Open 7 Days a Week</p>
+          <p style="margin-top: 6px; color: var(--accent-gold); font-size: 0.8rem;"><i class="fa-solid fa-bolt"></i>
+            Fast Parcel & Dine-In Service</p>
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <h4><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Contact & Location</h4>
+        <p class="contact-line"><i class="fa-solid fa-phone"></i> +91 98765 43210</p>
+        <p class="contact-line"><i class="fa-solid fa-map-pin"></i> #42, Temple Road, Near Gandhi Circle, Bengaluru, KA
+        </p>
+        <p class="contact-line"><i class="fa-solid fa-qrcode"></i> UPI: <span
+            style="color: var(--accent-gold);">annapurna.tiffin@upi</span></p>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 Sri Lakshmi Annapurna Tiffin Center. All Rights Reserved. | Family-Owned Hotel Website</p>
+    </div>
+  </footer>
+
+  <!-- =========================================================================
+       MODALS & SLIDE-OVER DRAWERS
+       ========================================================================= -->
+
+  <!-- Shopping Cart Slide-over Drawer -->
+  <div class="cart-overlay" id="cartOverlay" onclick="app.toggleCartDrawer(false)"></div>
+  <div class="cart-drawer" id="cartDrawer">
+    <div class="cart-header">
+      <h3><i class="fa-solid fa-cart-shopping" style="color: var(--primary);"></i> Your Cart</h3>
+      <button class="icon-btn" onclick="app.toggleCartDrawer(false)"
+        style="width: 32px; height: 32px; font-size: 0.85rem;"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="cart-body" id="cartItemsContainer">
+      <!-- Dynamic Cart Items -->
+    </div>
+    <div class="cart-footer">
+      <div class="cart-summary-row">
+        <span>Subtotal</span>
+        <span id="cartSubtotal">₹0</span>
+      </div>
+      <div class="cart-total-row">
+        <span>Grand Total</span>
+        <span id="cartGrandTotal" style="color: var(--accent-gold);">₹0</span>
+      </div>
+      <button class="btn-primary-block" id="btnProceedOrder" onclick="app.openOrderCheckoutModal()">
+        Proceed to Order <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Customer Order Checkout Modal -->
+  <div class="modal-backdrop" id="checkoutModalBackdrop" onclick="app.toggleCheckoutModal(false)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-basket-shopping" style="color: var(--primary);"></i> Checkout Details</h3>
+        <button class="icon-btn" onclick="app.toggleCheckoutModal(false)"
+          style="width: 32px; height: 32px; font-size: 0.85rem;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <form id="checkoutForm" onsubmit="app.submitCustomerOrder(event)">
+          <div class="form-group">
+            <label>Customer Name</label>
+            <input type="text" class="form-control" id="ordCustomerName" placeholder="Enter your full name" required>
+          </div>
+
+          <div class="form-group">
+            <label>Mobile Number</label>
+            <input type="tel" class="form-control" id="ordCustomerMobile" placeholder="10-digit mobile number" required>
+          </div>
+
+          <div class="form-group">
+            <label>Order Type</label>
+            <select class="form-control" id="ordType" onchange="app.handleCheckoutOrderTypeChange()">
+              <option value="Takeaway">Takeaway / Parcel</option>
+              <option value="Dine-in">Dine-in (Table Serving)</option>
+              <option value="Delivery" selected>Home Delivery</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="ordDeliveryAddressGroup">
+            <label id="ordDeliveryAddressLabel"><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i>
+              Delivery Address / Location Details <span style="color: var(--primary);">*</span></label>
+            <textarea class="form-control" id="ordDeliveryAddress" rows="2"
+              placeholder="House/Flat No, Building, Street, Landmark, Area details..." required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Special Instructions / Notes</label>
+            <textarea class="form-control" id="ordNotes"
+              placeholder="e.g. Less spicy, extra coconut chutney..."></textarea>
+          </div>
+
+          <div class="form-group" id="checkoutWalletBox" style="background: rgba(255, 179, 0, 0.12); border: 1px solid var(--accent-gold); padding: 0.85rem; border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <span style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-wallet"></i> Referral Wallet Balance
+                </span>
+                <span style="font-size: 0.75rem; color: var(--text-muted);" id="checkoutWalletAvailableText">Available: ₹0</span>
+              </div>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 700; color: #FFF; cursor: pointer;">
+                <input type="checkbox" id="chkUseWallet" onchange="app.toggleCheckoutWalletDiscount()" style="width: 16px; height: 16px; accent-color: var(--accent-gold);">
+                Redeem ₹<span id="checkoutWalletDiscountVal">0</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Payment Option</label>
+            <div class="payment-selector">
+              <div class="payment-option selected" id="optPayCash" onclick="app.selectPaymentMethod('Cash')">
+                <i class="fa-solid fa-money-bill-wave"
+                  style="font-size: 1.4rem; display: block; margin-bottom: 4px;"></i>
+                Cash
+              </div>
+              <div class="payment-option" id="optPayUPI" onclick="app.selectPaymentMethod('UPI')">
+                <i class="fa-solid fa-qrcode" style="font-size: 1.4rem; display: block; margin-bottom: 4px;"></i>
+                Online / UPI
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic UPI QR & Screenshot / UTR Payment Gateway Box -->
+          <div id="upiQrBox" class="hidden"
+            style="background: rgba(10, 10, 14, 0.6); padding: 1.2rem; border-radius: var(--radius-lg); border: 1px solid var(--accent-gold); margin-top: 1rem;">
+            <div style="text-align: center; margin-bottom: 0.85rem;">
+              <span class="status-badge"
+                style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.8rem; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-qrcode"></i> Scan Shop Owner QR Code to Pay
+              </span>
+            </div>
+
+            <!-- Shop Owner's Uploaded QR Code Display -->
+            <div
+              style="background: #FFFFFF; padding: 10px; border-radius: 12px; width: 170px; margin: 0 auto 0.85rem; border: 2px solid var(--accent-gold); text-align: center; box-shadow: 0 6px 18px rgba(0,0,0,0.4);">
+              <img id="checkoutQrScannerImg" src="/images/upi_qr_scanner.png" alt="Shop Owner UPI QR Code"
+                style="width: 150px; height: 150px; object-fit: contain;">
+            </div>
+
+            <!-- UPI ID & Copy Bar -->
+            <div
+              style="display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px 14px; border-radius: var(--radius-full); margin-bottom: 1rem; border: 1px solid var(--border-color);">
+              <span style="font-size: 0.82rem; font-weight: 700; color: #FFF;"><i class="fa-solid fa-at"
+                  style="color: var(--accent-gold);"></i> <span
+                  id="checkoutUpiIdDisplay">annapurna.tiffin@upi</span></span>
+              <button type="button" class="btn-sm-status" onclick="app.copyUpiId()"
+                style="background: var(--accent-gold); color: #000; font-weight: 800; border: none; padding: 3px 10px; border-radius: 12px; font-size: 0.74rem; cursor: pointer;">
+                <i class="fa-regular fa-copy"></i> Copy
+              </button>
+            </div>
+
+            <!-- Step 1: Upload Payment Screenshot -->
+            <div
+              style="text-align: left; margin-bottom: 1rem; background: rgba(26, 26, 34, 0.8); padding: 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
+                <i class="fa-solid fa-camera" style="color: var(--primary);"></i> 1. Upload Payment Screenshot <span
+                  style="color: var(--primary);">*</span>
+              </label>
+              <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 8px;">Upload a screenshot of your
+                successful UPI payment receipt.</p>
+
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <label class="btn-secondary-outline"
+                  style="font-size: 0.78rem; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-upload"></i> Choose Screenshot File
+                  <input type="file" id="ordPaymentScreenshot" accept="image/*"
+                    onchange="app.handleCustomerScreenshotUpload(event)" style="display: none;">
+                </label>
+                <span id="screenshotFileName"
+                  style="font-size: 0.75rem; color: var(--accent-gold); font-style: italic;">No file selected</span>
+              </div>
+
+              <div id="screenshotPreviewWrapper" class="hidden"
+                style="margin-top: 8px; position: relative; width: 100px; height: 100px; border-radius: 8px; overflow: hidden; border: 1px solid var(--accent-gold);">
+                <img id="screenshotPreviewImg" style="width: 100%; height: 100%; object-fit: cover;">
+                <button type="button" onclick="app.removeCustomerScreenshot()"
+                  style="position: absolute; top: 2px; right: 2px; background: rgba(229,57,53,0.9); color: #FFF; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 0.7rem; cursor: pointer;">✕</button>
+              </div>
+            </div>
+
+            <!-- Step 2: Enter Exact 12-Digit UTR / Transaction Ref Number -->
+            <div
+              style="text-align: left; background: rgba(26, 26, 34, 0.8); padding: 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
+                <i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> 2. Enter 12-Digit UTR /
+                Transaction No <span style="color: var(--primary);">*</span>
+              </label>
+              <input type="text" class="form-control" id="ordUTRNumber" placeholder="e.g. 623491827364 or TXN987123"
+                maxlength="30"
+                style="font-family: monospace; font-size: 0.9rem; font-weight: 700; letter-spacing: 1px;">
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">Copy the
+                12-digit UTR/Ref number from GPay/PhonePe/Paytm transaction details.</span>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary-block" style="margin-top: 1.25rem;">
+            <i class="fa-solid fa-check"></i> Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹0</span>)
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Animated Order Confirmation Celebration Modal -->
+  <div class="modal-backdrop" id="confirmationModalBackdrop">
+    <div class="modal-card celebration-modal" onclick="event.stopPropagation()">
+      <div class="celebration-icon">🎉</div>
+      <h2 style="color: var(--accent-gold); font-size: 1.8rem; margin-bottom: 0.5rem;">Order Confirmed!</h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">Your order has been placed
+        successfully and sent directly to the hotel kitchen!</p>
+
+      <div
+        style="background: var(--bg-surface-elevated); border: 2px dashed var(--accent-gold); padding: 1rem; border-radius: var(--radius-md); margin-bottom: 1.5rem;">
+        <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">YOUR ORDER NUMBER</span>
+        <h1 id="confirmedOrderNumDisplay"
+          style="font-size: 2.2rem; color: var(--primary); font-family: 'Outfit', sans-serif;">#TF1025</h1>
+      </div>
+
+      <button class="btn-primary-block" onclick="app.closeConfirmationAndTrack()">
+        Track Order Status <i class="fa-solid fa-arrow-right"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Owner Add/Edit Tiffin Modal -->
+  <div class="modal-backdrop" id="tiffinModalBackdrop" onclick="app.toggleTiffinModal(false)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="tiffinModalTitle"><i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Add New Tiffin
+        </h3>
+        <button class="icon-btn" onclick="app.toggleTiffinModal(false)"
+          style="width: 32px; height: 32px; font-size: 0.85rem;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <form id="tiffinForm" onsubmit="app.saveTiffin(event)">
+          <input type="hidden" id="editTiffinId">
+
+          <div class="form-group">
+            <label>Tiffin Name</label>
+            <input type="text" class="form-control" id="tifName" placeholder="e.g. Masala Dosa" required>
+          </div>
+
+          <div class="form-group">
+            <label>Short Description</label>
+            <textarea class="form-control" id="tifDesc" placeholder="e.g. Golden crispy crepe served with chutneys..."
+              required></textarea>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+              <label>Price (₹)</label>
+              <input type="number" class="form-control" id="tifPrice" min="1" placeholder="40" required>
+            </div>
+            <div class="form-group">
+              <label>Category</label>
+              <select class="form-control" id="tifCategory">
+                <option value="Breakfast">Breakfast</option>
+                <option value="Lunch">Lunch</option>
+                <option value="Dinner">Dinner</option>
+                <option value="Snacks">Snacks</option>
+                <option value="Specials">Specials</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Food Image URL</label>
+            <input type="text" class="form-control" id="tifImage" placeholder="/images/idly_sambar.png">
+          </div>
+
+          <div class="form-group">
+            <label>Initial Availability Status</label>
+            <div class="availability-switch" id="formAvailabilitySwitch" onclick="app.toggleFormAvailability()">
+              <div class="switch-track">
+                <div class="switch-thumb"></div>
+              </div>
+              <span style="font-size: 0.85rem; font-weight: 700;" id="formAvailabilityLabel">🟢 AVAILABLE</span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; margin-top: 1.25rem;">
+            <button type="button" class="role-btn" onclick="app.toggleTiffinModal(false)"
+              style="flex: 1; justify-content: center; padding: 10px;">Cancel</button>
+            <button type="submit" class="btn-primary-block" style="flex: 2;">Save Tiffin</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer & Hotel Owner Login / Registration Modal (Split-Screen Dual Card) -->
+  <div class="modal-backdrop" id="authModalBackdrop" onclick="app.toggleAuthModal(false)">
+    <div class="auth-card-wrapper mode-login" id="authModalCard" onclick="event.stopPropagation()">
+
+      <!-- Left Visual Hero Sidebar / Banner -->
+      <div class="auth-card-sidebar">
+        <div class="auth-sidebar-brand">
+          <img src="images/tiffin_logo.png" alt="Logo" class="auth-sidebar-logo">
+          <h3>Sri Lakshmi Annapurna</h3>
+          <p>Authentic South Indian Tiffins</p>
+        </div>
+        <div class="auth-sidebar-quote" id="authSidebarQuote">
+          <h4><i class="fa-solid fa-fire-flame-curved"></i> Fresh & Hot Daily</h4>
+          <p>Log in or create an account to order your favorite Idlis, Dosas & Meals with live order tracking!</p>
+        </div>
+        <div class="auth-sidebar-footer">
+          <span><i class="fa-solid fa-shield-halved"></i> 100% Secure Access</span>
+        </div>
+      </div>
+
+      <!-- Right Form Main Area -->
+      <div class="auth-card-body">
+        <button type="button" class="auth-close-btn" onclick="app.toggleAuthModal(false)"><i
+            class="fa-solid fa-xmark"></i></button>
+
+        <!-- Role Selector (Customer vs Hotel Owner) -->
+        <div class="auth-role-tabs">
+          <button type="button" class="role-tab-btn active" id="btnTabCustomerAuth"
+            onclick="app.switchAuthRole('CUSTOMER')">
+            <i class="fa-solid fa-user"></i> Customer
+          </button>
+          <button type="button" class="role-tab-btn" id="btnTabOwnerAuth" onclick="app.switchAuthRole('OWNER')">
+            <i class="fa-solid fa-user-shield"></i> Hotel Owner
+          </button>
+        </div>
+
+        <!-- Mode Toggle (Login vs Register) -->
+        <div class="auth-mode-pills">
+          <button type="button" class="mode-pill-btn active" id="btnAuthModeLogin" onclick="app.setAuthMode('LOGIN')">
+            <i class="fa-solid fa-key"></i> Existing User Login
+          </button>
+          <button type="button" class="mode-pill-btn" id="btnAuthModeRegister" onclick="app.setAuthMode('REGISTER')">
+            <i class="fa-solid fa-user-plus"></i> New User Register
+          </button>
+        </div>
+
+        <!-- Quick Demo Fill Helpers -->
+        <div class="auth-demo-bar">
+          <span style="font-size: 0.72rem; color: var(--text-muted);">Quick Demo:</span>
+          <button type="button" onclick="app.fillDemoAccount('CUSTOMER')" class="demo-chip customer">
+            ⚡ Customer Demo
+          </button>
+          <button type="button" onclick="app.fillDemoAccount('OWNER')" class="demo-chip owner">
+            ⚡ Owner Demo
+          </button>
+        </div>
+
+        <!-- LOGIN FORM -->
+        <form id="authLoginForm" class="auth-form" onsubmit="app.handleLoginSubmit(event)">
+          <div class="input-icon-group">
+            <i class="fa-solid fa-mobile-screen input-icon"></i>
+            <input type="tel" class="icon-input" id="loginMobile" placeholder="10-digit mobile number" required>
+          </div>
+
+          <div class="input-icon-group">
+            <i class="fa-solid fa-lock input-icon"></i>
+            <input type="password" class="icon-input" id="loginPassword" placeholder="Enter your password" required>
+          </div>
+
+          <button type="submit" class="auth-submit-btn login-btn" id="btnLoginSubmit">
+            <span>Login to Account</span> <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </form>
+
+        <!-- REGISTRATION FORM -->
+        <form id="authRegisterForm" class="auth-form hidden" onsubmit="app.handleRegisterSubmit(event)">
+          <div class="input-icon-group">
+            <i class="fa-solid fa-user input-icon"></i>
+            <input type="text" class="icon-input" id="regName" placeholder="Full Name (e.g. Suresh Gowda)" required>
+          </div>
+
+          <div class="input-icon-group">
+            <i class="fa-solid fa-mobile-screen input-icon"></i>
+            <input type="tel" class="icon-input" id="regMobile" placeholder="10-digit mobile number" required>
+          </div>
+
+          <div class="input-icon-group">
+            <i class="fa-solid fa-lock input-icon"></i>
+            <input type="password" class="icon-input" id="regPassword" placeholder="Create password" required>
+          </div>
+
+          <div class="input-icon-group">
+            <i class="fa-solid fa-envelope input-icon"></i>
+            <input type="email" class="icon-input" id="regEmail" placeholder="Email Address (Optional)">
+          </div>
+
+          <div class="input-icon-group">
+            <i class="fa-solid fa-location-dot input-icon"></i>
+            <input type="text" class="icon-input" id="regAddress" placeholder="Delivery Address / Location">
+          </div>
+
+          <!-- Referral Code Input Field (For Customer Registration) -->
+          <div class="input-icon-group" id="grpRegReferralCode">
+            <i class="fa-solid fa-gift input-icon" style="color: var(--accent-gold);"></i>
+            <input type="text" class="icon-input" id="regReferralCode" placeholder="Referral Code (Got a code? Get ₹30 OFF)" style="font-family: monospace; font-weight: 700; text-transform: uppercase;">
+          </div>
+
+          <!-- Hotel Owner Security PIN Field (Visible only when Registering as Owner) -->
+          <div class="input-icon-group hidden" id="grpSecretKey">
+            <i class="fa-solid fa-shield-halved input-icon" style="color: var(--accent-gold);"></i>
+            <input type="text" class="icon-input" id="regSecretKey" placeholder="Owner Security PIN (Default: 1234)"
+              value="1234">
+          </div>
+
+          <button type="submit" class="auth-submit-btn register-btn" id="btnRegisterSubmit">
+            <span>Create New Account</span> <i class="fa-solid fa-user-plus"></i>
+          </button>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Detail Modal Backdrop -->
+  <div class="od-backdrop" id="orderDetailBackdrop" onclick="app.closeOrderDetail()">
+    <div class="od-modal" onclick="event.stopPropagation()">
+      <button class="od-close" onclick="app.closeOrderDetail()"><i class="fa-solid fa-xmark"></i></button>
+      <div id="orderDetailContent">
+        <!-- Dynamically filled -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Raise Support Ticket Modal -->
+  <div class="modal-backdrop" id="raiseTicketModalBackdrop" onclick="app.toggleRaiseTicketModal(false)">
+    <div class="modal-card" style="max-width: 520px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-circle-plus" style="color: var(--primary);"></i> Raise Support Ticket</h3>
+        <button class="icon-btn" onclick="app.toggleRaiseTicketModal(false)" style="width: 32px; height: 32px;"><i
+            class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <form id="raiseTicketForm" onsubmit="app.handleRaiseTicketSubmit(event)">
+          <div class="form-group">
+            <label>Select Relevant Order (Optional)</label>
+            <select class="form-control" id="tktFormOrderSelect">
+              <option value="General Inquiry">General Inquiry (No specific order)</option>
+              <!-- Populated by JS with customer's order history -->
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Issue Category</label>
+            <select class="form-control" id="tktFormCategorySelect" required>
+              <option value="Order Delay & Pickup">Order Delay & Pickup</option>
+              <option value="Food Quality & Packaging">Food Quality & Packaging</option>
+              <option value="Missing Item / Wrong Item">Missing Item / Wrong Item</option>
+              <option value="Payment & Refund Issue">Payment & Refund Issue</option>
+              <option value="Bulk & Catering Inquiry">Bulk & Catering Inquiry</option>
+              <option value="General Inquiry">General Inquiry</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Issue Subject / Short Summary</label>
+            <input type="text" class="form-control" id="tktFormSubject"
+              placeholder="e.g. Sambar missing in takeaway bag #TF1024" required>
+          </div>
+
+          <div class="form-group">
+            <label>Priority Level</label>
+            <select class="form-control" id="tktFormPriority">
+              <option value="Low">Low - General query</option>
+              <option value="Medium" selected>Medium - Normal issue</option>
+              <option value="High">High - Urgent attention needed</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Detailed Message</label>
+            <textarea class="form-control" id="tktFormMessage" rows="4"
+              placeholder="Describe your issue or request in detail..." required></textarea>
+          </div>
+
+          <button type="submit" class="btn-primary-block" style="margin-top: 1rem;">
+            <i class="fa-solid fa-paper-plane"></i> Submit Support Ticket
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Support Ticket Thread / Chat Modal -->
+  <div class="modal-backdrop" id="ticketThreadModalBackdrop" onclick="app.toggleTicketThreadModal(false)">
+    <div class="modal-card" style="max-width: 600px; display: flex; flex-direction: column; max-height: 85vh;"
+      onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border-color); flex-shrink: 0;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h3 id="threadModalTicketNum">TKT-1001</h3>
+            <span class="status-badge" id="threadModalStatusBadge">Open</span>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted);" id="threadModalSubInfo">Category: Order Delay | Order
+            #TF1024</p>
+        </div>
+        <button class="icon-btn" onclick="app.toggleTicketThreadModal(false)" style="width: 32px; height: 32px;"><i
+            class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Messages Thread Body -->
+      <div class="modal-body ticket-thread-body" id="ticketThreadMessages"
+        style="flex: 1; overflow-y: auto; padding: 1rem; background: rgba(10, 10, 14, 0.4); display: flex; flex-direction: column; gap: 12px; min-height: 250px;">
+        <!-- Messages rendered dynamically -->
+      </div>
+
+      <!-- Quick Preset Reply Chips (Visible ONLY to Owner) -->
+      <div class="owner-quick-replies hidden" id="ownerQuickReplies"
+        style="padding: 8px 12px; background: rgba(26, 26, 34, 0.9); border-top: 1px solid var(--border-color);">
+        <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 4px;">QUICK
+          TEMPLATES:</span>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="quick-reply-chip" onclick="app.insertQuickReply('We are preparing your item fresh now!')">🍳
+            Preparing Fresh</button>
+          <button class="quick-reply-chip"
+            onclick="app.insertQuickReply('Packed extra chutney & sambar as requested!')">🥥 Extra Chutney
+            Packed</button>
+          <button class="quick-reply-chip"
+            onclick="app.insertQuickReply('Your refund has been processed. Please check GPay/UPI.')">💸 Refund
+            Initiated</button>
+        </div>
+      </div>
+
+      <!-- Chat Reply Box Footer -->
+      <div
+        style="padding: 12px; border-top: 1px solid var(--border-color); background: var(--bg-surface); flex-shrink: 0;">
+        <!-- Owner Status Change Toolbar (If logged in as owner) -->
+        <div class="owner-status-toolbar hidden" id="ownerThreadStatusToolbar"
+          style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="font-size: 0.78rem; color: var(--text-muted);">Change Ticket Status:</span>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="btn-sm-status" onclick="app.changeActiveTicketStatus('In Progress')"
+              style="background: rgba(2,136,209,0.2); color: #0288D1; border: 1px solid #0288D1; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">In
+              Progress</button>
+            <button type="button" class="btn-sm-status" onclick="app.changeActiveTicketStatus('Resolved')"
+              style="background: rgba(76,175,80,0.2); color: #4CAF50; border: 1px solid #4CAF50; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">Resolved</button>
+            <button type="button" class="btn-sm-status" onclick="app.changeActiveTicketStatus('Closed')"
+              style="background: rgba(158,158,176,0.2); color: #9E9EB0; border: 1px solid #9E9EB0; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">Closed</button>
+            <button type="button" class="btn-sm-status" onclick="app.deleteSupportTicket(app.activeTicketId)"
+              style="background: rgba(229,57,53,0.2); color: #E53935; border: 1px solid #E53935; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;"
+              title="Delete Ticket Permanently"><i class="fa-solid fa-trash-can"></i> Delete</button>
+          </div>
+        </div>
+
+        <form id="ticketReplyForm" onsubmit="app.handleSendTicketMessage(event)" style="display: flex; gap: 8px;">
+          <input type="text" class="form-control" id="ticketReplyInput" placeholder="Type your reply message..."
+            required style="flex: 1;">
+          <button type="submit" class="btn-auth-primary"
+            style="padding: 0 16px; border-radius: var(--radius-md); font-weight: 700; height: 42px;">
+            <i class="fa-solid fa-paper-plane"></i> Send
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Support Widget Button (Bottom Right) -->
+  <div class="floating-support-container">
+    <button class="floating-support-btn" id="btnFloatingSupport" onclick="app.toggleFloatingSupportPopover()"
+      title="Need Help? Contact Support">
+      <i class="fa-solid fa-headset"></i>
+      <span class="floating-support-badge">Help</span>
+    </button>
+
+    <!-- Floating Support Popover Menu -->
+    <div class="floating-support-popover hidden" id="floatingSupportPopover">
+      <div class="popover-header">
+        <img src="images/tiffin_logo.png" class="popover-logo" alt="Logo">
+        <div>
+          <h4>Annapurna Support</h4>
+          <p>How can we help you today?</p>
+        </div>
+      </div>
+      <div class="popover-menu">
+        <button class="popover-menu-item" onclick="app.openSupportFromFloating('ticket')">
+          <i class="fa-solid fa-circle-plus" style="color: var(--primary);"></i>
+          <div>
+            <strong>Raise Support Ticket</strong>
+            <span>Report order issue or complaint</span>
+          </div>
+        </button>
+        <button class="popover-menu-item" onclick="app.openSupportFromFloating('faq')">
+          <i class="fa-solid fa-circle-question" style="color: var(--accent-gold);"></i>
+          <div>
+            <strong>Browse FAQs</strong>
+            <span>Instant answers to quick questions</span>
+          </div>
+        </button>
+        <a href="tel:+919876543210" class="popover-menu-item">
+          <i class="fa-solid fa-phone" style="color: #4CAF50;"></i>
+          <div>
+            <strong>Call Helpline (+91 98765 43210)</strong>
+            <span>Speak directly with our hotel team</span>
+          </div>
+        </a>
+        <a href="https://wa.me/919876543210?text=Hi%20Annapurna%20Tiffin%20Center,%20I%20need%20assistance"
+          target="_blank" class="popover-menu-item">
+          <i class="fa-brands fa-whatsapp" style="color: #25D366;"></i>
+          <div>
+            <strong>WhatsApp Live Chat</strong>
+            <span>Direct message on WhatsApp</span>
+          </div>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lightbox Modal for Payment Screenshots -->
+  <div class="modal-backdrop" id="lightboxModalBackdrop" onclick="app.closeLightbox()">
+    <div class="modal-card"
+      style="max-width: 520px; text-align: center; background: rgba(10, 10, 14, 0.95); border: 1px solid var(--accent-gold);"
+      onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+        <h3 style="color: var(--accent-gold); font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-camera"></i> Customer Payment Screenshot
+        </h3>
+        <button class="icon-btn" onclick="app.closeLightbox()" style="width: 32px; height: 32px;"><i
+            class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div
+        style="padding: 1rem 0; display: flex; justify-content: center; align-items: center; max-height: 70vh; overflow: auto;">
+        <img id="lightboxImg"
+          style="max-width: 100%; max-height: 65vh; border-radius: 10px; border: 2px solid var(--border-color); object-fit: contain; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Smart Order Review & Rating Modal -->
+  <div class="modal-backdrop" id="orderReviewModalBackdrop" onclick="app.closeOrderReviewModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 style="color: var(--accent-gold); font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rate Your Order <span id="reviewOrderNumDisplay" style="color: #FFF;">#TF1037</span>
+        </h3>
+        <button class="icon-btn" onclick="app.closeOrderReviewModal()" style="width: 32px; height: 32px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="modal-body" style="text-align: center; padding-top: 0.5rem;">
+        <!-- 5 Star Interactive Rating Widget -->
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">How was your food and delivery experience?</p>
+        <div id="starRatingContainer" style="display: flex; justify-content: center; gap: 14px; font-size: 2.2rem; cursor: pointer; margin-bottom: 1rem; color: var(--text-muted);">
+          <i class="fa-regular fa-star star-icon" onclick="app.setStarRating(1)" data-star="1"></i>
+          <i class="fa-regular fa-star star-icon" onclick="app.setStarRating(2)" data-star="2"></i>
+          <i class="fa-regular fa-star star-icon" onclick="app.setStarRating(3)" data-star="3"></i>
+          <i class="fa-regular fa-star star-icon" onclick="app.setStarRating(4)" data-star="4"></i>
+          <i class="fa-regular fa-star star-icon" onclick="app.setStarRating(5)" data-star="5"></i>
+        </div>
+
+        <!-- Conditional Dynamic Subheader -->
+        <div id="reviewDynamicHeader" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 0.85rem; margin-bottom: 1rem; font-size: 0.88rem; font-weight: 700; color: #FFF;">
+          Tap a star rating above to begin
+        </div>
+
+        <form id="orderReviewForm" onsubmit="app.submitOrderReview(event)">
+          <!-- Dynamic Issue Tags (Visible ONLY for 1-3 Stars) -->
+          <div id="reviewIssuesContainer" class="hidden" style="margin-bottom: 1rem; text-align: left;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 0.5rem;">
+              Select Issues Experienced (Optional):
+            </label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="filter-chip" onclick="app.toggleReviewIssue('Taste / Quality')">🌶️ Taste / Quality</button>
+              <button type="button" class="filter-chip" onclick="app.toggleReviewIssue('Late Delivery')">⏰ Late Delivery</button>
+              <button type="button" class="filter-chip" onclick="app.toggleReviewIssue('Cold Food')">❄️ Food Temperature</button>
+              <button type="button" class="filter-chip" onclick="app.toggleReviewIssue('Packaging Issue')">📦 Packaging Spill</button>
+              <button type="button" class="filter-chip" onclick="app.toggleReviewIssue('Missing Items')">🔍 Missing Item</button>
+              <button type="button" class="filter-chip" onclick="app.toggleReviewIssue('Chutney / Sambar')">🥥 Chutney Quantity</button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <textarea class="form-control" id="reviewComment" rows="3" placeholder="Tell us more about your food experience..."></textarea>
+          </div>
+
+          <!-- Public Testimonial Opt-in Checkbox (Visible ONLY for 4-5 Stars) -->
+          <div id="reviewPublicOptInBox" class="hidden" style="text-align: left; margin-bottom: 1.25rem; background: rgba(76, 175, 80, 0.1); border: 1px solid rgba(76, 175, 80, 0.3); padding: 10px 14px; border-radius: var(--radius-md);">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: #FFF; cursor: pointer;">
+              <input type="checkbox" id="chkReviewPublic" checked style="width: 16px; height: 16px; accent-color: var(--accent-gold);">
+              Share my review on hotel home page testimonials
+            </label>
+          </div>
+
+          <button type="submit" class="btn-primary-block" id="btnSubmitReview" disabled>
+            <i class="fa-solid fa-paper-plane"></i> Submit Feedback
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Entry Point -->
+  <script src="/js/app.js"></script>
+</body>
+
+</html>
