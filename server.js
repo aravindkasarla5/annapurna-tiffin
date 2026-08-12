@@ -1354,13 +1354,6 @@ app.post('/api/owner/referrals/settings', (req, res) => {
   res.json({ success: true, data: db.settings.referral, message: "Referral program settings saved successfully." });
 });
 
-app.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(` Sri Lakshmi Annapurna Tiffin Center Server Running `);
-  console.log(` URL: http://localhost:${PORT}`);
-  console.log(`====================================================`);
-});
-
 // =========================================================================
 // POST-ORDER REVIEW & RATING API ENDPOINTS
 // =========================================================================
