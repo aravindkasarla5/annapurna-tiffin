@@ -252,12 +252,22 @@ function saveDB(data) {
   }
 }
 
+// 30 Minutes Customer Inactivity Timeout
+const CUSTOMER_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+
 // Generate Auth Token Helper
-function generateToken(userId) {
+function generateToken(userId, role = 'CUSTOMER') {
   const db = loadDB();
+  const user = (db.users || []).find(u => u.id === userId);
+  const userRole = user ? user.role : role;
   const token = 'tok_' + userId + '_' + Date.now() + '_' + crypto.randomBytes(8).toString('hex');
   if (!db.tokens) db.tokens = {};
-  db.tokens[token] = userId;
+  db.tokens[token] = {
+    user_id: userId,
+    role: userRole,
+    created_at: Date.now(),
+    last_activity: Date.now()
+  };
   saveDB(db);
   return token;
 }
@@ -279,15 +289,53 @@ function authenticateToken(req, res, next) {
   }
 
   const db = loadDB();
-  const userId = db.tokens ? db.tokens[token] : null;
+  const tokenEntry = db.tokens ? db.tokens[token] : null;
 
-  if (!userId) {
-    return res.status(401).json({ success: false, message: "Invalid or expired session. Please login again." });
+  if (!tokenEntry) {
+    return res.status(401).json({ success: false, expired: true, message: "Your session has expired. Please log in again." });
   }
+
+  const userId = typeof tokenEntry === 'string' ? tokenEntry : tokenEntry.user_id;
 
   const user = (db.users || []).find(u => u.id === userId);
   if (!user) {
+    if (db.tokens && db.tokens[token]) {
+      delete db.tokens[token];
+      saveDB(db);
+    }
     return res.status(401).json({ success: false, message: "User account not found." });
+  }
+
+  // Enforce session expiration ONLY for CUSTOMER role
+  if (user.role === 'CUSTOMER') {
+    const lastActivity = (typeof tokenEntry === 'object' && tokenEntry.last_activity) ? tokenEntry.last_activity : Date.now();
+    const isBackgroundPoll = req.headers['x-background-poll'] === 'true';
+    const idleDuration = Date.now() - lastActivity;
+
+    if (idleDuration > CUSTOMER_SESSION_TIMEOUT_MS) {
+      delete db.tokens[token];
+      saveDB(db);
+      return res.status(401).json({
+        success: false,
+        expired: true,
+        message: "Your session has expired. Please log in again."
+      });
+    }
+
+    // Update last_activity ONLY for user-initiated non-polling requests
+    if (!isBackgroundPoll) {
+      if (typeof tokenEntry === 'object') {
+        tokenEntry.last_activity = Date.now();
+      } else {
+        db.tokens[token] = {
+          user_id: userId,
+          role: user.role,
+          created_at: Date.now(),
+          last_activity: Date.now()
+        };
+      }
+      saveDB(db);
+    }
   }
 
   req.user = user;
@@ -309,10 +357,33 @@ function optionalAuth(req, res, next) {
 
   if (token) {
     const db = loadDB();
-    const userId = db.tokens ? db.tokens[token] : null;
-    if (userId) {
+    const tokenEntry = db.tokens ? db.tokens[token] : null;
+    if (tokenEntry) {
+      const userId = typeof tokenEntry === 'string' ? tokenEntry : tokenEntry.user_id;
       const user = (db.users || []).find(u => u.id === userId);
       if (user) {
+        if (user.role === 'CUSTOMER') {
+          const lastActivity = (typeof tokenEntry === 'object' && tokenEntry.last_activity) ? tokenEntry.last_activity : Date.now();
+          const idleDuration = Date.now() - lastActivity;
+          if (idleDuration > CUSTOMER_SESSION_TIMEOUT_MS) {
+            delete db.tokens[token];
+            saveDB(db);
+            return next();
+          }
+          if (req.headers['x-background-poll'] !== 'true') {
+            if (typeof tokenEntry === 'object') {
+              tokenEntry.last_activity = Date.now();
+            } else {
+              db.tokens[token] = {
+                user_id: userId,
+                role: user.role,
+                created_at: Date.now(),
+                last_activity: Date.now()
+              };
+            }
+            saveDB(db);
+          }
+        }
         req.user = user;
         req.token = token;
       }
@@ -348,24 +419,28 @@ function sanitizeUser(user) {
 // REST API ROUTES
 // =========================================================================
 
-// AUTH 1. Register User (Customer / Owner)
+// AUTH 1. Register User (Customer Only)
 app.post('/api/auth/register', (req, res) => {
   const db = loadDB();
-  const { name, mobile, password, role, email, address, secret_key } = req.body;
+  const { name, mobile, password, email, address } = req.body;
 
-  if (!name || !mobile || !password || !role) {
-    return res.status(400).json({ success: false, message: "Name, mobile, password, and role are required." });
+  if (!name || !mobile || !password) {
+    return res.status(400).json({ success: false, message: "Name, mobile, and password are required." });
+  }
+
+  if (req.body.role === 'OWNER') {
+    return res.status(400).json({ success: false, message: "Owner registration is not allowed. Single owner account is maintained." });
   }
 
   const cleanMobile = mobile.replace(/[^0-9]/g, '');
 
-  if (role === 'OWNER' && secret_key && secret_key !== '1234') {
-    return res.status(400).json({ success: false, message: "Invalid Hotel Owner Security Key. (Default: 1234)" });
+  if (cleanMobile === '9392874900') {
+    return res.status(400).json({ success: false, message: "This mobile number is reserved for Hotel Owner. Please login." });
   }
 
-  const existing = (db.users || []).find(u => u.mobile.replace(/[^0-9]/g, '') === cleanMobile && u.role === role);
+  const existing = (db.users || []).find(u => u.mobile.replace(/[^0-9]/g, '') === cleanMobile);
   if (existing) {
-    return res.status(400).json({ success: false, message: `Mobile number already registered as ${role}. Please login.` });
+    return res.status(400).json({ success: false, message: "Mobile number already registered. Please login." });
   }
 
   // Generate Unique Referral Code for Customer
@@ -379,7 +454,7 @@ app.post('/api/auth/register', (req, res) => {
     name: name.trim(),
     mobile: mobile.trim(),
     password: password.trim(),
-    role: role,
+    role: 'CUSTOMER',
     email: (email || '').trim(),
     address: (address || '').trim(),
     referral_code: generatedRefCode,
@@ -396,7 +471,7 @@ app.post('/api/auth/register', (req, res) => {
   const submittedRefCode = (req.body.referral_code || '').trim().toUpperCase();
   let refMessage = '';
 
-  if (submittedRefCode && role === 'CUSTOMER') {
+  if (submittedRefCode) {
     const referrer = (db.users || []).find(u => u.referral_code === submittedRefCode && u.role === 'CUSTOMER');
     if (referrer) {
       if (referrer.mobile.replace(/[^0-9]/g, '') === cleanMobile) {
@@ -433,30 +508,41 @@ app.post('/api/auth/register', (req, res) => {
     success: true,
     token: token,
     user: userSafe,
-    message: `Account registered successfully as ${role === 'CUSTOMER' ? 'Customer' : 'Hotel Owner'}!${refMessage}`
+    message: `Account registered successfully!${refMessage}`
   });
 });
 
-// AUTH 2. Login User (Customer / Owner)
+// AUTH 2. Login User (Unified Owner & Customer Authentication)
 app.post('/api/auth/login', (req, res) => {
   const db = loadDB();
-  const { mobile, password, role } = req.body;
+  const rawIdentifier = (req.body.identifier || req.body.mobile || req.body.username || '').toString().trim();
+  const password = (req.body.password || '').toString().trim();
 
-  if (!mobile || !password || !role) {
-    return res.status(400).json({ success: false, message: "Mobile, password, and role are required." });
+  if (!rawIdentifier || !password) {
+    return res.status(400).json({ success: false, message: "Username / Mobile / Email and password are required." });
   }
 
-  const cleanMobile = mobile.replace(/[^0-9]/g, '');
-  const user = (db.users || []).find(u => 
-    u.mobile.replace(/[^0-9]/g, '') === cleanMobile && 
-    u.password === password.trim() && 
-    u.role === role
-  );
+  const cleanIdentifier = rawIdentifier.toLowerCase();
+  const cleanDigits = rawIdentifier.replace(/[^0-9]/g, '');
+
+  const user = (db.users || []).find(u => {
+    if (u.password.trim() !== password) return false;
+
+    const uMobileDigits = u.mobile.replace(/[^0-9]/g, '');
+    const uEmail = (u.email || '').toLowerCase().trim();
+    const uName = (u.name || '').toLowerCase().trim();
+
+    if (cleanDigits && cleanDigits.length >= 7 && uMobileDigits === cleanDigits) return true;
+    if (cleanIdentifier && uEmail && uEmail === cleanIdentifier) return true;
+    if (cleanIdentifier && uName && uName === cleanIdentifier) return true;
+
+    return false;
+  });
 
   if (!user) {
     return res.status(401).json({ 
       success: false, 
-      message: `Invalid credentials or mobile number not registered as ${role}.` 
+      message: "Invalid credentials. Please check your username/phone and password." 
     });
   }
 
@@ -467,11 +553,49 @@ app.post('/api/auth/login', (req, res) => {
     success: true,
     token: token,
     user: userSafe,
-    message: `Welcome back, ${user.name}!`
+    message: user.role === 'OWNER' ? 'Welcome to Hotel Owner Dashboard!' : `Welcome back, ${user.name}!`
   });
 });
 
-// AUTH 3. Get Current User Profile (Me)
+// AUTH 3. Forgot Password
+app.post('/api/auth/forgot-password', (req, res) => {
+  const db = loadDB();
+  const rawIdentifier = (req.body.identifier || req.body.mobile || '').toString().trim();
+  const newPassword = (req.body.new_password || req.body.password || '').toString().trim();
+
+  if (!rawIdentifier || !newPassword) {
+    return res.status(400).json({ success: false, message: "Registered Phone / Email and new password are required." });
+  }
+
+  if (newPassword.length < 4) {
+    return res.status(400).json({ success: false, message: "Password must be at least 4 characters long." });
+  }
+
+  const cleanIdentifier = rawIdentifier.toLowerCase();
+  const cleanDigits = rawIdentifier.replace(/[^0-9]/g, '');
+
+  const user = (db.users || []).find(u => {
+    const uMobileDigits = u.mobile.replace(/[^0-9]/g, '');
+    const uEmail = (u.email || '').toLowerCase().trim();
+    if (cleanDigits && cleanDigits.length >= 7 && uMobileDigits === cleanDigits) return true;
+    if (cleanIdentifier && uEmail && uEmail === cleanIdentifier) return true;
+    return false;
+  });
+
+  if (!user) {
+    return res.status(404).json({ success: false, message: "No account found matching the provided Phone / Email." });
+  }
+
+  user.password = newPassword;
+  saveDB(db);
+
+  res.json({
+    success: true,
+    message: "Password updated successfully! You can now log in with your new password."
+  });
+});
+
+// AUTH 4. Get Current User Profile (Me)
 app.get('/api/auth/me', authenticateToken, (req, res) => {
   res.json({
     success: true,
@@ -479,7 +603,7 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
   });
 });
 
-// AUTH 4. Logout User
+// AUTH 5. Logout User
 app.post('/api/auth/logout', authenticateToken, (req, res) => {
   const db = loadDB();
   if (db.tokens && req.token) {
@@ -1602,6 +1726,75 @@ app.get('/api/reviews/stats', (req, res) => {
       rating_counts: counts,
       recent_reviews: reviews.slice(0, 8)
     }
+  });
+});
+
+// 31. PATCH Toggle Review Public Visibility (Owner Only)
+app.patch('/api/reviews/:id/visibility', authenticateToken, requireRole('OWNER'), (req, res) => {
+  const db = loadDB();
+  const { id } = req.params;
+  const { is_public } = req.body;
+
+  const review = (db.reviews || []).find(r => r.id === id);
+  if (!review) {
+    return res.status(404).json({ success: false, message: "Review not found." });
+  }
+
+  review.is_public = typeof is_public === 'boolean' ? is_public : !review.is_public;
+  saveDB(db);
+
+  res.json({
+    success: true,
+    data: review,
+    message: review.is_public ? "Review is now featured publicly on website!" : "Review hidden from public view."
+  });
+});
+
+// 32. POST Reply to Customer Review (Owner Only)
+app.post('/api/reviews/:id/reply', authenticateToken, requireRole('OWNER'), (req, res) => {
+  const db = loadDB();
+  const { id } = req.params;
+  const { reply_message } = req.body;
+
+  if (!reply_message || !reply_message.trim()) {
+    return res.status(400).json({ success: false, message: "Reply message cannot be empty." });
+  }
+
+  const review = (db.reviews || []).find(r => r.id === id);
+  if (!review) {
+    return res.status(404).json({ success: false, message: "Review not found." });
+  }
+
+  review.owner_reply = {
+    message: reply_message.trim(),
+    created_at: new Date().toISOString()
+  };
+  saveDB(db);
+
+  res.json({
+    success: true,
+    data: review,
+    message: "Owner reply posted successfully!"
+  });
+});
+
+// 33. DELETE Review (Owner Only)
+app.delete('/api/reviews/:id', authenticateToken, requireRole('OWNER'), (req, res) => {
+  const db = loadDB();
+  const { id } = req.params;
+
+  const initialCount = (db.reviews || []).length;
+  db.reviews = (db.reviews || []).filter(r => r.id !== id);
+
+  if (db.reviews.length === initialCount) {
+    return res.status(404).json({ success: false, message: "Review not found." });
+  }
+
+  saveDB(db);
+
+  res.json({
+    success: true,
+    message: "Review deleted successfully."
   });
 });
 

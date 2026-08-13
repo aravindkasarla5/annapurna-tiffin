@@ -33,18 +33,16 @@
       </div>
     </div>
 
-    <!-- Visible Header Navigation Bar (Especially for Tablet & Mobile) -->
-    <nav class="header-nav-links" id="headerNavLinks">
-      <!-- Injected dynamically by JavaScript based on current role -->
-    </nav>
+    <!-- Header Navigation Links (Removed per user request) -->
+    <nav class="header-nav-links hidden" id="headerNavLinks"></nav>
 
     <div class="header-actions">
       <!-- Guest Auth Buttons (Visible ONLY when logged out) -->
       <div id="guestAuthWrapper" class="auth-buttons-wrapper">
-        <button class="btn-auth-primary" id="btnLoginHeader" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')">
+        <button class="btn-auth-primary" id="btnLoginHeader" onclick="app.openAuthModal('LOGIN')">
           <i class="fa-solid fa-right-to-bracket"></i> Login
         </button>
-        <button class="btn-auth-secondary" id="btnRegisterHeader" onclick="app.openAuthModal('CUSTOMER', 'REGISTER')">
+        <button class="btn-auth-secondary" id="btnRegisterHeader" onclick="app.openAuthModal('REGISTER')">
           <i class="fa-solid fa-user-plus"></i> Register
         </button>
       </div>
@@ -128,7 +126,7 @@
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
-          <a class="drawer-item highlight-login" onclick="app.toggleMobileDrawer(false); app.openAuthModal('CUSTOMER', 'LOGIN');">
+          <a class="drawer-item highlight-login" onclick="app.toggleMobileDrawer(false); app.openAuthModal('LOGIN');">
             <div class="drawer-icon-box primary"><i class="fa-solid fa-right-to-bracket"></i></div>
             <div class="drawer-text-group">
               <strong class="drawer-item-title" style="color: var(--accent-gold);">Login / Register</strong>
@@ -1123,6 +1121,83 @@
       </div>
     </section>
 
+    <!-- Owner Customer Reviews & Ratings Management Section -->
+    <section id="secOwnerReviews" class="view-section hidden">
+      <div class="section-header" style="margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews & Ratings Hub</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">View ratings, reply to customer feedback, and manage public featured reviews</p>
+        </div>
+
+        <!-- Filter Tabs Bar -->
+        <div class="owner-order-tabs-bar"
+          style="display: flex; gap: 6px; background: rgba(10,10,14,0.6); padding: 4px; border-radius: var(--radius-full); border: 1px solid var(--border-color); flex-wrap: wrap;">
+          <button type="button" class="tab-pill active" id="tabRevFilterAll" onclick="app.setOwnerReviewFilter('ALL')">All Reviews (<span id="cntRevTabAll">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabRevFilterExcellent" onclick="app.setOwnerReviewFilter('EXCELLENT')">5★ Excellent (<span id="cntRevTab5Star">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabRevFilterGood" onclick="app.setOwnerReviewFilter('GOOD')">4★ Good (<span id="cntRevTab4Star">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabRevFilterIssues" onclick="app.setOwnerReviewFilter('ISSUES')">1-3★ Low Ratings (<span id="cntRevTabIssues">0</span>)</button>
+          <button type="button" class="tab-pill" id="tabRevFilterPublic" onclick="app.setOwnerReviewFilter('PUBLIC')">Featured Public (<span id="cntRevTabPublic">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- Rating Analytics Metrics Grid -->
+      <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card" style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.15), rgba(217, 83, 30, 0.15)); border: 1.5px solid var(--accent-gold);">
+          <div class="stat-header">
+            <span class="stat-label" style="color: var(--accent-gold);">AVERAGE RATING</span>
+            <div class="stat-icon-wrapper" style="background: rgba(234, 162, 33, 0.25); color: var(--accent-gold);">
+              <i class="fa-solid fa-star"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="ownerRevAvgVal" style="color: var(--accent-gold);">5.0 / 5.0</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">TOTAL REVIEWS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(41, 182, 246, 0.15); color: #29B6F6;">
+              <i class="fa-solid fa-comments"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="ownerRevTotalVal" style="color: #29B6F6;">0</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">CUSTOMER SATISFACTION</span>
+            <div class="stat-icon-wrapper" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50;">
+              <i class="fa-solid fa-face-smile"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="ownerRev5StarPct" style="color: #4CAF50;">100%</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-header">
+            <span class="stat-label">ATTENTION ALERTS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(229, 57, 53, 0.15); color: #E53935;">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="ownerRevAlertsVal" style="color: #E53935;">0</div>
+        </div>
+      </div>
+
+      <!-- Rating Star Distribution Bars -->
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <h4 style="font-size: 0.95rem; color: #FFF; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-chart-bar" style="color: var(--accent-gold);"></i> Rating Breakdown & Distribution
+        </h4>
+        <div id="ownerRatingBreakdownContainer" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="orders-list" id="ownerReviewsList">
+        <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
     <!-- Owner Payments Management Section -->
     <section id="secOwnerPayments" class="view-section hidden">
       <div class="section-header"
@@ -1519,13 +1594,82 @@
         </div>
       </div>
 
-      <!-- Owner Tickets Vertical Cards View -->
-      <div class="owner-tickets-grid" id="ownerTicketsCardsContainer">
-        <!-- Rendered by JS -->
-      </div>
-    </section>
+      <!-- Owner Side Customer Reviews & Ratings Management Section -->
+      <section id="secOwnerReviews" class="view-section hidden">
+        <div class="owner-support-header">
+          <div class="owner-support-title-group">
+            <h2 class="section-title"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews & Ratings Hub</h2>
+            <p class="owner-support-sub">Monitor customer ratings, manage public featured reviews, and post official owner responses</p>
+          </div>
+          <button class="btn-secondary-outline" onclick="app.fetchOwnerReviews()"
+            style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; padding: 8px 16px;">
+            <i class="fa-solid fa-rotate"></i> Refresh Reviews
+          </button>
+        </div>
 
-  </main>
+        <!-- Owner Reviews KPI Stats Bar -->
+        <div class="owner-kpi-grid">
+          <div class="owner-kpi-card gold-glow">
+            <div class="kpi-icon-box gold"><i class="fa-solid fa-star"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">Average Rating</span>
+              <h3 class="kpi-value"><span id="ownerAvgRatingVal">0.0</span> <span style="font-size: 1rem; color: var(--accent-gold);">/ 5.0</span></h3>
+            </div>
+          </div>
+
+          <div class="owner-kpi-card blue-glow">
+            <div class="kpi-icon-box blue"><i class="fa-solid fa-comments"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">Total Reviews</span>
+              <h3 class="kpi-value" id="ownerTotalReviewsCount">0</h3>
+            </div>
+          </div>
+
+          <div class="owner-kpi-card green-glow">
+            <div class="kpi-icon-box green"><i class="fa-solid fa-thumbs-up"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">Positive (4-5★)</span>
+              <h3 class="kpi-value" id="ownerPositiveReviewsCount">0</h3>
+            </div>
+          </div>
+
+          <div class="owner-kpi-card red-glow">
+            <div class="kpi-icon-box red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div class="kpi-info">
+              <span class="kpi-label">Critical (1-3★)</span>
+              <h3 class="kpi-value" id="ownerCriticalReviewsCount">0</h3>
+            </div>
+          </div>
+        </div>
+
+        <!-- Owner Reviews Toolbar -->
+        <div class="owner-tkt-toolbar">
+          <div class="filter-chips">
+            <button class="filter-chip active" id="chipOwnerRevAll" onclick="app.filterOwnerReviews('All')">All Reviews</button>
+            <button class="filter-chip" id="chipOwnerRev5" onclick="app.filterOwnerReviews('5')">5 ★</button>
+            <button class="filter-chip" id="chipOwnerRev4" onclick="app.filterOwnerReviews('4')">4 ★</button>
+            <button class="filter-chip" id="chipOwnerRev3" onclick="app.filterOwnerReviews('3')">3 ★</button>
+            <button class="filter-chip" id="chipOwnerRev2" onclick="app.filterOwnerReviews('2')">2 ★</button>
+            <button class="filter-chip" id="chipOwnerRev1" onclick="app.filterOwnerReviews('1')">1 ★</button>
+            <button class="filter-chip" id="chipOwnerRevPublic" onclick="app.filterOwnerReviews('Public')">🌟 Featured Public</button>
+          </div>
+
+          <div class="toolbar-right-controls">
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass search-icon"></i>
+              <input type="text" class="form-control search-input" id="ownerRevSearchInput"
+                placeholder="Search customer, order #, comment..." oninput="app.filterOwnerReviews()">
+            </div>
+          </div>
+        </div>
+
+        <!-- Owner Reviews Vertical Cards View -->
+        <div class="owner-tickets-grid" id="ownerReviewsCardsContainer">
+          <!-- Rendered by JS -->
+        </div>
+      </section>
+
+    </main>
 
   <!-- Site Footer -->
   <footer class="app-footer">
@@ -1863,6 +2007,11 @@
   <div class="modal-backdrop" id="authModalBackdrop" onclick="app.toggleAuthModal(false)">
     <div class="auth-card-wrapper mode-login" id="authModalCard" onclick="event.stopPropagation()">
 
+      <!-- Top-Right Close Modal Button -->
+      <button type="button" class="auth-close-btn" onclick="app.toggleAuthModal(false)" title="Close Modal">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
       <!-- Left Visual Hero Sidebar / Banner -->
       <div class="auth-card-sidebar">
         <div class="auth-sidebar-brand">
@@ -1881,51 +2030,41 @@
 
       <!-- Right Form Main Area -->
       <div class="auth-card-body">
-        <button type="button" class="auth-close-btn" onclick="app.toggleAuthModal(false)"><i
-            class="fa-solid fa-xmark"></i></button>
-
-        <!-- Role Selector (Customer vs Hotel Owner) -->
-        <div class="auth-role-tabs">
-          <button type="button" class="role-tab-btn active" id="btnTabCustomerAuth"
-            onclick="app.switchAuthRole('CUSTOMER')">
-            <i class="fa-solid fa-user"></i> Customer
-          </button>
-          <button type="button" class="role-tab-btn" id="btnTabOwnerAuth" onclick="app.switchAuthRole('OWNER')">
-            <i class="fa-solid fa-user-shield"></i> Hotel Owner
-          </button>
-        </div>
 
         <!-- Mode Toggle (Login vs Register) -->
-        <div class="auth-mode-pills">
+        <div class="auth-mode-pills" id="authModePills">
           <button type="button" class="mode-pill-btn active" id="btnAuthModeLogin" onclick="app.setAuthMode('LOGIN')">
-            <i class="fa-solid fa-key"></i> Existing User Login
+            <i class="fa-solid fa-key"></i> Login
           </button>
           <button type="button" class="mode-pill-btn" id="btnAuthModeRegister" onclick="app.setAuthMode('REGISTER')">
-            <i class="fa-solid fa-user-plus"></i> New User Register
-          </button>
-        </div>
-
-        <!-- Quick Demo Fill Helpers -->
-        <div class="auth-demo-bar">
-          <span style="font-size: 0.72rem; color: var(--text-muted);">Quick Demo:</span>
-          <button type="button" onclick="app.fillDemoAccount('CUSTOMER')" class="demo-chip customer">
-            ⚡ Customer Demo
-          </button>
-          <button type="button" onclick="app.fillDemoAccount('OWNER')" class="demo-chip owner">
-            ⚡ Owner Demo
+            <i class="fa-solid fa-user-plus"></i> Create Account / Register
           </button>
         </div>
 
         <!-- LOGIN FORM -->
         <form id="authLoginForm" class="auth-form" onsubmit="app.handleLoginSubmit(event)">
-          <div class="input-icon-group">
-            <i class="fa-solid fa-mobile-screen input-icon"></i>
-            <input type="tel" class="icon-input" id="loginMobile" placeholder="10-digit mobile number" required>
+          <div class="auth-form-header">
+            <h3 style="color: #FFF; font-family: 'Outfit', sans-serif; font-size: 1.35rem; font-weight: 800; margin-bottom: 0.2rem; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-right-to-bracket" style="color: var(--primary);"></i> LOGIN
+            </h3>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.9rem;">Sign in with your username, phone or email</p>
           </div>
 
           <div class="input-icon-group">
+            <i class="fa-solid fa-user-shield input-icon"></i>
+            <input type="text" class="icon-input" id="loginIdentifier" placeholder="Username, Email or Mobile number" required>
+          </div>
+
+          <div class="input-icon-group password-group">
             <i class="fa-solid fa-lock input-icon"></i>
             <input type="password" class="icon-input" id="loginPassword" placeholder="Enter your password" required>
+            <i class="fa-solid fa-eye toggle-password-icon" id="toggleLoginPassword" onclick="app.togglePasswordVisibility('loginPassword', 'toggleLoginPassword')" title="Toggle password visibility"></i>
+          </div>
+
+          <div class="auth-extra-row">
+            <a href="javascript:void(0)" class="forgot-password-link" onclick="app.setAuthMode('FORGOT_PASSWORD')">
+              <i class="fa-solid fa-circle-question"></i> Forgot Password?
+            </a>
           </div>
 
           <button type="submit" class="auth-submit-btn login-btn" id="btnLoginSubmit">
@@ -1935,6 +2074,12 @@
 
         <!-- REGISTRATION FORM -->
         <form id="authRegisterForm" class="auth-form hidden" onsubmit="app.handleRegisterSubmit(event)">
+          <div class="auth-form-header">
+            <h3 style="color: #FFF; font-family: 'Outfit', sans-serif; font-size: 1.35rem; font-weight: 800; margin-bottom: 0.2rem; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-user-plus" style="color: var(--accent-gold);"></i> CREATE ACCOUNT
+            </h3>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.9rem;">Fill details below to register a new customer account</p>
+          </div>
           <div class="input-icon-group">
             <i class="fa-solid fa-user input-icon"></i>
             <input type="text" class="icon-input" id="regName" placeholder="Full Name (e.g. Suresh Gowda)" required>
@@ -1945,9 +2090,10 @@
             <input type="tel" class="icon-input" id="regMobile" placeholder="10-digit mobile number" required>
           </div>
 
-          <div class="input-icon-group">
+          <div class="input-icon-group password-group">
             <i class="fa-solid fa-lock input-icon"></i>
             <input type="password" class="icon-input" id="regPassword" placeholder="Create password" required>
+            <i class="fa-solid fa-eye toggle-password-icon" id="toggleRegPassword" onclick="app.togglePasswordVisibility('regPassword', 'toggleRegPassword')" title="Toggle password visibility"></i>
           </div>
 
           <div class="input-icon-group">
@@ -1966,16 +2112,38 @@
             <input type="text" class="icon-input" id="regReferralCode" placeholder="Referral Code (Got a code? Get ₹30 OFF)" style="font-family: monospace; font-weight: 700; text-transform: uppercase;">
           </div>
 
-          <!-- Hotel Owner Security PIN Field (Visible only when Registering as Owner) -->
-          <div class="input-icon-group hidden" id="grpSecretKey">
-            <i class="fa-solid fa-shield-halved input-icon" style="color: var(--accent-gold);"></i>
-            <input type="text" class="icon-input" id="regSecretKey" placeholder="Owner Security PIN (Default: 1234)"
-              value="1234">
-          </div>
-
           <button type="submit" class="auth-submit-btn register-btn" id="btnRegisterSubmit">
             <span>Create New Account</span> <i class="fa-solid fa-user-plus"></i>
           </button>
+        </form>
+
+        <!-- FORGOT PASSWORD FORM -->
+        <form id="authForgotPasswordForm" class="auth-form hidden" onsubmit="app.handleForgotPasswordSubmit(event)">
+          <div class="auth-form-header">
+            <h4 style="color: var(--accent-gold); margin-bottom: 4px;"><i class="fa-solid fa-key"></i> Reset Your Password</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">Enter your registered Mobile Number or Email to update your password.</p>
+          </div>
+
+          <div class="input-icon-group">
+            <i class="fa-solid fa-mobile-screen input-icon"></i>
+            <input type="text" class="icon-input" id="forgotIdentifier" placeholder="Registered Mobile or Email" required>
+          </div>
+
+          <div class="input-icon-group password-group">
+            <i class="fa-solid fa-lock input-icon"></i>
+            <input type="password" class="icon-input" id="forgotNewPassword" placeholder="Enter new password" required>
+            <i class="fa-solid fa-eye toggle-password-icon" id="toggleForgotNewPassword" onclick="app.togglePasswordVisibility('forgotNewPassword', 'toggleForgotNewPassword')" title="Toggle password visibility"></i>
+          </div>
+
+          <button type="submit" class="auth-submit-btn login-btn" id="btnForgotSubmit" style="margin-top: 8px;">
+            <span>Reset Password</span> <i class="fa-solid fa-rotate"></i>
+          </button>
+
+          <div class="auth-extra-row" style="justify-content: center; margin-top: 14px;">
+            <a href="javascript:void(0)" class="forgot-password-link" onclick="app.setAuthMode('LOGIN')">
+              <i class="fa-solid fa-arrow-left"></i> Back to Login
+            </a>
+          </div>
         </form>
 
       </div>
@@ -2262,6 +2430,33 @@
 
   <!-- JavaScript Entry Point -->
   <script src="/js/app.js"></script>
+  <!-- Owner Reply to Customer Review Modal -->
+  <div class="modal-backdrop" id="ownerReviewReplyModalBackdrop" onclick="app.closeReviewReplyModal()">
+    <div class="modal-card" style="max-width: 520px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-reply" style="color: var(--accent-gold);"></i> Reply to Customer Review</h3>
+        <button class="icon-btn" onclick="app.closeReviewReplyModal()" style="width: 32px; height: 32px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <form id="ownerReviewReplyForm" onsubmit="app.submitReviewReply(event)">
+          <input type="hidden" id="replyTargetReviewId">
+          <div id="replyTargetReviewSnippet" style="background: rgba(255,255,255,0.03); padding: 10px 14px; border-radius: 8px; border-left: 3px solid var(--accent-gold); margin-bottom: 1rem; font-size: 0.84rem; color: var(--text-muted);">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="form-group">
+            <label>Owner Response Message</label>
+            <textarea class="form-control" id="ownerReplyText" rows="4" placeholder="Type your official owner response to the customer..." required></textarea>
+          </div>
+
+          <button type="submit" class="btn-primary-block" style="margin-top: 1rem; background: linear-gradient(135deg, var(--accent-gold), var(--primary));">
+            <i class="fa-solid fa-paper-plane"></i> Post Owner Reply
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
 </body>
 
 </html>

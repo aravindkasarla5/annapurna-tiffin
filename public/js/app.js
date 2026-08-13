@@ -38,6 +38,10 @@ class TiffinApp {
     this.referralLeaderboard = [];
     this.appliedWalletDiscount = 0;
     this.customerProfile = null;
+    this.ownerReviewFilter = 'All';
+    this.ownerReviews = [];
+    this.lastCustomerActivityTime = Date.now();
+    this.customerInactivityTimer = null;
   }
 
   async fetchWithAuth(url, options = {}) {
@@ -46,11 +50,14 @@ class TiffinApp {
       headers['Authorization'] = `Bearer ${this.authToken}`;
       headers['X-Auth-Token'] = this.authToken;
     }
+    if (options.isBackgroundPoll) {
+      headers['X-Background-Poll'] = 'true';
+    }
     try {
       const res = await fetch(url, { ...options, headers });
       if (res.status === 401 && this.currentUser) {
         console.warn('Session expired or 401 Unauthorized returned for', url);
-        this.logout(true);
+        this.logout(true, true);
       }
       return res;
     } catch (err) {
@@ -94,6 +101,42 @@ class TiffinApp {
 
     // Start 2-second live polling engine for real-time status and availability sync
     this.startPolling();
+
+    // Initialize 30-minute customer inactivity session expiration tracker
+    this.initCustomerInactivityTracker();
+  }
+
+  initCustomerInactivityTracker() {
+    this.lastCustomerActivityTime = Date.now();
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
+    let lastThrottleTime = 0;
+
+    const handleUserActivity = () => {
+      const now = Date.now();
+      if (now - lastThrottleTime > 1000) {
+        lastThrottleTime = now;
+        if (this.currentUser && this.currentUser.role === 'CUSTOMER') {
+          this.lastCustomerActivityTime = now;
+        }
+      }
+    };
+
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    if (this.customerInactivityTimer) clearInterval(this.customerInactivityTimer);
+    this.customerInactivityTimer = setInterval(() => {
+      if (this.currentUser && this.currentUser.role === 'CUSTOMER') {
+        const idleMs = Date.now() - this.lastCustomerActivityTime;
+        // Exactly 30 minutes (30 * 60 * 1000 ms)
+        if (idleMs >= 30 * 60 * 1000) {
+          console.warn('Customer 30-minute inactivity threshold reached. Expiring session...');
+          this.logout(true, true);
+        }
+      }
+    }, 5000);
   }
 
   async loadCustomerUserData() {
@@ -257,10 +300,8 @@ class TiffinApp {
   // AUTHENTICATION & ROLE MANAGEMENT
   // =========================================================================
 
-  openAuthModal(role = 'CUSTOMER', mode = 'LOGIN') {
-    this.authRole = role;
+  openAuthModal(mode = 'LOGIN') {
     this.authMode = mode;
-    this.switchAuthRole(role);
     this.setAuthMode(mode);
     this.toggleAuthModal(true);
   }
@@ -269,68 +310,60 @@ class TiffinApp {
     document.getElementById('authModalBackdrop').classList.toggle('open', open);
   }
 
-  switchAuthRole(role) {
-    this.authRole = role;
-    document.getElementById('btnTabCustomerAuth').classList.toggle('active', role === 'CUSTOMER');
-    document.getElementById('btnTabOwnerAuth').classList.toggle('active', role === 'OWNER');
-
-    const secKeyGrp = document.getElementById('grpSecretKey');
-    if (secKeyGrp) secKeyGrp.classList.toggle('hidden', role !== 'OWNER');
-
-    const btnLoginSubmit = document.getElementById('btnLoginSubmit');
-    const btnRegisterSubmit = document.getElementById('btnRegisterSubmit');
-
-    if (btnLoginSubmit) {
-      btnLoginSubmit.innerHTML = `<span>Login as ${role === 'CUSTOMER' ? 'Customer' : 'Hotel Owner'}</span> <i class="fa-solid fa-arrow-right"></i>`;
-    }
-    if (btnRegisterSubmit) {
-      btnRegisterSubmit.innerHTML = `<span>Create ${role === 'CUSTOMER' ? 'Customer' : 'Hotel Owner'} Account</span> <i class="fa-solid fa-user-plus"></i>`;
-    }
-  }
-
   setAuthMode(mode) {
     this.authMode = mode;
     const card = document.getElementById('authModalCard');
     const btnLogin = document.getElementById('btnAuthModeLogin');
     const btnRegister = document.getElementById('btnAuthModeRegister');
+    const modePills = document.getElementById('authModePills');
 
     if (card) {
-      card.classList.toggle('mode-login', mode === 'LOGIN');
+      card.classList.toggle('mode-login', mode === 'LOGIN' || mode === 'FORGOT_PASSWORD');
       card.classList.toggle('mode-register', mode === 'REGISTER');
+    }
+
+    if (modePills) {
+      modePills.classList.toggle('hidden', mode === 'FORGOT_PASSWORD');
     }
 
     if (btnLogin) btnLogin.classList.toggle('active', mode === 'LOGIN');
     if (btnRegister) btnRegister.classList.toggle('active', mode === 'REGISTER');
 
-    document.getElementById('authLoginForm').classList.toggle('hidden', mode !== 'LOGIN');
-    document.getElementById('authRegisterForm').classList.toggle('hidden', mode !== 'REGISTER');
+    const formLogin = document.getElementById('authLoginForm');
+    const formRegister = document.getElementById('authRegisterForm');
+    const formForgot = document.getElementById('authForgotPasswordForm');
+
+    if (formLogin) formLogin.classList.toggle('hidden', mode !== 'LOGIN');
+    if (formRegister) formRegister.classList.toggle('hidden', mode !== 'REGISTER');
+    if (formForgot) formForgot.classList.toggle('hidden', mode !== 'FORGOT_PASSWORD');
   }
 
-  fillDemoAccount(role) {
-    this.switchAuthRole(role);
-    this.setAuthMode('LOGIN');
+  togglePasswordVisibility(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    if (!input || !icon) return;
 
-    if (role === 'CUSTOMER') {
-      document.getElementById('loginMobile').value = '';
-      document.getElementById('loginPassword').value = '';
-      this.showToast('Please enter your registered customer mobile number & password.', 'info');
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.classList.remove('fa-eye');
+      icon.classList.add('fa-eye-slash');
     } else {
-      document.getElementById('loginMobile').value = '9876543210';
-      document.getElementById('loginPassword').value = 'owner123';
-      this.showToast('Filled Hotel Owner demo credentials', 'info');
+      input.type = 'password';
+      icon.classList.remove('fa-eye-slash');
+      icon.classList.add('fa-eye');
     }
   }
 
   async handleLoginSubmit(e) {
     e.preventDefault();
-    const mobile = document.getElementById('loginMobile').value;
-    const password = document.getElementById('loginPassword').value;
+    const identifier = document.getElementById('loginIdentifier')?.value || document.getElementById('loginMobile')?.value || '';
+    const password = document.getElementById('loginPassword')?.value || '';
 
     try {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile, password, role: this.authRole })
+        body: JSON.stringify({ identifier, password })
       });
       const json = await res.json();
 
@@ -366,11 +399,10 @@ class TiffinApp {
     const password = document.getElementById('regPassword').value;
     const email = document.getElementById('regEmail').value;
     const address = document.getElementById('regAddress').value;
-    const secret_key = document.getElementById('regSecretKey')?.value;
     const referral_code = document.getElementById('regReferralCode')?.value.trim();
 
     const payload = {
-      name, mobile, password, role: this.authRole, email, address, secret_key, referral_code
+      name, mobile, password, email, address, referral_code
     };
 
     try {
@@ -414,7 +446,39 @@ class TiffinApp {
     }
   }
 
-  logout(sessionExpired = false) {
+  async handleForgotPasswordSubmit(e) {
+    e.preventDefault();
+    const identifier = document.getElementById('forgotIdentifier')?.value || '';
+    const new_password = document.getElementById('forgotNewPassword')?.value || '';
+
+    if (!identifier || !new_password) {
+      this.showToast('Please enter your registered phone/email and new password.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, new_password })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message, 'success');
+        document.getElementById('forgotIdentifier').value = '';
+        document.getElementById('forgotNewPassword').value = '';
+        this.setAuthMode('LOGIN');
+      } else {
+        this.showToast(json.message || 'Password reset failed', 'error');
+      }
+    } catch (err) {
+      console.error('Error resetting password:', err);
+      this.showToast('Server communication error.', 'error');
+    }
+  }
+
+  logout(sessionExpired = false, isExpired = false) {
     if (this.authToken) {
       fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
@@ -439,8 +503,9 @@ class TiffinApp {
     localStorage.removeItem('tiffin_user');
     sessionStorage.clear();
 
-    if (sessionExpired) {
-      this.showToast('Session expired. Please login again.', 'info');
+    if (sessionExpired || isExpired) {
+      this.showToast('Your session has expired. Please log in again.', 'warning');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
     } else {
       this.showToast('Logged out successfully.', 'info');
     }
@@ -701,6 +766,7 @@ class TiffinApp {
           <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
           <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
           <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders Management</a>
+          <a class="nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews</a>
           <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
           <a class="nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')"><i class="fa-solid fa-headset"></i> Support Inbox</a>
           <a class="nav-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.switchView('secOwnerSettings')"><i class="fa-solid fa-sliders"></i> Business Settings</a>
@@ -738,8 +804,8 @@ class TiffinApp {
           <a class="bottom-nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')">
             <i class="fa-solid fa-list-check"></i> <span>Orders</span>
           </a>
-          <a class="bottom-nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')">
-            <i class="fa-solid fa-headset"></i> <span>Support</span>
+          <a class="bottom-nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')">
+            <i class="fa-solid fa-star"></i> <span>Reviews</span>
           </a>
           <a class="bottom-nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')">
             <i class="fa-solid fa-wallet"></i> <span>Payments</span>
@@ -755,57 +821,8 @@ class TiffinApp {
   renderHeaderNavLinks() {
     const navContainer = document.getElementById('headerNavLinks');
     if (!navContainer) return;
-
-    if (!this.currentUser) {
-      navContainer.innerHTML = `
-        <a class="header-nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')">
-          <i class="fa-solid fa-house"></i> <span>Home</span>
-        </a>
-        <a class="header-nav-item" onclick="app.scrollToMenu()">
-          <i class="fa-solid fa-utensils"></i> <span>Menu</span>
-        </a>
-        <a class="header-nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')">
-          <i class="fa-solid fa-headset"></i> <span>Support</span>
-        </a>
-      `;
-      return;
-    }
-
-    const isCustomer = this.currentRole === 'CUSTOMER';
-    if (isCustomer) {
-      navContainer.innerHTML = `
-        <a class="header-nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')">
-          <i class="fa-solid fa-house"></i> <span>Home</span>
-        </a>
-        <a class="header-nav-item" onclick="app.scrollToMenu()">
-          <i class="fa-solid fa-utensils"></i> <span>Menu</span>
-        </a>
-        <a class="header-nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')">
-          <i class="fa-solid fa-receipt"></i> <span>Orders</span>
-        </a>
-        <a class="header-nav-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.switchView('secCustomerReferral')">
-          <i class="fa-solid fa-gift"></i> <span>Referral</span>
-        </a>
-        <a class="header-nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')">
-          <i class="fa-solid fa-headset"></i> <span>Support</span>
-        </a>
-      `;
-    } else {
-      navContainer.innerHTML = `
-        <a class="header-nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')">
-          <i class="fa-solid fa-chart-line"></i> <span>Dashboard</span>
-        </a>
-        <a class="header-nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')">
-          <i class="fa-solid fa-utensils"></i> <span>Menu</span>
-        </a>
-        <a class="header-nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')">
-          <i class="fa-solid fa-list-check"></i> <span>Orders</span>
-        </a>
-        <a class="header-nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')">
-          <i class="fa-solid fa-headset"></i> <span>Support</span>
-        </a>
-      `;
-    }
+    navContainer.innerHTML = '';
+    navContainer.classList.add('hidden');
   }
 
   scrollToMenu() {
@@ -1088,6 +1105,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerReviews');">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-star"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Customer Reviews</strong>
+              <span class="drawer-item-sub">View feedback, reply & feature</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerPayments');">
             <div class="drawer-icon-box purple"><i class="fa-solid fa-wallet"></i></div>
             <div class="drawer-text-group">
@@ -1214,6 +1240,7 @@ class TiffinApp {
     }
     if (this.activeView === 'secOwnerTiffins') this.renderMenu();
     if (this.activeView === 'secOwnerOrders') this.renderOrders();
+    if (this.activeView === 'secOwnerReviews') this.fetchOwnerReviews();
     if (this.activeView === 'secOwnerPayments') {
       this.fetchPayments();
       this.renderPayments();
@@ -1475,7 +1502,7 @@ class TiffinApp {
   addToCart(itemId) {
     if (!this.currentUser) {
       this.showToast('Please Login or Register to add items to cart & order food!', 'error');
-      this.openAuthModal('CUSTOMER', 'LOGIN');
+      this.openAuthModal('LOGIN');
       return;
     }
 
@@ -2775,7 +2802,7 @@ class TiffinApp {
 
   async updateOrderStatus(orderId, newStatus) {
     try {
-      const res = await fetch(`${API_BASE}/orders/${orderId}/status`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_status: newStatus })
@@ -2785,9 +2812,12 @@ class TiffinApp {
         this.showToast(json.message, 'success');
         await this.fetchOrders();
         await this.fetchStats();
+      } else {
+        this.showToast(json.message || 'Failed to update order status', 'error');
       }
     } catch (err) {
       console.error('Error updating order status:', err);
+      this.showToast('Failed to update order status.', 'error');
     }
   }
 
@@ -2857,13 +2887,13 @@ class TiffinApp {
     try {
       let res, json;
       if (id) {
-        res = await fetch(`${API_BASE}/menu/${id}`, {
+        res = await this.fetchWithAuth(`${API_BASE}/menu/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
       } else {
-        res = await fetch(`${API_BASE}/menu`, {
+        res = await this.fetchWithAuth(`${API_BASE}/menu`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -2885,7 +2915,7 @@ class TiffinApp {
 
   async toggleItemAvailability(itemId, isAvailable) {
     try {
-      const res = await fetch(`${API_BASE}/menu/${itemId}/availability`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu/${itemId}/availability`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_available: isAvailable })
@@ -2908,7 +2938,7 @@ class TiffinApp {
     if (!confirm(`Are you sure you want to delete ${item.name}?`)) return;
 
     try {
-      const res = await fetch(`${API_BASE}/menu/${itemId}`, { method: 'DELETE' });
+      const res = await this.fetchWithAuth(`${API_BASE}/menu/${itemId}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message, 'success');
@@ -2926,7 +2956,7 @@ class TiffinApp {
     if (!confirm(`Are you sure you want to delete Order #${order.order_number}? This action cannot be undone.`)) return;
 
     try {
-      const res = await fetch(`${API_BASE}/orders/${order.id}`, { method: 'DELETE' });
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${order.id}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message, 'success');
@@ -2947,7 +2977,7 @@ class TiffinApp {
     if (!confirm(`Are you sure you want to delete Support Ticket #${ticket.ticket_number}?`)) return;
 
     try {
-      const res = await fetch(`${API_BASE}/support/tickets/${ticket.id}`, { method: 'DELETE' });
+      const res = await this.fetchWithAuth(`${API_BASE}/support/tickets/${ticket.id}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message, 'success');
@@ -3470,7 +3500,7 @@ class TiffinApp {
 
   async updatePaymentStatus(paymentId, newStatus) {
     try {
-      const res = await fetch(`${API_BASE}/payments/${paymentId}/status`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/payments/${paymentId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payment_status: newStatus })
@@ -3479,6 +3509,8 @@ class TiffinApp {
       if (json.success) {
         this.showToast(json.message, 'success');
         await this.fetchPayments();
+      } else {
+        this.showToast(json.message || 'Failed to update payment status', 'error');
       }
     } catch (err) {
       console.error('Error updating payment status:', err);
@@ -3521,7 +3553,7 @@ class TiffinApp {
 
   async saveBusinessSettingsDirect() {
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(this.settings)
@@ -3530,6 +3562,8 @@ class TiffinApp {
       if (json.success) {
         this.updateHeaderAndSettingsUI();
         this.showToast(`Hotel status updated to ${this.settings.is_open ? 'OPEN' : 'CLOSED'}`, 'info');
+      } else {
+        this.showToast(json.message || 'Failed to update hotel status', 'error');
       }
     } catch (err) {
       console.error('Error updating hotel status:', err);
@@ -3553,7 +3587,7 @@ class TiffinApp {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -3564,6 +3598,8 @@ class TiffinApp {
         this.tempOwnerQrCode = null;
         this.updateHeaderAndSettingsUI();
         this.showToast('Business settings & UPI QR Scanner saved successfully.', 'success');
+      } else {
+        this.showToast(json.message || 'Failed to save settings', 'error');
       }
     } catch (err) {
       console.error('Error saving settings:', err);
@@ -3644,7 +3680,7 @@ class TiffinApp {
 
   async markNotificationsRead() {
     try {
-      await fetch(`${API_BASE}/notifications/read-all`, {
+      await this.fetchWithAuth(`${API_BASE}/notifications/read-all`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: this.currentRole })
@@ -3676,17 +3712,32 @@ class TiffinApp {
     }, 3500);
   }
 
-  saveCustomerProfile(e) {
+  async saveCustomerProfile(e) {
     e.preventDefault();
-    this.customerProfile.name = document.getElementById('profNameInput').value;
-    this.customerProfile.phone = document.getElementById('profPhoneInput').value;
-    this.customerProfile.email = document.getElementById('profEmailInput').value;
-    this.customerProfile.address = document.getElementById('profAddressInput').value;
+    const name = document.getElementById('profNameInput')?.value || '';
+    const phone = document.getElementById('profPhoneInput')?.value || '';
+    const email = document.getElementById('profEmailInput')?.value || '';
+    const address = document.getElementById('profAddressInput')?.value || '';
 
-    document.getElementById('profNameDisplay').innerText = this.customerProfile.name;
-    document.getElementById('profPhoneDisplay').innerText = this.customerProfile.phone;
-
-    this.showToast('Profile updated successfully.', 'success');
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, mobile: phone, email, address })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.currentUser = json.data;
+        localStorage.setItem('tiffin_user', JSON.stringify(json.data));
+        this.showToast('Profile updated successfully.', 'success');
+        this.updateUserAuthBadgeUI();
+      } else {
+        this.showToast(json.message || 'Failed to update profile', 'error');
+      }
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      this.showToast('Server communication error.', 'error');
+    }
   }
 
   // =========================================================================
@@ -3716,7 +3767,7 @@ class TiffinApp {
         url += `&user_id=${this.currentUser.id}&mobile=${this.currentUser.mobile}`;
       }
 
-      const res = await fetch(url);
+      const res = await this.fetchWithAuth(url);
       const json = await res.json();
       if (json.success) {
         this.supportTickets = json.data;
@@ -3863,7 +3914,7 @@ class TiffinApp {
     const message = document.getElementById('tktFormMessage').value;
 
     try {
-      const res = await fetch(`${API_BASE}/support/tickets`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/support/tickets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4014,7 +4065,7 @@ class TiffinApp {
     const sender_name = this.currentUser ? this.currentUser.name : (sender_role === 'OWNER' ? 'Lakshmi Narayana (Owner)' : 'Customer');
 
     try {
-      const res = await fetch(`${API_BASE}/support/tickets/${this.activeTicketId}/messages`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/support/tickets/${this.activeTicketId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sender_role, sender_name, message })
@@ -4043,7 +4094,7 @@ class TiffinApp {
   async changeActiveTicketStatus(newStatus) {
     if (!this.activeTicketId) return;
     try {
-      const res = await fetch(`${API_BASE}/support/tickets/${this.activeTicketId}/status`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/support/tickets/${this.activeTicketId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -4390,7 +4441,7 @@ class TiffinApp {
     const newState = !currentState;
 
     try {
-      const res = await fetch(`${API_BASE}/referrals/privacy`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/referrals/privacy`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4554,7 +4605,7 @@ class TiffinApp {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/reviews`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -4588,6 +4639,369 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Error fetching review stats:', err);
+    }
+  }
+
+  // =========================================================================
+  // OWNER SIDE REVIEWS & RATINGS MANAGEMENT METHODS
+  // =========================================================================
+
+  async fetchOwnerReviews(silent = false) {
+    if (this.currentRole !== 'OWNER') return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/reviews`);
+      const json = await res.json();
+      if (json.success) {
+        this.ownerReviews = json.data || [];
+        this.renderOwnerReviews();
+        this.fetchReviewStats();
+      }
+    } catch (err) {
+      console.error('Error fetching owner reviews:', err);
+    }
+  }
+
+  setOwnerReviewFilter(filterVal) {
+    if (filterVal !== undefined) {
+      this.ownerReviewFilter = filterVal;
+    }
+    this.renderOwnerReviews();
+  }
+
+  filterOwnerReviews(filterVal) {
+    if (filterVal !== undefined) {
+      this.ownerReviewFilter = filterVal;
+    }
+    this.renderOwnerReviews();
+  }
+
+  renderOwnerReviews() {
+    const list1 = document.getElementById('ownerReviewsList');
+    const list2 = document.getElementById('ownerReviewsCardsContainer');
+    if (!list1 && !list2) return;
+
+    const reviews = this.ownerReviews || [];
+
+    // Calculate KPI Stats
+    const totalCount = reviews.length;
+    const count5Star = reviews.filter(r => Math.round(Number(r.rating)) === 5).length;
+    const count4Star = reviews.filter(r => Math.round(Number(r.rating)) === 4).length;
+    const count3Star = reviews.filter(r => Math.round(Number(r.rating)) === 3).length;
+    const count2Star = reviews.filter(r => Math.round(Number(r.rating)) === 2).length;
+    const count1Star = reviews.filter(r => Math.round(Number(r.rating)) === 1).length;
+    const countPublic = reviews.filter(r => r.is_public).length;
+    const criticalCount = reviews.filter(r => Number(r.rating) <= 3).length;
+    const positiveCount = count5Star + count4Star;
+
+    const sumRating = reviews.reduce((s, r) => s + (Number(r.rating) || 5), 0);
+    const avgRating = totalCount > 0 ? (sumRating / totalCount).toFixed(1) : '5.0';
+    const pct5Star = totalCount > 0 ? Math.round((positiveCount / totalCount) * 100) : 100;
+
+    // Update KPI Stat Elements
+    const elAvg1 = document.getElementById('ownerRevAvgVal');
+    const elAvg2 = document.getElementById('ownerAvgRatingVal');
+    const elTotal1 = document.getElementById('ownerRevTotalVal');
+    const elTotal2 = document.getElementById('ownerTotalReviewsCount');
+    const elPct = document.getElementById('ownerRev5StarPct');
+    const elAlerts = document.getElementById('ownerRevAlertsVal');
+    const elPos = document.getElementById('ownerPositiveReviewsCount');
+    const elCrit = document.getElementById('ownerCriticalReviewsCount');
+
+    if (elAvg1) elAvg1.innerText = `${avgRating} / 5.0`;
+    if (elAvg2) elAvg2.innerText = avgRating;
+    if (elTotal1) elTotal1.innerText = totalCount;
+    if (elTotal2) elTotal2.innerText = totalCount;
+    if (elPct) elPct.innerText = `${pct5Star}%`;
+    if (elAlerts) elAlerts.innerText = criticalCount;
+    if (elPos) elPos.innerText = positiveCount;
+    if (elCrit) elCrit.innerText = criticalCount;
+
+    // Update Filter Tab Badges
+    const cntAll = document.getElementById('cntRevTabAll');
+    const cnt5 = document.getElementById('cntRevTab5Star');
+    const cnt4 = document.getElementById('cntRevTab4Star');
+    const cntIss = document.getElementById('cntRevTabIssues');
+    const cntPub = document.getElementById('cntRevTabPublic');
+
+    if (cntAll) cntAll.innerText = totalCount;
+    if (cnt5) cnt5.innerText = count5Star;
+    if (cnt4) cnt4.innerText = count4Star;
+    if (cntIss) cntIss.innerText = criticalCount;
+    if (cntPub) cntPub.innerText = countPublic;
+
+    // Update Tab Active Classes
+    const filterKey = (this.ownerReviewFilter || 'ALL').toUpperCase();
+    const mapTabs = {
+      'ALL': ['tabRevFilterAll', 'chipOwnerRevAll'],
+      'EXCELLENT': ['tabRevFilterExcellent', 'chipOwnerRev5'],
+      '5': ['tabRevFilterExcellent', 'chipOwnerRev5'],
+      'GOOD': ['tabRevFilterGood', 'chipOwnerRev4'],
+      '4': ['tabRevFilterGood', 'chipOwnerRev4'],
+      '3': ['chipOwnerRev3'],
+      '2': ['chipOwnerRev2'],
+      '1': ['chipOwnerRev1'],
+      'ISSUES': ['tabRevFilterIssues', 'chipOwnerRev3', 'chipOwnerRev2', 'chipOwnerRev1'],
+      'PUBLIC': ['tabRevFilterPublic', 'chipOwnerRevPublic']
+    };
+
+    document.querySelectorAll('.tab-pill, .filter-chip').forEach(el => el.classList.remove('active'));
+    const activeIds = mapTabs[filterKey] || ['tabRevFilterAll', 'chipOwnerRevAll'];
+    activeIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('active');
+    });
+
+    // Render Rating Breakdown Progress Bars
+    const breakdownBox = document.getElementById('ownerRatingBreakdownContainer');
+    if (breakdownBox) {
+      const starCounts = [
+        { stars: 5, count: count5Star, label: '5 Stars' },
+        { stars: 4, count: count4Star, label: '4 Stars' },
+        { stars: 3, count: count3Star, label: '3 Stars' },
+        { stars: 2, count: count2Star, label: '2 Stars' },
+        { stars: 1, count: count1Star, label: '1 Star' }
+      ];
+
+      breakdownBox.innerHTML = starCounts.map(item => {
+        const pct = totalCount > 0 ? Math.round((item.count / totalCount) * 100) : 0;
+        const color = item.stars >= 4 ? 'var(--accent-gold)' : item.stars === 3 ? '#29B6F6' : '#FF5252';
+        return `
+          <div style="display: flex; align-items: center; gap: 12px; font-size: 0.82rem;">
+            <span style="width: 55px; color: var(--text-muted); font-weight: 600;">${item.label}</span>
+            <div style="flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;">
+              <div style="width: ${pct}%; height: 100%; background: ${color}; border-radius: 4px; transition: width 0.4s ease;"></div>
+            </div>
+            <span style="width: 70px; text-align: right; color: var(--text-muted);">${item.count} (${pct}%)</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Filter Reviews List
+    const searchQuery = (document.getElementById('ownerRevSearchInput')?.value || '').toLowerCase().trim();
+    let filtered = [...reviews];
+
+    if (filterKey === 'EXCELLENT' || filterKey === '5') {
+      filtered = filtered.filter(r => Math.round(Number(r.rating)) === 5);
+    } else if (filterKey === 'GOOD' || filterKey === '4') {
+      filtered = filtered.filter(r => Math.round(Number(r.rating)) === 4);
+    } else if (filterKey === '3') {
+      filtered = filtered.filter(r => Math.round(Number(r.rating)) === 3);
+    } else if (filterKey === '2') {
+      filtered = filtered.filter(r => Math.round(Number(r.rating)) === 2);
+    } else if (filterKey === '1') {
+      filtered = filtered.filter(r => Math.round(Number(r.rating)) === 1);
+    } else if (filterKey === 'ISSUES') {
+      filtered = filtered.filter(r => Number(r.rating) <= 3);
+    } else if (filterKey === 'PUBLIC') {
+      filtered = filtered.filter(r => r.is_public);
+    }
+
+    if (searchQuery) {
+      filtered = filtered.filter(r =>
+        (r.customer_name || '').toLowerCase().includes(searchQuery) ||
+        (r.customer_mobile || '').toLowerCase().includes(searchQuery) ||
+        (r.order_number || '').toLowerCase().includes(searchQuery) ||
+        (r.comment || '').toLowerCase().includes(searchQuery)
+      );
+    }
+
+    let cardsHtml = '';
+    if (!filtered.length) {
+      cardsHtml = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg);">
+          <div style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 0.5rem;"><i class="fa-regular fa-star-half-stroke"></i></div>
+          <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.35rem;">No Customer Reviews Found</h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem; max-width: 400px; margin: 0 auto;">No reviews match the selected filter "${this.ownerReviewFilter}". When customers place orders and leave star feedback, they will appear here.</p>
+        </div>
+      `;
+    } else {
+      cardsHtml = filtered.map(r => {
+        const initial = (r.customer_name || 'C').charAt(0).toUpperCase();
+        const numRating = Number(r.rating) || 5;
+        const formattedDate = r.created_at ? new Date(r.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Recently';
+
+        let starsHtml = '';
+        for (let i = 1; i <= 5; i++) {
+          if (i <= numRating) {
+            starsHtml += '<i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> ';
+          } else {
+            starsHtml += '<i class="fa-regular fa-star" style="color: var(--text-muted);"></i> ';
+          }
+        }
+
+        const issuesHtml = (r.issues && r.issues.length)
+          ? `<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+              ${r.issues.map(iss => `<span style="font-size: 0.72rem; background: rgba(255, 82, 82, 0.15); color: #FF5252; border: 1px solid rgba(255, 82, 82, 0.3); padding: 2px 8px; border-radius: 12px;"><i class="fa-solid fa-circle-exclamation"></i> ${iss}</span>`).join('')}
+             </div>`
+          : '';
+
+        const ownerReplyHtml = r.owner_reply
+          ? `<div style="margin-top: 12px; background: rgba(255, 179, 0, 0.08); border-left: 3px solid var(--accent-gold); padding: 10px 12px; border-radius: 6px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <span style="font-size: 0.76rem; font-weight: 800; color: var(--accent-gold);"><i class="fa-solid fa-store"></i> Owner Response</span>
+                <span style="font-size: 0.7rem; color: var(--text-muted);">${r.owner_reply.created_at ? new Date(r.owner_reply.created_at).toLocaleDateString('en-IN') : ''}</span>
+              </div>
+              <p style="font-size: 0.84rem; color: var(--text-main); margin: 0; line-height: 1.4;">${r.owner_reply.message}</p>
+             </div>`
+          : '';
+
+        const publicChipHtml = r.is_public
+          ? `<span style="font-size: 0.72rem; font-weight: 700; background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.3); padding: 3px 10px; border-radius: 12px;"><i class="fa-solid fa-eye"></i> Featured Public</span>`
+          : `<span style="font-size: 0.72rem; font-weight: 700; background: rgba(255, 255, 255, 0.06); color: var(--text-muted); border: 1px solid var(--border-color); padding: 3px 10px; border-radius: 12px;"><i class="fa-solid fa-eye-slash"></i> Internal Only</span>`;
+
+        return `
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; box-shadow: var(--shadow-sm); margin-bottom: 12px;">
+            <div>
+              <!-- Header: Customer Info & Rating -->
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 42px; height: 42px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #FFF; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem; border: 2px solid rgba(255,255,255,0.15);">
+                    ${initial}
+                  </div>
+                  <div>
+                    <strong style="color: #FFF; font-size: 0.95rem; display: block;">${r.customer_name || 'Customer'}</strong>
+                    <span style="font-size: 0.76rem; color: var(--text-muted);"><i class="fa-solid fa-mobile-screen"></i> ${r.customer_mobile || '---'} • <span style="color: var(--accent-gold);">#${r.order_number}</span></span>
+                  </div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 0.9rem; margin-bottom: 2px;">${starsHtml}</div>
+                  <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">${formattedDate}</span>
+                </div>
+              </div>
+
+              <!-- Review Comment -->
+              <p style="font-size: 0.88rem; color: var(--text-main); line-height: 1.45; background: rgba(0,0,0,0.2); padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.05); margin: 6px 0 0 0;">
+                "${r.comment ? r.comment : 'Customer left a ' + numRating + '-star rating.'}"
+              </p>
+
+              ${issuesHtml}
+              ${ownerReplyHtml}
+            </div>
+
+            <!-- Footer Actions & Public Toggle -->
+            <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 4px; gap: 8px; flex-wrap: wrap;">
+              <div>${publicChipHtml}</div>
+              
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn-text-action" onclick="app.toggleOwnerReviewVisibility('${r.id}', ${r.is_public})" title="${r.is_public ? 'Hide from public website' : 'Feature publicly on website'}">
+                  <i class="fa-solid ${r.is_public ? 'fa-eye-slash' : 'fa-star'}"></i> ${r.is_public ? 'Unfeature' : 'Feature'}
+                </button>
+
+                <button type="button" class="btn-text-action" onclick="app.openReviewReplyModal('${r.id}')" style="color: var(--accent-gold);" title="Reply to this review">
+                  <i class="fa-solid fa-reply"></i> ${r.owner_reply ? 'Edit Reply' : 'Reply'}
+                </button>
+
+                <button type="button" class="btn-text-action danger" onclick="app.deleteOwnerReview('${r.id}')" title="Delete review">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    if (list1) list1.innerHTML = cardsHtml;
+    if (list2) list2.innerHTML = cardsHtml;
+  }
+
+  async toggleOwnerReviewVisibility(reviewId, currentStatus) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/reviews/${reviewId}/visibility`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_public: !currentStatus })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message, 'success');
+        await this.fetchOwnerReviews(true);
+      } else {
+        this.showToast(json.message || 'Failed to update review visibility.', 'error');
+      }
+    } catch (err) {
+      console.error('Error toggling review visibility:', err);
+      this.showToast('Server communication error.', 'error');
+    }
+  }
+
+  openReviewReplyModal(reviewId) {
+    const review = (this.ownerReviews || []).find(r => r.id === reviewId);
+    if (!review) return;
+
+    const inputId = document.getElementById('replyTargetReviewId');
+    const snippet = document.getElementById('replyTargetReviewSnippet');
+    const replyText = document.getElementById('ownerReplyText');
+
+    if (inputId) inputId.value = review.id;
+
+    if (snippet) {
+      snippet.innerHTML = `
+        <strong>${review.customer_name}</strong> (#${review.order_number}) — ${review.rating} ★<br>
+        <span style="font-style: italic;">"${review.comment || 'No detailed comment'}"</span>
+      `;
+    }
+
+    if (replyText) {
+      replyText.value = review.owner_reply ? review.owner_reply.message : '';
+    }
+
+    const backdrop = document.getElementById('ownerReviewReplyModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  closeReviewReplyModal() {
+    const backdrop = document.getElementById('ownerReviewReplyModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  async submitReviewReply(e) {
+    if (e) e.preventDefault();
+    const reviewId = document.getElementById('replyTargetReviewId')?.value;
+    const replyText = document.getElementById('ownerReplyText')?.value.trim();
+
+    if (!reviewId || !replyText) {
+      this.showToast('Please enter an owner reply message.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/reviews/${reviewId}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply_message: replyText })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message, 'success');
+        this.closeReviewReplyModal();
+        await this.fetchOwnerReviews(true);
+      } else {
+        this.showToast(json.message || 'Failed to post reply.', 'error');
+      }
+    } catch (err) {
+      console.error('Error posting owner reply:', err);
+      this.showToast('Server communication error.', 'error');
+    }
+  }
+
+  async deleteOwnerReview(reviewId) {
+    if (!confirm('Are you sure you want to delete this customer review? This action cannot be undone.')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/reviews/${reviewId}`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message, 'success');
+        await this.fetchOwnerReviews(true);
+      } else {
+        this.showToast(json.message || 'Failed to delete review.', 'error');
+      }
+    } catch (err) {
+      console.error('Error deleting review:', err);
+      this.showToast('Server communication error.', 'error');
     }
   }
 

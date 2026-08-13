@@ -190,15 +190,9 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
 }
 
-/* Horizontal Top Header Navigation Links (Visible on Mobile & Tablet Devices) */
+/* Horizontal Top Header Navigation Links (Removed per user request) */
 .header-nav-links {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0 1rem;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  display: none !important;
 }
 
 .header-nav-links::-webkit-scrollbar {
@@ -1760,8 +1754,9 @@ textarea.form-control {
 
 .auth-close-btn {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 14px;
+  right: 14px;
+  z-index: 100;
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
@@ -1773,11 +1768,14 @@ textarea.form-control {
   align-items: center;
   justify-content: center;
   transition: var(--transition);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .auth-close-btn:hover {
   color: #FFF;
   background: var(--primary);
+  border-color: var(--primary);
+  transform: scale(1.05);
 }
 
 /* Role Selector Tabs */
@@ -1827,6 +1825,11 @@ textarea.form-control {
   border-radius: var(--radius-full);
   cursor: pointer;
   transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
 }
 
 .auth-card-wrapper.mode-login .mode-pill-btn.active {
@@ -1899,6 +1902,54 @@ textarea.form-control {
   font-size: 0.88rem;
   font-family: inherit;
   transition: var(--transition);
+}
+
+.password-group {
+  position: relative;
+}
+
+.password-group .icon-input {
+  padding-right: 42px;
+}
+
+.toggle-password-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  z-index: 2;
+  transition: color 0.2s ease;
+}
+
+.toggle-password-icon:hover {
+  color: var(--accent-gold);
+}
+
+.auth-extra-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
+.forgot-password-link {
+  font-size: 0.8rem;
+  color: var(--accent-gold);
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s ease;
+}
+
+.forgot-password-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
 }
 
 .auth-card-wrapper.mode-login .icon-input:focus {
@@ -5364,10 +5415,7 @@ body.guest-mode #btnMobileMenuToggle {
   }
 
   .header-nav-links {
-    display: flex !important;
-    flex: 1;
-    justify-content: center;
-    margin: 0 0.75rem;
+    display: none !important;
   }
 
   .top-header,
@@ -5412,40 +5460,88 @@ body.guest-mode #btnMobileMenuToggle {
   }
 
   .header-nav-links {
-    display: flex !important;
-    flex: 1;
-    max-width: 45vw;
-    overflow-x: auto;
-    margin: 0 0.35rem;
-    gap: 0.35rem;
-    padding: 2px 0;
-  }
-
-  .header-nav-item {
-    padding: 5px 10px;
-    font-size: 0.75rem;
-    border-radius: var(--radius-full);
+    display: none !important;
   }
 
   .top-header {
-    padding: 0 0.75rem !important;
+    padding: 0 0.5rem !important;
+    gap: 0.35rem !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
   }
 
-  .brand-text h1 {
-    font-size: 0.92rem !important;
-    max-width: 135px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .brand-text p {
-    font-size: 0.68rem !important;
+  .brand-wrapper {
+    gap: 0.35rem !important;
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
+    overflow: hidden !important;
   }
 
   .brand-logo {
-    width: 36px !important;
-    height: 36px !important;
+    width: 32px !important;
+    height: 32px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .brand-text {
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .brand-text h1 {
+    font-size: 0.8rem !important;
+    line-height: 1.15 !important;
+    max-width: 110px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .brand-text p {
+    font-size: 0.64rem !important;
+    max-width: 110px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .header-actions {
+    gap: 0.35rem !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  #guestAuthWrapper,
+  .auth-buttons-wrapper {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.35rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  .btn-auth-primary {
+    padding: 6px 11px !important;
+    font-size: 0.78rem !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    letter-spacing: 0 !important;
+    box-shadow: 0 3px 10px rgba(255, 87, 34, 0.35) !important;
+  }
+
+  .btn-auth-secondary {
+    padding: 6px 10px !important;
+    font-size: 0.78rem !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    letter-spacing: 0 !important;
+    box-shadow: 0 3px 10px rgba(255, 179, 0, 0.2) !important;
+  }
+
+  .btn-auth-primary i,
+  .btn-auth-secondary i {
+    font-size: 0.74rem !important;
   }
 
   .main-content {
@@ -5513,5 +5609,195 @@ body.guest-mode #btnMobileMenuToggle {
   .btn-header-logout,
   #btnLogoutHeader {
     display: none !important;
+  }
+
+  /* Compact & Responsive Login / Register Auth Modal Mode Pills */
+  .auth-card-wrapper {
+    width: 95% !important;
+    max-width: 440px !important;
+    border-radius: var(--radius-lg) !important;
+    margin: 0 auto !important;
+    position: relative !important;
+  }
+
+  .auth-close-btn {
+    top: 10px !important;
+    right: 10px !important;
+    z-index: 100 !important;
+  }
+
+  .auth-card-body {
+    padding: 1.25rem 1rem !important;
+  }
+
+  .auth-mode-pills {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.35rem !important;
+    margin-bottom: 0.85rem !important;
+    width: 100% !important;
+  }
+
+  .mode-pill-btn {
+    flex: 1 1 0% !important;
+    padding: 7px 8px !important;
+    font-size: 0.76rem !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    border-radius: var(--radius-full) !important;
+    box-sizing: border-box !important;
+  }
+
+  .mode-pill-btn i {
+    font-size: 0.75rem !important;
+  }
+
+  .auth-role-tabs {
+    gap: 0.35rem !important;
+    padding: 3px !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .role-tab-btn {
+    padding: 6px 8px !important;
+    font-size: 0.76rem !important;
+  }
+}
+
+/* 4. SMALL MOBILE SCREENS (< 400px, e.g., 390px, 375px, 360px) */
+@media (max-width: 400px) {
+  .top-header {
+    padding: 0 0.35rem !important;
+    gap: 0.25rem !important;
+  }
+
+  .brand-logo {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .brand-text h1 {
+    font-size: 0.75rem !important;
+    max-width: 80px !important;
+  }
+
+  .brand-text p {
+    font-size: 0.6rem !important;
+    max-width: 80px !important;
+  }
+
+  .header-actions {
+    gap: 0.25rem !important;
+  }
+
+  #guestAuthWrapper,
+  .auth-buttons-wrapper {
+    gap: 0.25rem !important;
+  }
+
+  .btn-auth-primary {
+    padding: 5px 9px !important;
+    font-size: 0.74rem !important;
+    gap: 3px !important;
+  }
+
+  .btn-auth-secondary {
+    padding: 5px 8px !important;
+    font-size: 0.74rem !important;
+    gap: 3px !important;
+  }
+
+  .btn-auth-primary i,
+  .btn-auth-secondary i {
+    font-size: 0.7rem !important;
+  }
+
+  .auth-card-body {
+    padding: 1rem 0.75rem !important;
+  }
+
+  .auth-mode-pills {
+    gap: 0.25rem !important;
+  }
+
+  .mode-pill-btn {
+    padding: 6px 5px !important;
+    font-size: 0.72rem !important;
+    gap: 3px !important;
+    letter-spacing: -0.1px !important;
+  }
+
+  .mode-pill-btn i {
+    font-size: 0.7rem !important;
+  }
+
+  .role-tab-btn {
+    padding: 5px 6px !important;
+    font-size: 0.72rem !important;
+  }
+}
+
+/* 5. ULTRA SMALL MOBILE SCREENS (< 340px, e.g., 320px) */
+@media (max-width: 340px) {
+  .top-header {
+    padding: 0 0.25rem !important;
+    gap: 0.2rem !important;
+  }
+
+  .brand-logo {
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  .brand-text h1 {
+    font-size: 0.7rem !important;
+    max-width: 70px !important;
+  }
+
+  .brand-text p {
+    display: none !important;
+  }
+
+  .btn-auth-primary {
+    padding: 4px 7px !important;
+    font-size: 0.68rem !important;
+    gap: 2px !important;
+  }
+
+  .btn-auth-secondary {
+    padding: 4px 6px !important;
+    font-size: 0.68rem !important;
+    gap: 2px !important;
+  }
+
+  .btn-auth-primary i,
+  .btn-auth-secondary i {
+    display: none !important;
+  }
+
+  .auth-card-body {
+    padding: 0.85rem 0.6rem !important;
+  }
+
+  .auth-mode-pills {
+    gap: 0.2rem !important;
+  }
+
+  .mode-pill-btn {
+    padding: 5px 4px !important;
+    font-size: 0.68rem !important;
+    gap: 2px !important;
+  }
+
+  .mode-pill-btn i {
+    font-size: 0.65rem !important;
   }
 }
