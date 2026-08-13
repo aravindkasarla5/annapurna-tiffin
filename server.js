@@ -19,8 +19,8 @@ const defaultSeed = {
     {
       id: "usr_owner_1",
       name: "Lakshmi Narayana (Owner)",
-      mobile: "9876543210",
-      password: "owner123",
+      mobile: "9392874900",
+      password: "9392874900",
       role: "OWNER",
       email: "owner@annapurna.com",
       address: "#42, Temple Road, Bengaluru, KA"
