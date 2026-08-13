@@ -5670,6 +5670,48 @@ body.guest-mode #btnMobileMenuToggle {
     padding: 6px 8px !important;
     font-size: 0.76rem !important;
   }
+
+  /* Compact Height for Register Form on Mobile Screens (< 767px) */
+  #authRegisterForm.auth-form {
+    gap: 0.45rem !important;
+  }
+
+  #authRegisterForm .auth-form-header {
+    margin-bottom: 0.35rem !important;
+  }
+
+  #authRegisterForm .auth-form-header h3 {
+    font-size: 1.1rem !important;
+    margin-bottom: 0.1rem !important;
+  }
+
+  #authRegisterForm .auth-form-header p {
+    font-size: 0.72rem !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  #authRegisterForm .icon-input {
+    padding: 8px 12px 8px 36px !important;
+    font-size: 0.8rem !important;
+    height: 38px !important;
+  }
+
+  #authRegisterForm .input-icon {
+    font-size: 0.8rem !important;
+    left: 11px !important;
+  }
+
+  #authRegisterForm .toggle-password-icon {
+    font-size: 0.8rem !important;
+    right: 11px !important;
+  }
+
+  #authRegisterForm .auth-submit-btn,
+  #authRegisterForm .register-btn {
+    padding: 9px 12px !important;
+    font-size: 0.84rem !important;
+    margin-top: 0.35rem !important;
+  }
 }
 
 /* 4. SMALL MOBILE SCREENS (< 400px, e.g., 390px, 375px, 360px) */
@@ -5743,6 +5785,26 @@ body.guest-mode #btnMobileMenuToggle {
     padding: 5px 6px !important;
     font-size: 0.72rem !important;
   }
+
+  #authRegisterForm.auth-form {
+    gap: 0.35rem !important;
+  }
+
+  #authRegisterForm .auth-form-header p {
+    display: none !important;
+  }
+
+  #authRegisterForm .icon-input {
+    padding: 6px 10px 6px 32px !important;
+    font-size: 0.76rem !important;
+    height: 34px !important;
+  }
+
+  #authRegisterForm .auth-submit-btn,
+  #authRegisterForm .register-btn {
+    padding: 8px 10px !important;
+    font-size: 0.8rem !important;
+  }
 }
 
 /* 5. ULTRA SMALL MOBILE SCREENS (< 340px, e.g., 320px) */
@@ -5799,5 +5861,21 @@ body.guest-mode #btnMobileMenuToggle {
 
   .mode-pill-btn i {
     font-size: 0.65rem !important;
+  }
+
+  #authRegisterForm.auth-form {
+    gap: 0.3rem !important;
+  }
+
+  #authRegisterForm .icon-input {
+    padding: 5px 8px 5px 28px !important;
+    font-size: 0.72rem !important;
+    height: 31px !important;
+  }
+
+  #authRegisterForm .auth-submit-btn,
+  #authRegisterForm .register-btn {
+    padding: 7px 8px !important;
+    font-size: 0.76rem !important;
   }
 }
