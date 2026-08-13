@@ -1798,6 +1798,18 @@ app.delete('/api/reviews/:id', authenticateToken, requireRole('OWNER'), (req, re
   });
 });
 
+// 34. Download System Documentation PDF
+app.get('/api/download-documentation-pdf', (req, res) => {
+  const pdfPath = path.join(__dirname, 'public', 'Sri_Lakshmi_Annapurna_Tiffin_Center_Documentation.pdf');
+  if (fs.existsSync(pdfPath)) {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="Sri_Lakshmi_Annapurna_Tiffin_Center_Documentation.pdf"');
+    res.sendFile(pdfPath);
+  } else {
+    res.status(404).json({ success: false, message: "Documentation PDF file not found." });
+  }
+});
+
 // Start the Server
 const server = app.listen(PORT, () => {
   console.log(`✅ Sri Lakshmi Annapurna Tiffin Center server running on port ${PORT}`);
