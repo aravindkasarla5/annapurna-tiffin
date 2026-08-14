@@ -1535,13 +1535,15 @@ class TiffinApp {
       container.innerHTML = filtered.map(item => {
         const qty = this.quantities[item.id] || 1;
         const isAvailable = item.is_available;
+        const isHotelOpen = this.settings ? (this.settings.is_open !== false) : true;
+        const canOrder = isAvailable && isHotelOpen;
 
         return `
-          <div class="food-card ${!isAvailable ? 'unavailable' : ''}">
+          <div class="food-card ${!canOrder ? 'unavailable' : ''}">
             <div class="food-card-img-wrapper">
               <img src="${item.image}" alt="${item.name}" class="food-card-img" onerror="this.src='/images/idly_sambar.png'">
-              <span class="availability-badge ${isAvailable ? 'available' : 'unavailable'}">
-                <i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> ${isAvailable ? 'Available' : 'Not Available'}
+              <span class="availability-badge ${canOrder ? 'available' : 'unavailable'}">
+                <i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> ${!isHotelOpen ? 'Hotel Closed' : (isAvailable ? 'Available' : 'Not Available')}
               </span>
               <span class="category-tag">${item.category}</span>
             </div>
@@ -1553,7 +1555,7 @@ class TiffinApp {
               <div class="food-card-footer">
                 <span class="food-card-price">₹${item.price}</span>
 
-                ${isAvailable ? `
+                ${canOrder ? `
                   <div class="qty-selector">
                     <button class="qty-btn" onclick="app.changeItemQty('${item.id}', -1)">-</button>
                     <span class="qty-val" id="qty_${item.id}">${qty}</span>
@@ -1563,8 +1565,8 @@ class TiffinApp {
                     <i class="fa-solid fa-cart-plus"></i> Add
                   </button>
                 ` : `
-                  <button class="btn-add-cart" disabled>
-                    🔴 Not Available
+                  <button class="btn-add-cart" disabled style="${!isHotelOpen ? 'background: rgba(229,57,53,0.15); color: #FF5252; border: 1px solid rgba(229,57,53,0.3); font-weight: 700;' : ''}">
+                    ${!isHotelOpen ? '🔴 Hotel Closed' : '🔴 Not Available'}
                   </button>
                 `}
               </div>
@@ -1637,9 +1639,14 @@ class TiffinApp {
       return;
     }
 
+    if (this.settings && this.settings.is_open === false) {
+      this.showToast('Hotel is currently closed. Orders are not being accepted.', 'error');
+      return;
+    }
+
     const item = this.menu.find(m => m.id === itemId);
     if (!item || !item.is_available) {
-      this.showToast('Item is currently unavailable.', 'error');
+      this.showToast('Item is currently not available', 'error');
       return;
     }
 
@@ -4354,37 +4361,38 @@ class TiffinApp {
     }
   }
 
-  async toggleSettingsHotelOpen() {
-    if (!this.settings) return;
-    this.settings.is_open = !this.settings.is_open;
-    this.populateSettingsForm();
-    await this.saveBusinessSettingsDirect();
-  }
-
   async toggleMasterHotelStatus() {
-    if (!this.settings) return;
-    this.settings.is_open = !this.settings.is_open;
-    await this.saveBusinessSettingsDirect();
-  }
+    if (!this.settings) this.settings = {};
+    const newState = !this.settings.is_open;
+    this.settings.is_open = newState;
 
-  async saveBusinessSettingsDirect() {
+    this.updateHeaderAndSettingsUI();
+    this.renderMenu();
+
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.settings)
+        body: JSON.stringify({ is_open: newState })
       });
       const json = await res.json();
       if (json.success) {
         this.settings = json.data;
         this.updateHeaderAndSettingsUI();
-        this.showToast(`Hotel status updated to ${this.settings.is_open ? 'OPEN' : 'CLOSED'}`, 'info');
+        this.renderMenu();
+        const msg = newState ? 'Hotel is now Open' : 'Hotel is now Closed';
+        this.showToast(msg, newState ? 'success' : 'warning');
       } else {
         this.showToast(json.message || 'Failed to update hotel status', 'error');
       }
     } catch (err) {
-      console.error('Error updating hotel status:', err);
+      console.error('Error toggling hotel status:', err);
+      this.showToast('Server communication error.', 'error');
     }
+  }
+
+  async toggleSettingsHotelOpen() {
+    return this.toggleMasterHotelStatus();
   }
 
   // =========================================================================

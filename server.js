@@ -852,6 +852,10 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), (r
     const db = loadDB();
     const { items, order_type, delivery_address, notes, customer_name, customer_mobile, used_wallet_amount } = req.body;
 
+    if (!db.settings.is_open) {
+      return res.status(400).json({ success: false, message: "Hotel is currently closed. Orders are not being accepted." });
+    }
+
     if (db.settings?.is_phonepe_enabled === false) {
       return res.status(400).json({ success: false, message: "PhonePe payment is currently disabled by hotel owner." });
     }
@@ -1248,6 +1252,10 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), (req, res) =
   const db = loadDB();
 
   const { order_type, delivery_address, notes, payment_method, payment_screenshot, utr_number, items, used_wallet_amount } = req.body;
+
+  if (!db.settings.is_open) {
+    return res.status(400).json({ success: false, message: "Hotel is currently closed. Orders are not being accepted." });
+  }
 
   if (!items || !items.length) {
     return res.status(400).json({ success: false, message: "Ordered items are required." });
