@@ -5953,3 +5953,79 @@ body.guest-mode #btnMobileMenuToggle {
     font-size: 0.76rem !important;
   }
 }
+
+/* =========================================================================
+   CHECKOUT MODAL SUBMIT BUTTON RESPONSIVE STYLING
+   ========================================================================= */
+.btn-checkout-submit {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  padding: 14px 18px !important;
+  font-size: 0.96rem !important;
+  font-weight: 800 !important;
+  line-height: 1.35 !important;
+  letter-spacing: 0.3px !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 6px 20px rgba(255, 87, 34, 0.45) !important;
+  transition: all 0.25s ease !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  white-space: normal !important;
+  gap: 8px !important;
+  box-sizing: border-box !important;
+}
+
+.btn-checkout-submit i {
+  font-size: 1.05rem !important;
+  flex-shrink: 0 !important;
+}
+
+.btn-checkout-submit span {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: 4px !important;
+  text-align: center !important;
+}
+
+@media (max-width: 768px) {
+  .btn-checkout-submit {
+    padding: 13px 14px !important;
+    font-size: 0.92rem !important;
+    min-height: 48px !important;
+    gap: 6px !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .btn-checkout-submit {
+    padding: 12px 10px !important;
+    font-size: clamp(0.8rem, 3.8vw, 0.9rem) !important;
+    min-height: 46px !important;
+    gap: 5px !important;
+    line-height: 1.3 !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  .btn-checkout-submit i {
+    font-size: 0.95rem !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .btn-checkout-submit {
+    padding: 10px 8px !important;
+    font-size: 0.78rem !important;
+    min-height: 44px !important;
+    gap: 4px !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+}
