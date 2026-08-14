@@ -37,6 +37,8 @@ const defaultSeed = {
     upi_id: "annapurna.tiffin@upi",
     upi_name: "Annapurna Tiffin Center",
     is_open: true,
+    is_qr_pay_enabled: true,
+    is_phonepe_enabled: true,
     description: "Fresh, hot, and authentic South Indian tiffins served daily with traditional family love.",
     referral: {
       enabled: true,
@@ -236,6 +238,8 @@ function loadDB() {
     if (!db.order_counter) db.order_counter = 1001;
     if (!db.ticket_counter) db.ticket_counter = 1001;
     if (!db.settings.referral) db.settings.referral = defaultSeed.settings.referral;
+    if (typeof db.settings.is_qr_pay_enabled === 'undefined') db.settings.is_qr_pay_enabled = true;
+    if (typeof db.settings.is_phonepe_enabled === 'undefined') db.settings.is_phonepe_enabled = true;
     return db;
   } catch (err) {
     console.error('Error reading db.json, resetting to seed:', err);
@@ -809,13 +813,22 @@ const updateSettingsHandler = (req, res) => {
       settingsData.upi_qr_updated_at = Date.now();
     }
 
+    if (typeof settingsData.is_qr_pay_enabled !== 'undefined') {
+      settingsData.is_qr_pay_enabled = settingsData.is_qr_pay_enabled === true || settingsData.is_qr_pay_enabled === 'true';
+    }
+    if (typeof settingsData.is_phonepe_enabled !== 'undefined') {
+      settingsData.is_phonepe_enabled = settingsData.is_phonepe_enabled === true || settingsData.is_phonepe_enabled === 'true';
+    }
+
+    const isPaymentToggleOnly = (typeof req.body.is_qr_pay_enabled !== 'undefined' || typeof req.body.is_phonepe_enabled !== 'undefined') && !req.body.hotel_name;
+
     db.settings = { ...db.settings, ...settingsData };
     saveDB(db);
 
     res.json({
       success: true,
       data: db.settings,
-      message: "Business settings updated successfully."
+      message: isPaymentToggleOnly ? "Payment settings updated successfully." : "Business settings updated successfully."
     });
   } catch (err) {
     console.error('Error saving business settings:', err);
@@ -838,6 +851,10 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), (r
   try {
     const db = loadDB();
     const { items, order_type, delivery_address, notes, customer_name, customer_mobile, used_wallet_amount } = req.body;
+
+    if (db.settings?.is_phonepe_enabled === false) {
+      return res.status(400).json({ success: false, message: "PhonePe payment is currently disabled by hotel owner." });
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ success: false, message: "Cart is empty. Please add items to place order." });
@@ -1230,15 +1247,15 @@ app.get('/api/orders', authenticateToken, (req, res) => {
 app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), (req, res) => {
   const db = loadDB();
 
-  // Check if hotel is open
-  if (!db.settings.is_open) {
-    return res.status(400).json({ success: false, message: "Hotel is currently closed. Orders are not being accepted." });
-  }
-
   const { order_type, delivery_address, notes, payment_method, payment_screenshot, utr_number, items, used_wallet_amount } = req.body;
 
   if (!items || !items.length) {
     return res.status(400).json({ success: false, message: "Ordered items are required." });
+  }
+
+  // Check if payment method is QR Pay and if enabled
+  if ((payment_method === 'UPI (QR Pay)' || payment_method === 'UPI') && db.settings?.is_qr_pay_enabled === false) {
+    return res.status(400).json({ success: false, message: "QR Pay is currently disabled by hotel owner." });
   }
 
   const orderNum = 'TF' + db.order_counter;

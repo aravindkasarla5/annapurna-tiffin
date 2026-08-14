@@ -1829,11 +1829,99 @@ class TiffinApp {
     document.getElementById('upiQrBox')?.classList.toggle('hidden', method !== 'UPI');
 
     if (method === 'UPI') {
-      if (!this.selectedOnlineSubOption) {
-        this.selectOnlineSubOption('QRPay');
+      this.updateOnlinePaymentOptionsVisibility();
+    }
+  }
+
+  updateOnlinePaymentOptionsVisibility() {
+    const isQrEnabled = this.settings?.is_qr_pay_enabled !== false;
+    const isPhonePeEnabled = this.settings?.is_phonepe_enabled !== false;
+
+    const subtabsContainer = document.querySelector('.online-pay-subtabs');
+    const btnQr = document.getElementById('subtabQrPay');
+    const btnPhonePe = document.getElementById('subtabPhonePe');
+    const viewQr = document.getElementById('subviewQrPay');
+    const viewPhonePe = document.getElementById('subviewPhonePe');
+    const proofSection = document.getElementById('onlineProofSection');
+    const disabledMsg = document.getElementById('onlinePaymentDisabledMsg');
+
+    if (!isQrEnabled && !isPhonePeEnabled) {
+      if (subtabsContainer) subtabsContainer.classList.add('hidden');
+      if (viewQr) viewQr.classList.add('hidden');
+      if (viewPhonePe) viewPhonePe.classList.add('hidden');
+      if (proofSection) proofSection.classList.add('hidden');
+      if (disabledMsg) disabledMsg.classList.remove('hidden');
+      return;
+    }
+
+    if (disabledMsg) disabledMsg.classList.add('hidden');
+
+    if (isQrEnabled && isPhonePeEnabled) {
+      if (subtabsContainer) subtabsContainer.classList.remove('hidden');
+      if (btnQr) btnQr.classList.remove('hidden');
+      if (btnPhonePe) btnPhonePe.classList.remove('hidden');
+
+      if (!this.selectedOnlineSubOption) this.selectedOnlineSubOption = 'QRPay';
+      this.selectOnlineSubOption(this.selectedOnlineSubOption);
+    } else if (isQrEnabled && !isPhonePeEnabled) {
+      if (subtabsContainer) subtabsContainer.classList.add('hidden');
+      if (btnQr) btnQr.classList.remove('hidden');
+      if (btnPhonePe) btnPhonePe.classList.add('hidden');
+
+      this.selectedOnlineSubOption = 'QRPay';
+      if (viewQr) viewQr.classList.remove('hidden');
+      if (viewPhonePe) viewPhonePe.classList.add('hidden');
+      if (proofSection) proofSection.classList.remove('hidden');
+      if (btnQr) btnQr.classList.add('active');
+      if (btnPhonePe) btnPhonePe.classList.remove('active');
+    } else if (!isQrEnabled && isPhonePeEnabled) {
+      if (subtabsContainer) subtabsContainer.classList.add('hidden');
+      if (btnQr) btnQr.classList.add('hidden');
+      if (btnPhonePe) btnPhonePe.classList.remove('hidden');
+
+      this.selectedOnlineSubOption = 'PhonePe';
+      if (viewQr) viewQr.classList.add('hidden');
+      if (viewPhonePe) viewPhonePe.classList.remove('hidden');
+      if (proofSection) proofSection.classList.add('hidden');
+      if (btnQr) btnQr.classList.remove('active');
+      if (btnPhonePe) btnPhonePe.classList.add('active');
+
+      this.updatePhonePeAmountDisplay();
+    }
+  }
+
+  async togglePaymentMethodSetting(method) {
+    if (!this.settings) this.settings = {};
+    if (method === 'QRPay') {
+      const current = this.settings.is_qr_pay_enabled !== false;
+      this.settings.is_qr_pay_enabled = !current;
+    } else if (method === 'PhonePe') {
+      const current = this.settings.is_phonepe_enabled !== false;
+      this.settings.is_phonepe_enabled = !current;
+    }
+
+    this.updateHeaderAndSettingsUI();
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_qr_pay_enabled: this.settings.is_qr_pay_enabled,
+          is_phonepe_enabled: this.settings.is_phonepe_enabled
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast('Payment settings updated successfully.', 'success');
+        this.settings = json.data;
+        this.updateHeaderAndSettingsUI();
       } else {
-        this.selectOnlineSubOption(this.selectedOnlineSubOption);
+        this.showToast(json.message || 'Failed to update payment settings.', 'error');
       }
+    } catch (err) {
+      console.error('Error updating payment settings:', err);
+      this.showToast('Server communication error.', 'error');
     }
   }
 
@@ -3732,6 +3820,8 @@ class TiffinApp {
       description: document.getElementById('setDesc')?.value,
       upi_qr_code: qrVal,
       is_open: this.settings ? (this.settings.is_open !== false) : true,
+      is_qr_pay_enabled: this.settings ? (this.settings.is_qr_pay_enabled !== false) : true,
+      is_phonepe_enabled: this.settings ? (this.settings.is_phonepe_enabled !== false) : true,
       referral: {
         enabled: refEnabled,
         referrer_reward: Number(document.getElementById('setRefReferrerReward')?.value || 30),
@@ -3866,6 +3956,22 @@ class TiffinApp {
       tag.innerHTML = isOpen ? `<i class="fa-solid fa-circle"></i> <span>🟢 HOTEL OPEN - Taking Orders</span>`
         : `<i class="fa-solid fa-circle"></i> <span>🔴 HOTEL CLOSED - Currently Closed</span>`;
     }
+
+    // Owner Payment Control Switches (QR Pay & PhonePe)
+    const isQrEnabled = this.settings.is_qr_pay_enabled !== false;
+    const isPhonePeEnabled = this.settings.is_phonepe_enabled !== false;
+
+    const swQr = document.getElementById('setQrPayEnabledSwitch');
+    const lblQr = document.getElementById('setQrPayEnabledLabel');
+    if (swQr) swQr.classList.toggle('active', isQrEnabled);
+    if (lblQr) lblQr.innerText = isQrEnabled ? '🟢 ON' : '🔴 OFF';
+
+    const swPhonePe = document.getElementById('setPhonePeEnabledSwitch');
+    const lblPhonePe = document.getElementById('setPhonePeEnabledLabel');
+    if (swPhonePe) swPhonePe.classList.toggle('active', isPhonePeEnabled);
+    if (lblPhonePe) lblPhonePe.innerText = isPhonePeEnabled ? '🟢 ON' : '🔴 OFF';
+
+    this.updateOnlinePaymentOptionsVisibility();
   }
 
   zoomCheckoutQrCode() {

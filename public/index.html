@@ -1454,6 +1454,46 @@
                     </div>
                   </div>
 
+                  <!-- Owner Payment Method Management Controls: QR Pay & PhonePe Toggles -->
+                  <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.2rem;">
+                    <span style="font-size: 0.85rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
+                      <i class="fa-solid fa-toggle-on" style="color: var(--accent-gold);"></i> Customer Payment Method Controls
+                    </span>
+                    <span style="font-size: 0.76rem; color: var(--text-muted); display: block; margin-bottom: 1rem;">
+                      Enable or disable payment options shown to customers during checkout.
+                    </span>
+
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                      <!-- QR Pay Enable/Disable Switch -->
+                      <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
+                        <div>
+                          <strong style="font-size: 0.88rem; color: #FFF; display: block;"><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> QR Pay</strong>
+                          <span style="font-size: 0.74rem; color: var(--text-muted);">Owner QR Code + Screenshot + UTR Verification</span>
+                        </div>
+                        <div class="availability-switch active" id="setQrPayEnabledSwitch" onclick="app.togglePaymentMethodSetting('QRPay')">
+                          <div class="switch-track">
+                            <div class="switch-thumb"></div>
+                          </div>
+                          <span id="setQrPayEnabledLabel" class="status-pill-label">🟢 ON</span>
+                        </div>
+                      </div>
+
+                      <!-- PhonePe Enable/Disable Switch -->
+                      <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.3); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color);">
+                        <div>
+                          <strong style="font-size: 0.88rem; color: #FFF; display: block;"><i class="fa-solid fa-mobile-screen-button" style="color: #8e44ad;"></i> PhonePe</strong>
+                          <span style="font-size: 0.74rem; color: var(--text-muted);">Direct PhonePe Gateway Payment Integration</span>
+                        </div>
+                        <div class="availability-switch active" id="setPhonePeEnabledSwitch" onclick="app.togglePaymentMethodSetting('PhonePe')">
+                          <div class="switch-track">
+                            <div class="switch-thumb"></div>
+                          </div>
+                          <span id="setPhonePeEnabledLabel" class="status-pill-label">🟢 ON</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <!-- Interactive QR Upload Card -->
                   <div class="owner-qr-upload-card">
                     <div class="qr-preview-frame">
@@ -1854,6 +1894,13 @@
           <div id="upiQrBox" class="hidden"
             style="background: rgba(10, 10, 14, 0.6); padding: 1.2rem; border-radius: var(--radius-lg); border: 1px solid var(--accent-gold); margin-top: 1rem;">
             
+            <!-- Notice when BOTH QR Pay and PhonePe are turned OFF by Owner -->
+            <div id="onlinePaymentDisabledMsg" class="hidden" style="text-align: center; padding: 1.5rem 1rem; background: rgba(229,57,53,0.1); border: 1px dashed #E53935; border-radius: var(--radius-md); color: #FF5252; margin-bottom: 0.5rem;">
+              <i class="fa-solid fa-hand-holding-dollar" style="font-size: 2rem; margin-bottom: 8px; display: block; color: var(--accent-gold);"></i>
+              <strong style="font-size: 0.95rem; display: block; color: #FFF; margin-bottom: 4px;">Online payment is currently unavailable.</strong>
+              <span style="font-size: 0.8rem; color: #FF8A80;">Please pay using Cash on Counter / Cash on Delivery.</span>
+            </div>
+
             <!-- Online Payment Sub-Options Selector: [ QR Pay ] [ PhonePe ] -->
             <div class="online-pay-subtabs">
               <button type="button" class="subtab-btn active" id="subtabQrPay" onclick="app.selectOnlineSubOption('QRPay')">
