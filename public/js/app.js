@@ -40,8 +40,13 @@ class TiffinApp {
     this.customerProfile = null;
     this.ownerReviewFilter = 'All';
     this.ownerReviews = [];
+    this.lastActivityTime = Date.now();
     this.lastCustomerActivityTime = Date.now();
+    this.inactivityTimer = null;
     this.customerInactivityTimer = null;
+    this.isLoadingOrders = false;
+    this.isLoadingPayments = false;
+    this.isLoadingStats = false;
   }
 
   async fetchWithAuth(url, options = {}) {
@@ -91,7 +96,8 @@ class TiffinApp {
     await this.fetchFaqs();
 
     if (this.currentUser) {
-      await this.loadCustomerUserData();
+      await this.loadUserData();
+      await this.handlePhonePeCallback();
     }
 
     this.updateUserAuthBadgeUI();
@@ -102,12 +108,13 @@ class TiffinApp {
     // Start 2-second live polling engine for real-time status and availability sync
     this.startPolling();
 
-    // Initialize 30-minute customer inactivity session expiration tracker
-    this.initCustomerInactivityTracker();
+    // Initialize 30-minute inactivity session expiration tracker for Customer and Owner
+    this.initInactivityTracker();
   }
 
-  initCustomerInactivityTracker() {
-    this.lastCustomerActivityTime = Date.now();
+  initInactivityTracker() {
+    this.lastActivityTime = Date.now();
+    this.lastCustomerActivityTime = this.lastActivityTime;
 
     const activityEvents = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
     let lastThrottleTime = 0;
@@ -116,7 +123,8 @@ class TiffinApp {
       const now = Date.now();
       if (now - lastThrottleTime > 1000) {
         lastThrottleTime = now;
-        if (this.currentUser && this.currentUser.role === 'CUSTOMER') {
+        if (this.currentUser) {
+          this.lastActivityTime = now;
           this.lastCustomerActivityTime = now;
         }
       }
@@ -126,20 +134,29 @@ class TiffinApp {
       window.addEventListener(evt, handleUserActivity, { passive: true });
     });
 
+    if (this.inactivityTimer) clearInterval(this.inactivityTimer);
     if (this.customerInactivityTimer) clearInterval(this.customerInactivityTimer);
-    this.customerInactivityTimer = setInterval(() => {
-      if (this.currentUser && this.currentUser.role === 'CUSTOMER') {
-        const idleMs = Date.now() - this.lastCustomerActivityTime;
+
+    const timer = setInterval(() => {
+      if (this.currentUser) {
+        const idleMs = Date.now() - this.lastActivityTime;
         // Exactly 30 minutes (30 * 60 * 1000 ms)
         if (idleMs >= 30 * 60 * 1000) {
-          console.warn('Customer 30-minute inactivity threshold reached. Expiring session...');
+          console.warn('30-minute inactivity threshold reached. Expiring session...');
           this.logout(true, true);
         }
       }
     }, 5000);
+
+    this.inactivityTimer = timer;
+    this.customerInactivityTimer = timer;
   }
 
-  async loadCustomerUserData() {
+  initCustomerInactivityTracker() {
+    this.initInactivityTracker();
+  }
+
+  async loadUserData() {
     if (!this.currentUser) return;
     await this.fetchOrders();
     await this.fetchNotifications();
@@ -154,12 +171,19 @@ class TiffinApp {
     } else {
       await this.fetchStats();
       await this.fetchPayments();
+      await this.fetchOwnerReviews(true);
+      await this.fetchMenu(true);
     }
+  }
+
+  async loadCustomerUserData() {
+    return this.loadUserData();
   }
 
   startPolling() {
     if (this.pollingTimer) clearInterval(this.pollingTimer);
     this.pollingTimer = setInterval(async () => {
+      await this.fetchSettings(true);
       await this.fetchMenu(true);
       if (this.currentUser) {
         await this.fetchOrders(true);
@@ -208,41 +232,49 @@ class TiffinApp {
   async fetchOrders(silent = false) {
     if (!this.currentUser) {
       this.orders = [];
+      this.isLoadingOrders = false;
       return;
     }
+    this.isLoadingOrders = true;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/orders`);
       const json = await res.json();
       if (json.success) {
-        this.orders = json.data;
-        if (!silent || this.activeView.includes('Orders') || this.activeView === 'secOwnerDashboard') {
-          this.renderOrders();
-        }
+        this.orders = Array.isArray(json.data) ? json.data : [];
       }
     } catch (err) {
       console.error('Error fetching orders:', err);
+    } finally {
+      this.isLoadingOrders = false;
+      if (!silent || this.activeView.includes('Orders') || this.activeView === 'secOwnerDashboard') {
+        this.renderOrders();
+      }
     }
   }
 
   async fetchPayments(silent = false) {
     if (!this.currentUser) {
       this.payments = [];
+      this.isLoadingPayments = false;
       return;
     }
+    this.isLoadingPayments = true;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/payments`);
       const json = await res.json();
       if (json.success) {
-        this.payments = json.data;
-        if (!silent || this.activeView === 'secOwnerPayments') {
-          this.renderPayments();
-        }
-        if (!silent || this.activeView === 'secCustomerPayments') {
-          this.renderCustomerPayments();
-        }
+        this.payments = Array.isArray(json.data) ? json.data : [];
       }
     } catch (err) {
       console.error('Error fetching payments:', err);
+    } finally {
+      this.isLoadingPayments = false;
+      if (!silent || this.activeView === 'secOwnerPayments') {
+        this.renderPayments();
+      }
+      if (!silent || this.activeView === 'secCustomerPayments') {
+        this.renderCustomerPayments();
+      }
     }
   }
 
@@ -274,6 +306,7 @@ class TiffinApp {
 
   async fetchStats(silent = false) {
     if (this.currentRole !== 'OWNER') return;
+    this.isLoadingStats = true;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/stats`);
       const json = await res.json();
@@ -293,6 +326,8 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Error fetching stats:', err);
+    } finally {
+      this.isLoadingStats = false;
     }
   }
 
@@ -336,6 +371,15 @@ class TiffinApp {
     if (formLogin) formLogin.classList.toggle('hidden', mode !== 'LOGIN');
     if (formRegister) formRegister.classList.toggle('hidden', mode !== 'REGISTER');
     if (formForgot) formForgot.classList.toggle('hidden', mode !== 'FORGOT_PASSWORD');
+
+    if (mode === 'FORGOT_PASSWORD') {
+      const grpFields = document.getElementById('grpForgotResetFields');
+      if (grpFields) grpFields.classList.add('hidden');
+      const btnVerify = document.getElementById('btnForgotVerify');
+      if (btnVerify) btnVerify.classList.remove('hidden');
+      const inputId = document.getElementById('forgotIdentifier');
+      if (inputId) inputId.readOnly = false;
+    }
   }
 
   togglePasswordVisibility(inputId, iconId) {
@@ -446,13 +490,20 @@ class TiffinApp {
     }
   }
 
-  async handleForgotPasswordSubmit(e) {
-    e.preventDefault();
-    const identifier = document.getElementById('forgotIdentifier')?.value || '';
-    const new_password = document.getElementById('forgotNewPassword')?.value || '';
+  normalizePhone(phone) {
+    if (!phone) return '';
+    let digits = phone.toString().replace(/[^0-9]/g, '');
+    if (digits.length === 10) return digits;
+    if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+    if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+    if (digits.length > 10) return digits.slice(-10);
+    return digits;
+  }
 
-    if (!identifier || !new_password) {
-      this.showToast('Please enter your registered phone/email and new password.', 'warning');
+  async verifyForgotPasswordAccount() {
+    const identifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
+    if (!identifier) {
+      this.showToast('Please enter your registered 10-digit mobile number.', 'warning');
       return;
     }
 
@@ -460,14 +511,88 @@ class TiffinApp {
       const res = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, new_password })
+        body: JSON.stringify({ identifier })
       });
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message, 'success');
-        document.getElementById('forgotIdentifier').value = '';
+        this.showToast(json.message || 'Account found. Continue verification.', 'success');
+        const grpFields = document.getElementById('grpForgotResetFields');
+        if (grpFields) grpFields.classList.remove('hidden');
+
+        const btnVerify = document.getElementById('btnForgotVerify');
+        if (btnVerify) btnVerify.classList.add('hidden');
+
+        const inputId = document.getElementById('forgotIdentifier');
+        if (inputId) inputId.readOnly = true;
+
+        const infoBox = document.getElementById('forgotAccountFoundInfo');
+        if (infoBox && json.data?.otp) {
+          infoBox.innerHTML = `<i class="fa-solid fa-circle-check"></i> Account Verified! Code Sent: <strong>${json.data.otp}</strong>`;
+        }
+      } else {
+        this.showToast(json.message || 'No account found with this number.', 'error');
+      }
+    } catch (err) {
+      console.error('Error verifying account:', err);
+      this.showToast('Server communication error.', 'error');
+    }
+  }
+
+  async handleForgotPasswordSubmit(e) {
+    e.preventDefault();
+    const identifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
+    const otp = document.getElementById('forgotOtp')?.value?.trim() || '123456';
+    const new_password = document.getElementById('forgotNewPassword')?.value?.trim() || '';
+    const confirm_password = document.getElementById('forgotConfirmPassword')?.value?.trim() || '';
+
+    if (!identifier) {
+      this.showToast('Please enter your registered mobile number.', 'warning');
+      return;
+    }
+
+    if (!new_password) {
+      this.showToast('Please enter your new password.', 'warning');
+      return;
+    }
+
+    if (confirm_password && new_password !== confirm_password) {
+      this.showToast('Passwords do not match. Please check and try again.', 'error');
+      return;
+    }
+
+    if (new_password.length < 4) {
+      this.showToast('Password must be at least 4 characters long.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, otp, new_password })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Password reset successfully. Please login again.', 'success');
+        
+        // Reset Forgot Form State
+        const grpFields = document.getElementById('grpForgotResetFields');
+        if (grpFields) grpFields.classList.add('hidden');
+        const btnVerify = document.getElementById('btnForgotVerify');
+        if (btnVerify) btnVerify.classList.remove('hidden');
+        const inputId = document.getElementById('forgotIdentifier');
+        if (inputId) inputId.readOnly = false;
+
         document.getElementById('forgotNewPassword').value = '';
+        if (document.getElementById('forgotConfirmPassword')) {
+          document.getElementById('forgotConfirmPassword').value = '';
+        }
+
+        // Auto-fill login field and switch mode to LOGIN
+        const loginInput = document.getElementById('loginIdentifier');
+        if (loginInput) loginInput.value = identifier;
         this.setAuthMode('LOGIN');
       } else {
         this.showToast(json.message || 'Password reset failed', 'error');
@@ -479,6 +604,7 @@ class TiffinApp {
   }
 
   logout(sessionExpired = false, isExpired = false) {
+    const expiredRole = this.currentRole || 'CUSTOMER';
     if (this.authToken) {
       fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
@@ -498,6 +624,9 @@ class TiffinApp {
     this.supportTickets = [];
     this.referralStats = null;
     this.customerProfile = null;
+    this.isLoadingOrders = false;
+    this.isLoadingPayments = false;
+    this.isLoadingStats = false;
 
     localStorage.removeItem('tiffin_token');
     localStorage.removeItem('tiffin_user');
@@ -505,7 +634,7 @@ class TiffinApp {
 
     if (sessionExpired || isExpired) {
       this.showToast('Your session has expired. Please log in again.', 'warning');
-      this.openAuthModal('CUSTOMER', 'LOGIN');
+      this.openAuthModal(expiredRole, 'LOGIN');
     } else {
       this.showToast('Logged out successfully.', 'info');
     }
@@ -1274,7 +1403,9 @@ class TiffinApp {
     if (addrInput) addrInput.value = this.currentUser.address || '';
     if (avatarInit) avatarInit.innerText = name.charAt(0).toUpperCase();
 
-    if (statOrders) statOrders.innerText = (this.orders || []).length;
+    if (statOrders) {
+      statOrders.innerText = this.isLoadingOrders ? 'Loading...' : (this.orders || []).length;
+    }
     if (statWallet) {
       const bal = this.referralStats?.wallet_balance || 0;
       statWallet.innerText = `₹${bal}`;
@@ -1677,9 +1808,140 @@ class TiffinApp {
 
   selectPaymentMethod(method) {
     this.selectedPaymentMethod = method;
-    document.getElementById('optPayCash').classList.toggle('selected', method === 'Cash');
-    document.getElementById('optPayUPI').classList.toggle('selected', method === 'UPI');
-    document.getElementById('upiQrBox').classList.toggle('hidden', method !== 'UPI');
+    document.getElementById('optPayCash')?.classList.toggle('selected', method === 'Cash');
+    document.getElementById('optPayUPI')?.classList.toggle('selected', method === 'UPI');
+    document.getElementById('upiQrBox')?.classList.toggle('hidden', method !== 'UPI');
+
+    if (method === 'UPI') {
+      if (!this.selectedOnlineSubOption) {
+        this.selectOnlineSubOption('QRPay');
+      } else {
+        this.selectOnlineSubOption(this.selectedOnlineSubOption);
+      }
+    }
+  }
+
+  selectOnlineSubOption(subOption) {
+    this.selectedOnlineSubOption = subOption;
+    const btnQr = document.getElementById('subtabQrPay');
+    const btnPhonePe = document.getElementById('subtabPhonePe');
+    const viewQr = document.getElementById('subviewQrPay');
+    const viewPhonePe = document.getElementById('subviewPhonePe');
+    const proofSection = document.getElementById('onlineProofSection');
+
+    if (btnQr) btnQr.classList.toggle('active', subOption === 'QRPay');
+    if (btnPhonePe) btnPhonePe.classList.toggle('active', subOption === 'PhonePe');
+    if (viewQr) viewQr.classList.toggle('hidden', subOption !== 'QRPay');
+    if (viewPhonePe) viewPhonePe.classList.toggle('hidden', subOption !== 'PhonePe');
+
+    // Screenshot Upload & UTR input fields are completely hidden/disabled ONLY for PhonePe
+    if (proofSection) {
+      proofSection.classList.toggle('hidden', subOption === 'PhonePe');
+    }
+
+    if (subOption === 'PhonePe') {
+      this.updatePhonePeAmountDisplay();
+    }
+  }
+
+  updatePhonePeAmountDisplay() {
+    const { grandTotal } = this.calculateCartTotals();
+    const elAmount = document.getElementById('phonePePayableAmount');
+    const elBtnAmount = document.getElementById('phonePeBtnAmount');
+    if (elAmount) elAmount.innerText = grandTotal;
+    if (elBtnAmount) elBtnAmount.innerText = grandTotal;
+  }
+
+  async openPhonePePaymentApp() {
+    if (!this.cart || !this.cart.length) {
+      this.showToast('Your cart is empty!', 'warning');
+      return;
+    }
+
+    if (this.isSubmittingOrder) return;
+
+    const name = document.getElementById('ordCustomerName')?.value || (this.currentUser ? this.currentUser.name : '');
+    const mobile = document.getElementById('ordCustomerMobile')?.value || (this.currentUser ? this.currentUser.mobile : '');
+    const orderType = document.getElementById('ordType')?.value || 'Takeaway';
+    const deliveryAddress = document.getElementById('ordDeliveryAddress')?.value.trim() || '';
+    const notes = document.getElementById('ordNotes')?.value || '';
+
+    if (orderType === 'Delivery' && !deliveryAddress) {
+      this.showToast('Please enter your delivery address.', 'error');
+      return;
+    }
+
+    const payload = {
+      customer_name: name,
+      customer_mobile: mobile,
+      order_type: orderType,
+      delivery_address: deliveryAddress || (orderType === 'Delivery' ? (this.currentUser ? this.currentUser.address : 'Home Delivery') : 'Counter Pickup'),
+      notes: notes,
+      used_wallet_amount: this.appliedWalletDiscount || 0,
+      items: this.cart
+    };
+
+    this.isSubmittingOrder = true;
+    try {
+      this.showToast('Initiating PhonePe payment gateway...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/phonepe/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+
+      if (json.success && json.redirectUrl) {
+        window.location.href = json.redirectUrl;
+      } else {
+        this.showToast(json.message || 'Unable to launch PhonePe payment.', 'error');
+      }
+    } catch (err) {
+      console.error('Error initiating PhonePe payment:', err);
+      this.showToast('Unable to connect to PhonePe gateway. Please try again.', 'error');
+    } finally {
+      this.isSubmittingOrder = false;
+    }
+  }
+
+  async handlePhonePeCallback() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!urlParams.has('phonepe_callback')) return;
+
+    const txnId = urlParams.get('txnId');
+    const statusParam = urlParams.get('status');
+
+    // Clean URL query string without refreshing page
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    if (!txnId || !this.currentUser) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/phonepe/status/${txnId}`);
+      const json = await res.json();
+
+      if (json.verified && json.data) {
+        this.cart = [];
+        this.tempPaymentScreenshot = null;
+        this.updateCartUI();
+
+        this.switchView('secCustomerOrders');
+        this.showToast('Payment Successful! Your order has been placed.', 'success');
+
+        document.getElementById('confirmedOrderNumDisplay').innerText = `#${json.data.order_number}`;
+        document.getElementById('confirmationModalBackdrop').classList.add('open');
+
+        await this.fetchOrders();
+        await this.fetchNotifications();
+      } else if (json.status === 'CANCELLED' || statusParam === 'CANCELLED') {
+        this.showToast('Payment Cancelled. Your order was not placed.', 'warning');
+      } else {
+        this.showToast('Payment Failed. Your order was not placed.', 'error');
+      }
+    } catch (err) {
+      console.error('Error verifying PhonePe callback:', err);
+      this.showToast('Payment Failed. Your order was not placed.', 'error');
+    }
   }
 
   handleCustomerScreenshotUpload(e) {
@@ -1719,10 +1981,28 @@ class TiffinApp {
     reader.onload = (evt) => {
       this.tempOwnerQrCode = evt.target.result;
       const previewImg = document.getElementById('setQrPreviewImg');
-      if (previewImg) previewImg.src = evt.target.result;
-      this.showToast('New QR Scanner image loaded! Click Save Settings to update.', 'info');
+      if (previewImg) {
+        previewImg.src = evt.target.result;
+        previewImg.style.display = 'block';
+      }
+      this.showToast('New QR Scanner image loaded! Click Save & Publish All Business Settings to update.', 'info');
     };
     reader.readAsDataURL(file);
+  }
+
+  removeOwnerQrScanner() {
+    this.tempOwnerQrCode = '';
+    if (this.settings) {
+      this.settings.upi_qr_code = '';
+    }
+    const previewImg = document.getElementById('setQrPreviewImg');
+    if (previewImg) {
+      previewImg.src = '';
+      previewImg.style.display = 'none';
+    }
+    const fileInput = document.getElementById('setQrFileInput');
+    if (fileInput) fileInput.value = '';
+    this.showToast('QR Scanner image removed! Click Save & Publish All Business Settings to confirm.', 'warning');
   }
 
   copyUpiId() {
@@ -1770,6 +2050,13 @@ class TiffinApp {
   async submitCustomerOrder(e) {
     e.preventDefault();
 
+    if (this.isSubmittingOrder) return;
+
+    // If customer clicks main submit button while PhonePe subtab is selected, delegate to openPhonePePaymentApp
+    if (this.selectedPaymentMethod === 'UPI' && this.selectedOnlineSubOption === 'PhonePe') {
+      return this.openPhonePePaymentApp();
+    }
+
     const name = document.getElementById('ordCustomerName').value;
     const mobile = document.getElementById('ordCustomerMobile').value;
     const orderType = document.getElementById('ordType').value;
@@ -1777,9 +2064,9 @@ class TiffinApp {
     const notes = document.getElementById('ordNotes').value;
     const utrNumber = document.getElementById('ordUTRNumber')?.value.trim();
 
-    if (this.selectedPaymentMethod === 'UPI') {
+    if (this.selectedPaymentMethod === 'UPI' && this.selectedOnlineSubOption === 'QRPay') {
       if (!this.tempPaymentScreenshot) {
-        this.showToast('Please upload your UPI payment screenshot to complete order.', 'error');
+        this.showToast('Please upload your payment screenshot to complete order.', 'error');
         return;
       }
       if (!utrNumber || utrNumber.length < 5) {
@@ -1788,19 +2075,24 @@ class TiffinApp {
       }
     }
 
+    const payMethodName = this.selectedPaymentMethod === 'UPI'
+      ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
+      : 'Cash';
+
     const payload = {
       customer_name: name,
       customer_mobile: mobile,
       order_type: orderType,
       delivery_address: deliveryAddress || (orderType === 'Delivery' ? (this.currentUser ? this.currentUser.address : 'Home Delivery') : 'Counter Pickup'),
       notes: notes,
-      payment_method: this.selectedPaymentMethod,
+      payment_method: payMethodName,
       payment_screenshot: this.tempPaymentScreenshot || '',
       utr_number: utrNumber || '',
       used_wallet_amount: this.appliedWalletDiscount || 0,
       items: this.cart
     };
 
+    this.isSubmittingOrder = true;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/orders`, {
         method: 'POST',
@@ -1827,6 +2119,8 @@ class TiffinApp {
     } catch (err) {
       console.error('Error submitting order:', err);
       this.showToast('Server communication error.', 'error');
+    } finally {
+      this.isSubmittingOrder = false;
     }
   }
 
@@ -1856,9 +2150,9 @@ class TiffinApp {
   }
 
   renderSalesAnalytics() {
-    if (!this.orders) return;
+    if (!this.orders && !this.isLoadingOrders) return;
 
-    const allOrders = this.orders;
+    const allOrders = this.orders || [];
     const activeOrders = allOrders.filter(o => ['Received', 'Preparing', 'Ready'].includes(o.order_status));
     const completedOrders = allOrders.filter(o => o.order_status === 'Completed');
     const rejectedOrders = allOrders.filter(o => ['Rejected', 'Cancelled'].includes(o.order_status));
@@ -1876,17 +2170,26 @@ class TiffinApp {
     const elTotalSales = document.getElementById('statTodaySales');
     const elAov = document.getElementById('statAovVal');
 
-    if (elTotalOrders) elTotalOrders.innerText = allOrders.length;
-    if (elActiveOrders) elActiveOrders.innerText = activeOrders.length;
-    if (elCompletedOrders) elCompletedOrders.innerText = completedOrders.length;
-    if (elRejectedOrders) elRejectedOrders.innerText = rejectedOrders.length;
-    if (elTotalSales) elTotalSales.innerText = `₹${totalSales.toLocaleString('en-IN')}`;
-    if (elAov) elAov.innerText = `₹${avgOrderVal}`;
+    if (this.isLoadingOrders && !allOrders.length) {
+      if (elTotalOrders) elTotalOrders.innerText = 'Loading...';
+      if (elActiveOrders) elActiveOrders.innerText = 'Loading...';
+      if (elCompletedOrders) elCompletedOrders.innerText = 'Loading...';
+      if (elRejectedOrders) elRejectedOrders.innerText = 'Loading...';
+      if (elTotalSales) elTotalSales.innerText = 'Loading...';
+      if (elAov) elAov.innerText = 'Loading...';
+    } else {
+      if (elTotalOrders) elTotalOrders.innerText = allOrders.length;
+      if (elActiveOrders) elActiveOrders.innerText = activeOrders.length;
+      if (elCompletedOrders) elCompletedOrders.innerText = completedOrders.length;
+      if (elRejectedOrders) elRejectedOrders.innerText = rejectedOrders.length;
+      if (elTotalSales) elTotalSales.innerText = `₹${totalSales.toLocaleString('en-IN')}`;
+      if (elAov) elAov.innerText = `₹${avgOrderVal}`;
+    }
 
     // Update Tab Pill Counts
     const updateCount = (id, count) => {
       const el = document.getElementById(id);
-      if (el) el.innerText = count;
+      if (el) el.innerText = this.isLoadingOrders && !allOrders.length ? 'Loading...' : count;
     };
     updateCount('cntTabAll', allOrders.length);
     updateCount('cntTabActive', activeOrders.length);
@@ -1918,8 +2221,13 @@ class TiffinApp {
     const elUpiBar = document.getElementById('upiSalesBar');
     const elCashBar = document.getElementById('cashSalesBar');
 
-    if (elUpiVal) elUpiVal.innerText = `₹${upiTotal.toLocaleString('en-IN')}`;
-    if (elCashVal) elCashVal.innerText = `₹${cashTotal.toLocaleString('en-IN')}`;
+    if (this.isLoadingOrders && !allOrders.length) {
+      if (elUpiVal) elUpiVal.innerText = 'Loading...';
+      if (elCashVal) elCashVal.innerText = 'Loading...';
+    } else {
+      if (elUpiVal) elUpiVal.innerText = `₹${upiTotal.toLocaleString('en-IN')}`;
+      if (elCashVal) elCashVal.innerText = `₹${cashTotal.toLocaleString('en-IN')}`;
+    }
     if (elUpiBar) elUpiBar.style.width = `${upiPct}%`;
     if (elCashBar) elCashBar.style.width = `${cashPct}%`;
 
@@ -1975,16 +2283,26 @@ class TiffinApp {
       const container = document.getElementById('customerOrdersList');
       if (!container) return;
 
+      if (this.isLoadingOrders && !this.orders.length) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-gold); margin-bottom: 1rem;"></i>
+            <h3 style="color: var(--text-main); font-size: 1.1rem; margin-bottom: 0.5rem;">Loading Your Orders...</h3>
+            <p style="font-size: 0.85rem;">Fetching database records...</p>
+          </div>`;
+        return;
+      }
+
       if (!this.orders.length) {
         container.innerHTML = `
           <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
             <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 1rem auto;">
               <i class="fa-solid fa-receipt"></i>
             </div>
-            <h3 style="color: var(--text-main); font-size: 1.2rem; margin-bottom: 0.5rem;">No Active Orders Placed Yet</h3>
-            <p style="font-size: 0.9rem; max-width: 400px; margin: 0 auto 1.25rem auto;">Explore our hot, fresh South Indian tiffins menu and place your first delicious order!</p>
+            <h3 style="color: var(--text-main); font-size: 1.2rem; margin-bottom: 0.5rem;">No orders found</h3>
+            <p style="font-size: 0.9rem; max-width: 400px; margin: 0 auto 1.25rem auto;">Explore our hot, fresh South Indian tiffins menu and place your order!</p>
             <button class="btn-primary-block" onclick="app.switchView('secCustomerHome')" style="max-width: 220px; margin: 0 auto;">
-              <i class="fa-solid fa-utensils"></i> Browse Menu Now
+              <i class="fa-solid fa-utensils"></i> Browse Today's Menu
             </button>
           </div>`;
         return;
@@ -2010,7 +2328,9 @@ class TiffinApp {
       // Owner Dashboard Orders List
       const dashContainer = document.getElementById('ownerDashboardOrdersList');
       if (dashContainer) {
-        if (!filtered.length) {
+        if (this.isLoadingOrders && !filtered.length) {
+          dashContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i>Loading orders...</div>`;
+        } else if (!filtered.length) {
           dashContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">No ${this.ownerOrderFilter.toLowerCase()} orders found.</div>`;
         } else {
           dashContainer.innerHTML = filtered.map(order => this.createOwnerOrderCardHTML(order)).join('');
@@ -2020,7 +2340,9 @@ class TiffinApp {
       // Owner All Orders Management Page
       const listContainer = document.getElementById('ownerOrdersList');
       if (listContainer) {
-        if (!filtered.length) {
+        if (this.isLoadingOrders && !filtered.length) {
+          listContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i>Loading orders...</div>`;
+        } else if (!filtered.length) {
           listContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">No ${this.ownerOrderFilter.toLowerCase()} orders found.</div>`;
         } else {
           listContainer.innerHTML = filtered.map(order => this.createOwnerOrderCardHTML(order)).join('');
@@ -2061,12 +2383,22 @@ class TiffinApp {
     return `
       <div class="co-row-card owner-mode ${isRejected ? 'is-rejected' : ''}">
         ${isRejected ? `
-          <!-- OWNER REJECTED BANNER -->
-          <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 10px 14px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; gap: 12px; margin-bottom: 0.25rem;">
-            <i class="fa-solid fa-circle-xmark" style="font-size: 1.3rem; color: #E53935;"></i>
-            <div>
-              <strong style="font-size: 0.92rem; color: #FFF; display: block;">This Order Was Rejected</strong>
-              <span style="font-size: 0.78rem; color: #FF8A80;">Status: Order Rejected • No further kitchen action required.</span>
+          <!-- OWNER REJECTED BANNER WITH REASON & QUICK ACTIONS -->
+          <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <i class="fa-solid fa-circle-xmark" style="font-size: 1.4rem; color: #E53935; flex-shrink: 0;"></i>
+              <div>
+                <strong style="font-size: 0.95rem; color: #FFF; display: block;">This Order Was Rejected</strong>
+                <span style="font-size: 0.8rem; color: #FF8A80;">Reason: "${order.rejection_reason || 'No specific reason provided'}"</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-sm-status" onclick="app.restoreRejectedOrder('${order.id}')" style="background: rgba(76, 175, 80, 0.25); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-rotate-left"></i> Restore / Accept Order
+              </button>
+              <button type="button" class="btn-sm-status" onclick="app.deleteOrder('${order.id}')" style="background: rgba(229,57,53,0.25); color: #FF5252; border: 1px solid rgba(229,57,53,0.5); padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Permanently delete from database history">
+                <i class="fa-solid fa-trash-can"></i> Delete Permanently
+              </button>
             </div>
           </div>
         ` : ''}
@@ -2169,16 +2501,19 @@ class TiffinApp {
             <div class="co-actions-title"><i class="fa-solid fa-fire-burner" style="color: var(--accent-gold);"></i> Kitchen Operations</div>
             <div class="co-row-actions owner-actions" style="display: flex; flex-direction: column; gap: 8px;">
               ${isRejected ? `
-                <div style="background: rgba(229,57,53,0.15); border: 1px solid #E53935; padding: 10px; border-radius: 8px; text-align: center; color: #FF5252; font-weight: 800; font-size: 0.82rem;">
-                  <i class="fa-solid fa-ban"></i> ORDER REJECTED
-                </div>
+                <button type="button" class="co-row-btn-action accept" onclick="app.restoreRejectedOrder('${order.id}')" style="background: linear-gradient(135deg, #388E3C, #2E7D32);">
+                  <i class="fa-solid fa-rotate-left"></i> Restore & Accept Order
+                </button>
+                <button type="button" class="co-row-btn-action reject" onclick="app.deleteOrder('${order.id}')" style="background: rgba(229,57,53,0.2); border: 1px solid #E53935; color: #FF5252;">
+                  <i class="fa-solid fa-trash-can"></i> Delete Permanently
+                </button>
               ` : ''}
 
               ${isReceived ? `
                 <button class="co-row-btn-action accept" onclick="app.updateOrderStatus('${order.id}', 'Preparing')">
                   <i class="fa-solid fa-fire-burner"></i> Accept & Start Preparing
                 </button>
-                <button class="co-row-btn-action reject" onclick="app.updateOrderStatus('${order.id}', 'Rejected')">
+                <button class="co-row-btn-action reject" onclick="app.openRejectOrderModal('${order.id}')">
                   <i class="fa-solid fa-xmark"></i> Reject Order
                 </button>
               ` : ''}
@@ -2297,7 +2632,9 @@ class TiffinApp {
               </div>
               <div>
                 <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">Order Rejected by Hotel Manager</strong>
-                <span style="font-size: 0.8rem; color: #FF8A80;">The hotel is currently unable to accept or fulfill this order. Any online UPI payment refund will be initiated automatically.</span>
+                <span style="font-size: 0.8rem; color: #FF8A80;">
+                  ${order.rejection_reason ? `<strong>Reason:</strong> "${order.rejection_reason}"` : 'The hotel is currently unable to accept or fulfill this order. Any online UPI payment refund will be initiated automatically.'}
+                </span>
               </div>
             </div>
             <button type="button" class="btn-sm-status" onclick="app.openOrderSupport('${order.order_number}')" style="background: #E53935; color: #FFF; border: none; padding: 7px 16px; font-weight: 800; font-size: 0.78rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
@@ -2315,6 +2652,9 @@ class TiffinApp {
               <i class="fa-solid ${statusIcon}"></i> ${statusLabel}
             </span>
             <span class="co-row-date"><i class="fa-regular fa-clock"></i> ${dateFormatted}</span>
+            <button type="button" class="btn-sm-status" onclick="event.stopPropagation(); app.deleteCustomerOrder('${order.id}')" style="background: rgba(229,57,53,0.16); color: #FF5252; border: 1px solid rgba(229,57,53,0.4); padding: 4px 12px; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s ease;" title="Delete this order from your history">
+              <i class="fa-solid fa-trash-can"></i> Delete
+            </button>
           </div>
 
           <div class="co-top-right">
@@ -2821,6 +3161,85 @@ class TiffinApp {
     }
   }
 
+  openRejectOrderModal(orderId) {
+    const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    const elId = document.getElementById('rejectTargetOrderId');
+    const elNum = document.getElementById('rejectOrderNumDisplay');
+    const elInput = document.getElementById('rejectOrderReasonInput');
+    const backdrop = document.getElementById('rejectOrderModalBackdrop');
+
+    if (elId) elId.value = order.id;
+    if (elNum) elNum.innerText = `#${order.order_number}`;
+    if (elInput) elInput.value = 'Items Out of Stock';
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  closeRejectOrderModal() {
+    const backdrop = document.getElementById('rejectOrderModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  setRejectReasonChip(reasonText) {
+    const elInput = document.getElementById('rejectOrderReasonInput');
+    if (elInput) elInput.value = reasonText;
+  }
+
+  async submitOrderRejection(e) {
+    if (e) e.preventDefault();
+    const orderId = document.getElementById('rejectTargetOrderId')?.value;
+    const reason = document.getElementById('rejectOrderReasonInput')?.value || 'Rejected by Hotel Manager';
+
+    if (!orderId) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_status: 'Rejected', rejection_reason: reason })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || `Order marked as Rejected. Moved to Rejected Orders.`, 'info');
+        this.closeRejectOrderModal();
+        await this.fetchOrders();
+        await this.fetchStats();
+      } else {
+        this.showToast(json.message || 'Failed to reject order', 'error');
+      }
+    } catch (err) {
+      console.error('Error rejecting order:', err);
+      this.showToast('Failed to reject order.', 'error');
+    }
+  }
+
+  async restoreRejectedOrder(orderId) {
+    const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    if (!confirm(`Restore Order #${order.order_number} back to active kitchen queue?`)) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_status: 'Received' })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(`Order #${order.order_number} restored to Received status!`, 'success');
+        await this.fetchOrders();
+        await this.fetchStats();
+      } else {
+        this.showToast(json.message || 'Failed to restore order', 'error');
+      }
+    } catch (err) {
+      console.error('Error restoring order:', err);
+      this.showToast('Failed to restore order.', 'error');
+    }
+  }
+
   // =========================================================================
   // OWNER TIFFIN MANAGEMENT CRUD
   // =========================================================================
@@ -3026,10 +3445,27 @@ class TiffinApp {
     const elCash = document.getElementById('payStatCash');
     const elPending = document.getElementById('payStatPending');
 
-    if (elTotal) elTotal.innerText = `₹${totalAmount.toLocaleString('en-IN')}`;
-    if (elUpi) elUpi.innerText = `₹${upiAmount.toLocaleString('en-IN')}`;
-    if (elCash) elCash.innerText = `₹${cashAmount.toLocaleString('en-IN')}`;
-    if (elPending) elPending.innerText = pendingCount;
+    if (this.isLoadingPayments && !list.length) {
+      if (elTotal) elTotal.innerText = 'Loading...';
+      if (elUpi) elUpi.innerText = 'Loading...';
+      if (elCash) elCash.innerText = 'Loading...';
+      if (elPending) elPending.innerText = 'Loading...';
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 0.75rem;"></i>
+            <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.25rem;">Loading Payment Records...</h3>
+            <p style="font-size: 0.85rem;">Fetching database records...</p>
+          </td>
+        </tr>
+      `;
+      return;
+    } else {
+      if (elTotal) elTotal.innerText = `₹${totalAmount.toLocaleString('en-IN')}`;
+      if (elUpi) elUpi.innerText = `₹${upiAmount.toLocaleString('en-IN')}`;
+      if (elCash) elCash.innerText = `₹${cashAmount.toLocaleString('en-IN')}`;
+      if (elPending) elPending.innerText = pendingCount;
+    }
 
     // Filter by tab
     if (this.ownerPaymentFilter === 'UPI') {
@@ -3195,7 +3631,6 @@ class TiffinApp {
     URL.revokeObjectURL(url);
     this.showToast('Financial statement downloaded successfully (CSV)!', 'success');
   }
-
   downloadSinglePaymentVoucher(orderNumber) {
     this.downloadOrderReceipt(orderNumber);
   }
@@ -3225,8 +3660,15 @@ class TiffinApp {
     if (elDesc) elDesc.value = this.settings.description || '';
 
     const qrImg = document.getElementById('setQrPreviewImg');
-    if (qrImg && this.settings.upi_qr_code) {
-      qrImg.src = this.settings.upi_qr_code;
+    if (qrImg) {
+      const qrSrc = (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) ? this.tempOwnerQrCode : (this.settings.upi_qr_code || '');
+      if (qrSrc) {
+        qrImg.src = qrSrc;
+        qrImg.style.display = 'block';
+      } else {
+        qrImg.src = '';
+        qrImg.style.display = 'none';
+      }
     }
 
     // Referral Program Settings Controls
@@ -3256,6 +3698,11 @@ class TiffinApp {
     const swEnabled = document.getElementById('setRefEnabledSwitch');
     const refEnabled = swEnabled ? swEnabled.classList.contains('active') : true;
 
+    let qrVal = this.settings ? (this.settings.upi_qr_code || '') : '';
+    if (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) {
+      qrVal = this.tempOwnerQrCode;
+    }
+
     const payload = {
       hotel_name: document.getElementById('setHotelName')?.value,
       phone: document.getElementById('setPhone')?.value,
@@ -3265,8 +3712,8 @@ class TiffinApp {
       holidays: document.getElementById('setHolidays')?.value,
       upi_id: document.getElementById('setUpiId')?.value,
       description: document.getElementById('setDesc')?.value,
-      upi_qr_code: this.tempOwnerQrCode || this.settings.upi_qr_code || '',
-      is_open: this.settings.is_open,
+      upi_qr_code: qrVal,
+      is_open: this.settings ? (this.settings.is_open !== false) : true,
       referral: {
         enabled: refEnabled,
         referrer_reward: Number(document.getElementById('setRefReferrerReward')?.value || 30),
@@ -3286,20 +3733,132 @@ class TiffinApp {
       if (json.success) {
         this.settings = json.data;
         this.tempOwnerQrCode = null;
-        this.showToast('Business & Referral settings saved successfully!', 'success');
+        this.updateHeaderAndSettingsUI();
+        this.showToast('Business settings updated successfully.', 'success');
       } else {
-        this.showToast(json.message || 'Error saving settings.', 'error');
+        this.showToast(json.message || 'Unable to save changes. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error saving settings:', err);
-      this.showToast('Failed to save settings.', 'error');
+      this.showToast('Unable to save changes. Please try again.', 'error');
+    }
+  }
+
+  updateHeaderAndSettingsUI() {
+    if (!this.settings) return;
+    const name = this.settings.hotel_name || 'Annapurna Tiffin Center';
+    const phone = this.settings.phone || '';
+    const addr = this.settings.address || '';
+    const desc = this.settings.description || '';
+    const openT = this.settings.open_time || '';
+    const closeT = this.settings.close_time || '';
+    const holidays = this.settings.holidays || '';
+    const upi = this.settings.upi_id || 'annapurna@upi';
+    const qrCode = this.settings.upi_qr_code || '';
+
+    // Header & Sidebar
+    const elHeaderName = document.getElementById('headerHotelName');
+    const elSidebarName = document.getElementById('sidebarHotelName');
+    const elMobileDrawerName = document.getElementById('mobileDrawerHotelName');
+    const elHeaderAddr = document.getElementById('headerAddress');
+    if (elHeaderName) elHeaderName.innerText = name;
+    if (elSidebarName) elSidebarName.innerText = name;
+    if (elMobileDrawerName) elMobileDrawerName.innerText = name;
+    if (elHeaderAddr) elHeaderAddr.innerText = addr.split(',')[0] || addr;
+
+    // Hero Home Section Banner
+    const elBannerGreeting = document.getElementById('bannerGreeting');
+    const elBannerDesc = document.getElementById('bannerDesc');
+    if (elBannerGreeting) elBannerGreeting.innerText = `Welcome to ${name}! 🍲`;
+    if (elBannerDesc && desc) elBannerDesc.innerText = desc;
+
+    // Hero Home Section Details
+    const elHeroTitle = document.getElementById('heroHotelTitle');
+    const elHeroDesc = document.getElementById('heroHotelDescription');
+    const elHeroAddr = document.getElementById('heroHotelAddress');
+    const elHeroPhone = document.getElementById('heroHotelPhone');
+    const elHeroHours = document.getElementById('heroOperatingHours');
+    const elHeroHolidays = document.getElementById('heroHolidays');
+    if (elHeroTitle) elHeroTitle.innerText = name;
+    if (elHeroDesc && desc) elHeroDesc.innerText = desc;
+    if (elHeroAddr) elHeroAddr.innerText = addr;
+    if (elHeroPhone) elHeroPhone.innerText = phone;
+    if (elHeroHours) elHeroHours.innerText = `${openT} - ${closeT}`;
+    if (elHeroHolidays) elHeroHolidays.innerText = holidays;
+
+    // Helpline Links & Drawer
+    const elHelplinePhone = document.getElementById('drawerHelplinePhone');
+    if (elHelplinePhone) elHelplinePhone.innerText = `${phone} (${holidays || 'Open 7 Days'})`;
+
+    // Checkout & Payment
+    const elCheckoutUpi = document.getElementById('checkoutUpiIdDisplay');
+    if (elCheckoutUpi) elCheckoutUpi.innerText = upi;
+
+    const updatedAt = this.settings.upi_qr_updated_at || Date.now();
+    const cacheBustQr = qrCode ? (qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`) : '';
+
+    const checkoutQr = document.getElementById('checkoutQrScannerImg');
+    const checkoutQrWrapper = document.getElementById('checkoutQrWrapper');
+    const checkoutQrUnavail = document.getElementById('checkoutQrUnavailableMsg');
+    if (checkoutQr) {
+      if (qrCode) {
+        if (checkoutQr.getAttribute('data-raw-src') !== cacheBustQr) {
+          checkoutQr.src = cacheBustQr;
+          checkoutQr.setAttribute('data-raw-src', cacheBustQr);
+        }
+        checkoutQr.style.display = 'block';
+        if (checkoutQrWrapper) checkoutQrWrapper.style.display = 'block';
+        if (checkoutQrUnavail) checkoutQrUnavail.classList.add('hidden');
+      } else {
+        checkoutQr.src = '';
+        checkoutQr.removeAttribute('data-raw-src');
+        checkoutQr.style.display = 'none';
+        if (checkoutQrWrapper) checkoutQrWrapper.style.display = 'none';
+        if (checkoutQrUnavail) checkoutQrUnavail.classList.remove('hidden');
+      }
+    }
+
+    const setQr = document.getElementById('setQrPreviewImg');
+    if (setQr) {
+      const displayQr = (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) ? this.tempOwnerQrCode : cacheBustQr;
+      if (displayQr) {
+        if (setQr.getAttribute('data-raw-src') !== displayQr) {
+          setQr.src = displayQr;
+          setQr.setAttribute('data-raw-src', displayQr);
+        }
+        setQr.style.display = 'block';
+      } else {
+        setQr.src = '';
+        setQr.removeAttribute('data-raw-src');
+        setQr.style.display = 'none';
+      }
+    }
+
+    // Master Switch UI
+    const mSwitch = document.getElementById('masterHotelSwitch') || document.getElementById('settingHotelOpenSwitch');
+    const mText = document.getElementById('masterHotelStatusText') || document.getElementById('settingHotelOpenLabel');
+    const tag = document.getElementById('customerHotelStatusTag');
+
+    const isOpen = Boolean(this.settings.is_open);
+    if (mSwitch) mSwitch.classList.toggle('active', isOpen);
+    if (mText) mText.innerText = isOpen ? '🟢 HOTEL OPEN' : '🔴 HOTEL CLOSED';
+
+    if (tag) {
+      tag.className = `hotel-status-tag ${isOpen ? 'open' : 'closed'}`;
+      tag.innerHTML = isOpen ? `<i class="fa-solid fa-circle"></i> <span>🟢 HOTEL OPEN - Taking Orders</span>`
+        : `<i class="fa-solid fa-circle"></i> <span>🔴 HOTEL CLOSED - Currently Closed</span>`;
     }
   }
 
   zoomCheckoutQrCode() {
-    const qrImg = document.getElementById('checkoutQrScannerImg');
-    const src = qrImg && qrImg.src ? qrImg.src : (this.settings?.upi_qr_code || '/images/upi_qr_scanner.png');
-    this.viewFullScreenshot(src);
+    const qrCode = this.settings?.upi_qr_code || '';
+    const updatedAt = this.settings?.upi_qr_updated_at || Date.now();
+    const cacheBustQr = qrCode ? (qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`) : '';
+    if (cacheBustQr) {
+      this.viewFullScreenshot(cacheBustQr);
+    } else {
+      this.showToast('Online payment scanner is currently unavailable.', 'info');
+    }
   }
 
   // =========================================================================
@@ -3327,9 +3886,10 @@ class TiffinApp {
 
     // Filter user's payment records
     let list = (this.payments || []).filter(p => {
+      if (p.customer_id && p.customer_id === this.currentUser.id) return true;
       if (p.customer_mobile && p.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
       const matchingOrder = (this.orders || []).find(o => o.order_number === p.order_number);
-      if (matchingOrder && matchingOrder.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
+      if (matchingOrder && matchingOrder.customer_mobile && matchingOrder.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
       return false;
     });
 
@@ -3342,9 +3902,25 @@ class TiffinApp {
     const elPaid = document.getElementById('custPayStatPaid');
     const elPending = document.getElementById('custPayStatPending');
 
-    if (elTotal) elTotal.innerText = `₹${totalSpent.toLocaleString('en-IN')}`;
-    if (elPaid) elPaid.innerText = paidCount;
-    if (elPending) elPending.innerText = pendingCount;
+    if (this.isLoadingPayments && !list.length) {
+      if (elTotal) elTotal.innerText = 'Loading...';
+      if (elPaid) elPaid.innerText = 'Loading...';
+      if (elPending) elPending.innerText = 'Loading...';
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="6" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 0.75rem;"></i>
+            <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.25rem;">Loading Payment History...</h3>
+            <p style="font-size: 0.85rem;">Fetching database records...</p>
+          </td>
+        </tr>
+      `;
+      return;
+    } else {
+      if (elTotal) elTotal.innerText = `₹${totalSpent.toLocaleString('en-IN')}`;
+      if (elPaid) elPaid.innerText = paidCount;
+      if (elPending) elPending.innerText = pendingCount;
+    }
 
     // Filter tabs
     const activeFilter = this.customerPaymentFilter || 'All';
@@ -3372,9 +3948,9 @@ class TiffinApp {
     if (!list.length) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="5" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+          <td colspan="6" style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
             <i class="fa-solid fa-wallet" style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 0.75rem;"></i>
-            <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.25rem;">No Payment History Found</h3>
+            <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.25rem;">No payment history found</h3>
             <p style="font-size: 0.85rem;">No payment receipts match your selected filter.</p>
           </td>
         </tr>
@@ -3455,6 +4031,13 @@ class TiffinApp {
             <i class="fa-solid fa-download"></i> Tax Invoice
           </button>
         </td>
+
+        <!-- 6. Delete Action -->
+        <td style="padding: 14px 16px; vertical-align: middle; text-align: center;">
+          <button type="button" class="btn-sm-status" onclick="app.deleteCustomerPayment('${p.id}')" style="background: rgba(229,57,53,0.16); color: #FF5252; border: 1px solid rgba(229,57,53,0.4); padding: 8px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease;" title="Delete this payment record">
+            <i class="fa-solid fa-trash-can"></i> Delete
+          </button>
+        </td>
       </tr>
     `;
   }
@@ -3498,6 +4081,136 @@ class TiffinApp {
     this.showToast('Payment statement downloaded (CSV)!', 'success');
   }
 
+  // =========================================================================
+  // CUSTOMER HISTORY DELETION (Delete own order & payment records)
+  // =========================================================================
+
+  async deleteCustomerOrder(orderId) {
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) { this.showToast('Order not found.', 'error'); return; }
+
+    if (!confirm(`Are you sure you want to permanently delete Order #${order.order_number} from your history?\n\nThis action cannot be undone.`)) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/customer/orders/${order.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        this.orders = (this.orders || []).filter(o => o.id !== order.id);
+        this.isLoadingOrders = false;
+        this.renderOrders();
+        this.showToast('Order deleted successfully.', 'success');
+        await this.fetchOrders(true);
+        this.fetchPayments(true);
+        this.fetchStats(true);
+      } else {
+        this.showToast(json.message || 'Unable to delete order. Please try again.', 'error');
+      }
+    } catch (err) {
+      console.error('Error deleting customer order:', err);
+      this.showToast('Unable to delete order. Please try again.', 'error');
+    } finally {
+      this.isLoadingOrders = false;
+      this.renderOrders();
+    }
+  }
+
+  async deleteAllCustomerOrders() {
+    if (!this.orders || !this.orders.length) {
+      this.showToast('No order history to delete.', 'info');
+      return;
+    }
+
+    if (!confirm(`⚠️ Are you sure you want to permanently delete ALL your order history (${this.orders.length} orders)?\n\nThis action cannot be undone.`)) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/customer/orders`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        this.orders = [];
+        this.isLoadingOrders = false;
+        this.renderOrders();
+        this.showToast('All orders deleted successfully.', 'success');
+        await this.fetchOrders(true);
+        this.fetchPayments(true);
+        this.fetchStats(true);
+      } else {
+        this.showToast(json.message || 'Unable to delete order. Please try again.', 'error');
+      }
+    } catch (err) {
+      console.error('Error deleting all customer orders:', err);
+      this.showToast('Unable to delete order. Please try again.', 'error');
+    } finally {
+      this.isLoadingOrders = false;
+      this.renderOrders();
+    }
+  }
+
+  async deleteCustomerPayment(paymentId) {
+    const payment = (this.payments || []).find(p => p.id === paymentId);
+    if (!payment) { this.showToast('Payment record not found.', 'error'); return; }
+
+    if (!confirm(`Are you sure you want to permanently delete the payment record for Order #${payment.order_number}?\n\nThis action cannot be undone.`)) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/customer/payments/${payment.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        this.payments = (this.payments || []).filter(p => p.id !== payment.id);
+        this.isLoadingPayments = false;
+        this.filterCustomerPayments();
+        this.showToast('Payment deleted successfully.', 'success');
+        await this.fetchPayments(true);
+      } else {
+        this.showToast(json.message || 'Unable to delete payment. Please try again.', 'error');
+      }
+    } catch (err) {
+      console.error('Error deleting customer payment:', err);
+      this.showToast('Unable to delete payment. Please try again.', 'error');
+    } finally {
+      this.isLoadingPayments = false;
+      this.filterCustomerPayments();
+    }
+  }
+
+  async deleteAllCustomerPayments() {
+    const userMobileClean = (this.currentUser?.mobile || '').replace(/[^0-9]/g, '');
+    const myPayments = (this.payments || []).filter(p => {
+      if (p.customer_id && p.customer_id === this.currentUser?.id) return true;
+      if (p.customer_mobile && p.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
+      const matchingOrder = (this.orders || []).find(o => o.order_number === p.order_number);
+      if (matchingOrder && matchingOrder.customer_mobile && matchingOrder.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
+      return false;
+    });
+
+    if (!myPayments.length) {
+      this.showToast('No payment history to delete.', 'info');
+      return;
+    }
+
+    if (!confirm(`⚠️ Are you sure you want to permanently delete ALL your payment history (${myPayments.length} records)?\n\nThis action cannot be undone.`)) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/customer/payments`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        const paymentIds = myPayments.map(p => p.id);
+        this.payments = (this.payments || []).filter(p => !paymentIds.includes(p.id));
+        this.isLoadingPayments = false;
+        this.filterCustomerPayments();
+        this.showToast('All payment records deleted successfully.', 'success');
+        await this.fetchPayments(true);
+      } else {
+        this.showToast(json.message || 'Unable to delete payment. Please try again.', 'error');
+      }
+    } catch (err) {
+      console.error('Error deleting all customer payments:', err);
+      this.showToast('Unable to delete payment. Please try again.', 'error');
+    } finally {
+      this.isLoadingPayments = false;
+      this.filterCustomerPayments();
+    }
+  }
+
   async updatePaymentStatus(paymentId, newStatus) {
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/payments/${paymentId}/status`, {
@@ -3517,36 +4230,15 @@ class TiffinApp {
     }
   }
 
-  populateSettingsForm() {
-    if (!this.settings) return;
-    document.getElementById('setHotelName').value = this.settings.hotel_name || '';
-    document.getElementById('setPhone').value = this.settings.phone || '';
-    document.getElementById('setAddress').value = this.settings.address || '';
-    document.getElementById('setOpenTime').value = this.settings.open_time || '';
-    document.getElementById('setCloseTime').value = this.settings.close_time || '';
-    document.getElementById('setHolidays').value = this.settings.holidays || '';
-    document.getElementById('setUpiId').value = this.settings.upi_id || '';
-    document.getElementById('setDesc').value = this.settings.description || '';
-
-    const setQr = document.getElementById('setQrPreviewImg');
-    if (setQr && this.settings.upi_qr_code) {
-      setQr.src = this.settings.upi_qr_code;
-    }
-
-    const sw = document.getElementById('settingHotelOpenSwitch');
-    const lbl = document.getElementById('settingHotelOpenLabel');
-    const isOpen = Boolean(this.settings.is_open);
-    if (sw) sw.classList.toggle('active', isOpen);
-    if (lbl) lbl.innerText = isOpen ? '🟢 HOTEL OPEN' : '🔴 HOTEL CLOSED';
-  }
-
   async toggleSettingsHotelOpen() {
+    if (!this.settings) return;
     this.settings.is_open = !this.settings.is_open;
     this.populateSettingsForm();
     await this.saveBusinessSettingsDirect();
   }
 
   async toggleMasterHotelStatus() {
+    if (!this.settings) return;
     this.settings.is_open = !this.settings.is_open;
     await this.saveBusinessSettingsDirect();
   }
@@ -3554,12 +4246,13 @@ class TiffinApp {
   async saveBusinessSettingsDirect() {
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(this.settings)
       });
       const json = await res.json();
       if (json.success) {
+        this.settings = json.data;
         this.updateHeaderAndSettingsUI();
         this.showToast(`Hotel status updated to ${this.settings.is_open ? 'OPEN' : 'CLOSED'}`, 'info');
       } else {
@@ -3567,75 +4260,6 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Error updating hotel status:', err);
-    }
-  }
-
-  async saveBusinessSettings(e) {
-    e.preventDefault();
-
-    const payload = {
-      hotel_name: document.getElementById('setHotelName').value,
-      phone: document.getElementById('setPhone').value,
-      address: document.getElementById('setAddress').value,
-      open_time: document.getElementById('setOpenTime').value,
-      close_time: document.getElementById('setCloseTime').value,
-      holidays: document.getElementById('setHolidays').value,
-      upi_id: document.getElementById('setUpiId').value,
-      upi_qr_code: this.tempOwnerQrCode || (this.settings ? this.settings.upi_qr_code : '/images/upi_qr_scanner.png'),
-      description: document.getElementById('setDesc').value,
-      is_open: this.settings.is_open
-    };
-
-    try {
-      const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const json = await res.json();
-      if (json.success) {
-        this.settings = json.data;
-        this.tempOwnerQrCode = null;
-        this.updateHeaderAndSettingsUI();
-        this.showToast('Business settings & UPI QR Scanner saved successfully.', 'success');
-      } else {
-        this.showToast(json.message || 'Failed to save settings', 'error');
-      }
-    } catch (err) {
-      console.error('Error saving settings:', err);
-    }
-  }
-
-  updateHeaderAndSettingsUI() {
-    if (!this.settings) return;
-    document.getElementById('headerHotelName').innerText = this.settings.hotel_name || 'Annapurna Tiffin Center';
-    document.getElementById('sidebarHotelName').innerText = this.settings.hotel_name || 'Annapurna Tiffin';
-    document.getElementById('headerAddress').innerText = (this.settings.address || '').split(',')[0];
-    document.getElementById('checkoutUpiIdDisplay').innerText = this.settings.upi_id || 'annapurna@upi';
-
-    const checkoutQr = document.getElementById('checkoutQrScannerImg');
-    if (checkoutQr && this.settings.upi_qr_code) {
-      checkoutQr.src = this.settings.upi_qr_code;
-    }
-
-    const setQr = document.getElementById('setQrPreviewImg');
-    if (setQr && this.settings.upi_qr_code) {
-      setQr.src = this.settings.upi_qr_code;
-    }
-
-    // Master Switch UI
-    const mSwitch = document.getElementById('masterHotelSwitch');
-    const mText = document.getElementById('masterHotelStatusText');
-    const tag = document.getElementById('customerHotelStatusTag');
-
-    const isOpen = Boolean(this.settings.is_open);
-    if (mSwitch) mSwitch.classList.toggle('active', isOpen);
-    if (mText) mText.innerText = isOpen ? '🟢 HOTEL OPEN' : '🔴 HOTEL CLOSED';
-
-    if (tag) {
-      tag.className = `hotel-status-tag ${isOpen ? 'open' : 'closed'}`;
-      tag.innerHTML = isOpen ? `<i class="fa-solid fa-circle"></i> <span>🟢 HOTEL OPEN - Taking Orders</span>`
-        : `<i class="fa-solid fa-circle"></i> <span>🔴 HOTEL CLOSED - Currently Closed</span>`;
     }
   }
 

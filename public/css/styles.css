@@ -1444,6 +1444,80 @@ textarea.form-control {
   font-weight: 700;
 }
 
+/* Online Payment Sub-Tabs (QR Pay / PhonePe) */
+.online-pay-subtabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 1.2rem;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 5px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.subtab-btn {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.subtab-btn:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.subtab-btn.active {
+  background: var(--accent-gold);
+  color: #000000;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(234, 162, 33, 0.35);
+}
+
+.subtab-btn.active#subtabPhonePe {
+  background: linear-gradient(135deg, #5f259f, #8e44ad);
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(95, 37, 159, 0.5);
+}
+
+.btn-phonepe-pay {
+  width: 100%;
+  background: linear-gradient(135deg, #5f259f, #391463);
+  color: #FFFFFF;
+  border: 1.5px solid #8e44ad;
+  padding: 13px 18px;
+  border-radius: var(--radius-md);
+  font-weight: 800;
+  font-size: 0.98rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 6px 18px rgba(95, 37, 159, 0.4);
+  margin-bottom: 1.2rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-phonepe-pay:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(95, 37, 159, 0.6);
+}
+
+.btn-phonepe-pay:active {
+  transform: translateY(0);
+}
+
 /* Toast Notifications */
 .toast-container {
   position: fixed;

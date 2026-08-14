@@ -289,8 +289,12 @@
 
     <!-- Customer Orders Section -->
     <section id="secCustomerOrders" class="view-section hidden">
-      <div class="section-header">
+      <div class="section-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 1rem;">
         <h2 class="section-title"><i class="fa-solid fa-receipt" style="color: var(--primary);"></i> My Orders</h2>
+        <button type="button" id="btnDeleteAllOrders" class="btn-primary-block" onclick="app.deleteAllCustomerOrders()"
+          style="width: auto; padding: 8px 18px; background: linear-gradient(135deg, #E53935, #C62828); font-size: 0.82rem; font-weight: 800; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(229, 57, 53, 0.35);">
+          <i class="fa-solid fa-trash-can"></i> Delete All Orders
+        </button>
       </div>
 
       <div class="orders-list" id="customerOrdersList">
@@ -305,10 +309,16 @@
           <h2 class="section-title"><i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i> My Payment History</h2>
           <p style="font-size: 0.85rem; color: var(--text-muted);">Track your online UPI payments, cash receipts, and download tax invoices</p>
         </div>
-        <button class="btn-primary-block" onclick="app.downloadCustomerPaymentStatementCSV()"
-          style="width: auto; padding: 9px 20px; background: linear-gradient(135deg, #EAA221, #D9531E);">
-          <i class="fa-solid fa-file-csv"></i> Download Payment Statement (CSV)
-        </button>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="btn-primary-block" onclick="app.downloadCustomerPaymentStatementCSV()"
+            style="width: auto; padding: 9px 20px; background: linear-gradient(135deg, #EAA221, #D9531E);">
+            <i class="fa-solid fa-file-csv"></i> Download Payment Statement (CSV)
+          </button>
+          <button type="button" id="btnDeleteAllPayments" class="btn-primary-block" onclick="app.deleteAllCustomerPayments()"
+            style="width: auto; padding: 9px 20px; background: linear-gradient(135deg, #E53935, #C62828); font-size: 0.82rem; font-weight: 800; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(229, 57, 53, 0.35);">
+            <i class="fa-solid fa-trash-can"></i> Delete All Payments
+          </button>
+        </div>
       </div>
 
       <!-- Customer Financial Summary Cards Grid -->
@@ -321,7 +331,7 @@
               <i class="fa-solid fa-indian-rupee-sign"></i>
             </div>
           </div>
-          <div class="stat-val" id="custPayStatTotal" style="color: var(--accent-gold);">₹0</div>
+          <div class="stat-val" id="custPayStatTotal" style="color: var(--accent-gold);">Loading...</div>
           <span style="font-size: 0.75rem; color: var(--text-muted);">Lifetime order total</span>
         </div>
 
@@ -332,7 +342,7 @@
               <i class="fa-solid fa-circle-check"></i>
             </div>
           </div>
-          <div class="stat-val" id="custPayStatPaid" style="color: #4CAF50;">0</div>
+          <div class="stat-val" id="custPayStatPaid" style="color: #4CAF50;">Loading...</div>
           <span style="font-size: 0.75rem; color: var(--text-muted);">Verified receipts</span>
         </div>
 
@@ -343,7 +353,7 @@
               <i class="fa-solid fa-hourglass-half"></i>
             </div>
           </div>
-          <div class="stat-val" id="custPayStatPending" style="color: var(--accent-gold);">0</div>
+          <div class="stat-val" id="custPayStatPending" style="color: var(--accent-gold);">Loading...</div>
           <span style="font-size: 0.75rem; color: var(--text-muted);">UPI verification queue</span>
         </div>
       </div>
@@ -377,6 +387,7 @@
               <th style="padding: 14px 16px;"><i class="fa-solid fa-camera"></i> Screenshot</th>
               <th style="padding: 14px 16px;"><i class="fa-solid fa-signal"></i> Payment Status</th>
               <th style="padding: 14px 16px; text-align: center;"><i class="fa-solid fa-file-invoice"></i> Download Invoice</th>
+              <th style="padding: 14px 16px; text-align: center;"><i class="fa-solid fa-trash-can"></i> Action</th>
             </tr>
           </thead>
           <tbody id="custPaymentsTableBody">
@@ -424,7 +435,7 @@
               <i class="fa-solid fa-wallet"></i>
             </div>
           </div>
-          <div class="stat-val" id="refStatWallet" style="color: var(--accent-gold);">₹0</div>
+          <div class="stat-val" id="refStatWallet" style="color: var(--accent-gold);">Loading...</div>
           <span style="font-size: 0.72rem; color: var(--text-muted);">Use for instant order discounts</span>
         </div>
 
@@ -435,7 +446,7 @@
               <i class="fa-solid fa-users"></i>
             </div>
           </div>
-          <div class="stat-val" id="refStatTotal">0</div>
+          <div class="stat-val" id="refStatTotal">Loading...</div>
           <span style="font-size: 0.72rem; color: var(--text-muted);">Invited friends count</span>
         </div>
 
@@ -446,7 +457,7 @@
               <i class="fa-solid fa-circle-check"></i>
             </div>
           </div>
-          <div class="stat-val" id="refStatCompleted" style="color: #4CAF50;">0</div>
+          <div class="stat-val" id="refStatCompleted" style="color: #4CAF50;">Loading...</div>
           <span style="font-size: 0.72rem; color: var(--text-muted);">First order completed</span>
         </div>
 
@@ -457,7 +468,7 @@
               <i class="fa-solid fa-trophy"></i>
             </div>
           </div>
-          <div class="stat-val" id="refStatEarned">₹0</div>
+          <div class="stat-val" id="refStatEarned">Loading...</div>
           <span style="font-size: 0.72rem; color: var(--text-muted);">Lifetime referral earnings</span>
         </div>
       </div>
@@ -577,7 +588,7 @@
             <div class="profile-stat-box" onclick="app.switchView('secCustomerOrders')">
               <div class="stat-icon-circle orange"><i class="fa-solid fa-utensils"></i></div>
               <div class="stat-info">
-                <span class="stat-val" id="profStatOrdersCount">0</span>
+                <span class="stat-val" id="profStatOrdersCount">Loading...</span>
                 <span class="stat-lbl">My Orders</span>
               </div>
               <i class="fa-solid fa-chevron-right stat-arrow"></i>
@@ -586,7 +597,7 @@
             <div class="profile-stat-box" onclick="app.switchView('secCustomerReferral')">
               <div class="stat-icon-circle gold"><i class="fa-solid fa-wallet"></i></div>
               <div class="stat-info">
-                <span class="stat-val" id="profStatWalletBal">₹0</span>
+                <span class="stat-val" id="profStatWalletBal">Loading...</span>
                 <span class="stat-lbl">Wallet & Rewards</span>
               </div>
               <i class="fa-solid fa-chevron-right stat-arrow"></i>
@@ -914,7 +925,7 @@
               <i class="fa-solid fa-bag-shopping"></i>
             </div>
           </div>
-          <div class="stat-val" id="statTodayOrders">0</div>
+          <div class="stat-val" id="statTodayOrders">Loading...</div>
         </div>
 
         <div class="stat-card" onclick="app.setOwnerOrderFilter('ACTIVE')" style="cursor: pointer;"
@@ -925,7 +936,7 @@
               <i class="fa-solid fa-bell"></i>
             </div>
           </div>
-          <div class="stat-val" id="statPendingOrders" style="color: var(--accent-gold);">0</div>
+          <div class="stat-val" id="statPendingOrders" style="color: var(--accent-gold);">Loading...</div>
         </div>
 
         <div class="stat-card" onclick="app.setOwnerOrderFilter('COMPLETED')" style="cursor: pointer;"
@@ -936,7 +947,7 @@
               <i class="fa-solid fa-circle-check"></i>
             </div>
           </div>
-          <div class="stat-val" id="statCompletedOrders" style="color: #4CAF50;">0</div>
+          <div class="stat-val" id="statCompletedOrders" style="color: #4CAF50;">Loading...</div>
         </div>
 
         <div class="stat-card" onclick="app.setOwnerOrderFilter('REJECTED')" style="cursor: pointer;"
@@ -947,7 +958,7 @@
               <i class="fa-solid fa-ban"></i>
             </div>
           </div>
-          <div class="stat-val" id="statRejectedOrders" style="color: #E53935;">0</div>
+          <div class="stat-val" id="statRejectedOrders" style="color: #E53935;">Loading...</div>
         </div>
 
         <div class="stat-card"
@@ -958,7 +969,7 @@
               <i class="fa-solid fa-indian-rupee-sign"></i>
             </div>
           </div>
-          <div class="stat-val" id="statTodaySales" style="color: var(--accent-gold);">₹0</div>
+          <div class="stat-val" id="statTodaySales" style="color: var(--accent-gold);">Loading...</div>
         </div>
 
         <!-- Customer Rating Analytics Card -->
@@ -971,7 +982,7 @@
           </div>
           <div style="display: flex; align-items: baseline; gap: 6px;">
             <div class="stat-val" id="ownerAvgRatingVal" style="color: var(--accent-gold);">5.0</div>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">/ 5.0 (<span id="ownerTotalReviewsCount">0</span> reviews)</span>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">/ 5.0 (<span id="ownerTotalReviewsCount">Loading...</span> reviews)</span>
           </div>
         </div>
       </div>
@@ -991,9 +1002,9 @@
             <div
               style="display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 6px; font-weight: 700;">
               <span><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> UPI / Online (<span
-                  id="upiSalesVal">₹0</span>)</span>
+                  id="upiSalesVal">Loading...</span>)</span>
               <span><i class="fa-solid fa-money-bill" style="color: #66BB6A;"></i> Cash (<span
-                  id="cashSalesVal">₹0</span>)</span>
+                  id="cashSalesVal">Loading...</span>)</span>
             </div>
             <div
               style="height: 10px; background: rgba(255,255,255,0.08); border-radius: 5px; overflow: hidden; display: flex;">
@@ -1012,19 +1023,19 @@
               style="flex: 1; min-width: 100px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
               <span style="font-size: 0.74rem; color: var(--text-muted); display: block;"><i
                   class="fa-solid fa-motorcycle" style="color: var(--primary);"></i> Home Delivery</span>
-              <strong style="font-size: 1.1rem; color: #FFF;" id="countDeliveryOrders">0</strong>
+              <strong style="font-size: 1.1rem; color: #FFF;" id="countDeliveryOrders">Loading...</strong>
             </div>
             <div
               style="flex: 1; min-width: 100px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
               <span style="font-size: 0.74rem; color: var(--text-muted); display: block;"><i class="fa-solid fa-box"
                   style="color: var(--accent-gold);"></i> Takeaway</span>
-              <strong style="font-size: 1.1rem; color: #FFF;" id="countTakeawayOrders">0</strong>
+              <strong style="font-size: 1.1rem; color: #FFF;" id="countTakeawayOrders">Loading...</strong>
             </div>
             <div
               style="flex: 1; min-width: 100px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); text-align: center;">
               <span style="font-size: 0.74rem; color: var(--text-muted); display: block;"><i
                   class="fa-solid fa-utensils" style="color: #29B6F6;"></i> Dine-in</span>
-              <strong style="font-size: 1.1rem; color: #FFF;" id="countDineinOrders">0</strong>
+              <strong style="font-size: 1.1rem; color: #FFF;" id="countDineinOrders">Loading...</strong>
             </div>
           </div>
         </div>
@@ -1224,7 +1235,7 @@
               <i class="fa-solid fa-indian-rupee-sign"></i>
             </div>
           </div>
-          <div class="stat-val" id="payStatTotal" style="color: var(--accent-gold);">₹0</div>
+          <div class="stat-val" id="payStatTotal" style="color: var(--accent-gold);">Loading...</div>
         </div>
 
         <div class="stat-card">
@@ -1234,7 +1245,7 @@
               <i class="fa-solid fa-qrcode"></i>
             </div>
           </div>
-          <div class="stat-val" id="payStatUpi" style="color: #29B6F6;">₹0</div>
+          <div class="stat-val" id="payStatUpi" style="color: #29B6F6;">Loading...</div>
         </div>
 
         <div class="stat-card">
@@ -1244,7 +1255,7 @@
               <i class="fa-solid fa-money-bill-wave"></i>
             </div>
           </div>
-          <div class="stat-val" id="payStatCash" style="color: #4CAF50;">₹0</div>
+          <div class="stat-val" id="payStatCash" style="color: #4CAF50;">Loading...</div>
         </div>
 
         <div class="stat-card">
@@ -1254,7 +1265,7 @@
               <i class="fa-solid fa-hourglass-half"></i>
             </div>
           </div>
-          <div class="stat-val" id="payStatPending" style="color: #FF5252;">0</div>
+          <div class="stat-val" id="payStatPending" style="color: #FF5252;">Loading...</div>
         </div>
       </div>
 
@@ -1454,11 +1465,16 @@
                       <span class="qr-upload-title">Scanner Image</span>
                       <p class="qr-upload-sub">Uploaded QR image displays directly on customer checkout modal.</p>
                       
-                      <label class="btn-qr-upload">
-                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload New Scanner
-                        <input type="file" id="setQrFileInput" accept="image/*" onchange="app.handleOwnerQrUpload(event)" style="display: none;">
-                      </label>
-                      <span class="qr-fmt-hint">PNG, JPG, WEBP formats supported</span>
+                      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                        <label class="btn-qr-upload" style="margin: 0; cursor: pointer;">
+                          <i class="fa-solid fa-cloud-arrow-up"></i> Upload / Replace Scanner
+                          <input type="file" id="setQrFileInput" accept="image/*" onchange="app.handleOwnerQrUpload(event)" style="display: none;">
+                        </label>
+                        <button type="button" id="btnRemoveQrScanner" onclick="app.removeOwnerQrScanner()" style="background: rgba(229, 57, 53, 0.15); border: 1px solid #E53935; color: #FF5252; padding: 8px 14px; border-radius: var(--radius-md); font-weight: 700; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                          <i class="fa-solid fa-trash-can"></i> Remove Scanner
+                        </button>
+                      </div>
+                      <span class="qr-fmt-hint" style="margin-top: 6px; display: block;">PNG, JPG, WEBP formats supported</span>
                     </div>
                   </div>
                 </div>
@@ -1543,7 +1559,7 @@
           <div class="kpi-icon-box gold"><i class="fa-solid fa-receipt"></i></div>
           <div class="kpi-info">
             <span class="kpi-label">Total Tickets</span>
-            <h3 class="kpi-value" id="statTotalTickets">0</h3>
+            <h3 class="kpi-value" id="statTotalTickets">Loading...</h3>
           </div>
         </div>
 
@@ -1551,7 +1567,7 @@
           <div class="kpi-icon-box red"><i class="fa-solid fa-envelope-open-text"></i></div>
           <div class="kpi-info">
             <span class="kpi-label">Open / Action Needed</span>
-            <h3 class="kpi-value" id="statOpenTickets">0</h3>
+            <h3 class="kpi-value" id="statOpenTickets">Loading...</h3>
           </div>
         </div>
 
@@ -1559,7 +1575,7 @@
           <div class="kpi-icon-box blue"><i class="fa-solid fa-spinner"></i></div>
           <div class="kpi-info">
             <span class="kpi-label">In Progress</span>
-            <h3 class="kpi-value" id="statInProgressTickets">0</h3>
+            <h3 class="kpi-value" id="statInProgressTickets">Loading...</h3>
           </div>
         </div>
 
@@ -1567,7 +1583,7 @@
           <div class="kpi-icon-box green"><i class="fa-solid fa-circle-check"></i></div>
           <div class="kpi-info">
             <span class="kpi-label">Resolved Tickets</span>
-            <h3 class="kpi-value" id="statResolvedTickets">0</h3>
+            <h3 class="kpi-value" id="statResolvedTickets">Loading...</h3>
           </div>
         </div>
       </div>
@@ -1621,7 +1637,7 @@
             <div class="kpi-icon-box blue"><i class="fa-solid fa-comments"></i></div>
             <div class="kpi-info">
               <span class="kpi-label">Total Reviews</span>
-              <h3 class="kpi-value" id="ownerTotalReviewsCount">0</h3>
+              <h3 class="kpi-value" id="ownerTotalReviewsCount">Loading...</h3>
             </div>
           </div>
 
@@ -1629,7 +1645,7 @@
             <div class="kpi-icon-box green"><i class="fa-solid fa-thumbs-up"></i></div>
             <div class="kpi-info">
               <span class="kpi-label">Positive (4-5★)</span>
-              <h3 class="kpi-value" id="ownerPositiveReviewsCount">0</h3>
+              <h3 class="kpi-value" id="ownerPositiveReviewsCount">Loading...</h3>
             </div>
           </div>
 
@@ -1637,7 +1653,7 @@
             <div class="kpi-icon-box red"><i class="fa-solid fa-triangle-exclamation"></i></div>
             <div class="kpi-info">
               <span class="kpi-label">Critical (1-3★)</span>
-              <h3 class="kpi-value" id="ownerCriticalReviewsCount">0</h3>
+              <h3 class="kpi-value" id="ownerCriticalReviewsCount">Loading...</h3>
             </div>
           </div>
         </div>
@@ -1837,77 +1853,122 @@
           <!-- Dynamic UPI QR & Screenshot / UTR Payment Gateway Box -->
           <div id="upiQrBox" class="hidden"
             style="background: rgba(10, 10, 14, 0.6); padding: 1.2rem; border-radius: var(--radius-lg); border: 1px solid var(--accent-gold); margin-top: 1rem;">
-            <div style="text-align: center; margin-bottom: 0.85rem;">
-              <span class="status-badge"
-                style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.8rem; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;">
-                <i class="fa-solid fa-qrcode"></i> Scan Shop Owner QR Code to Pay
-              </span>
+            
+            <!-- Online Payment Sub-Options Selector: [ QR Pay ] [ PhonePe ] -->
+            <div class="online-pay-subtabs">
+              <button type="button" class="subtab-btn active" id="subtabQrPay" onclick="app.selectOnlineSubOption('QRPay')">
+                <i class="fa-solid fa-qrcode" style="font-size: 1.05rem;"></i> QR Pay
+              </button>
+              <button type="button" class="subtab-btn" id="subtabPhonePe" onclick="app.selectOnlineSubOption('PhonePe')">
+                <i class="fa-solid fa-mobile-screen-button" style="font-size: 1.05rem; color: #5f259f;"></i> PhonePe
+              </button>
             </div>
 
-            <!-- Shop Owner's Uploaded QR Code Display with Interactive Zoom Button -->
-            <div class="checkout-qr-wrapper" style="position: relative; width: 190px; margin: 0 auto 1.2rem; cursor: pointer;" onclick="app.zoomCheckoutQrCode()">
-              <div class="qr-card-box" style="background: #FFFFFF; padding: 12px; border-radius: 14px; border: 2px solid var(--accent-gold); text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: transform 0.2s ease;">
-                <img id="checkoutQrScannerImg" src="/images/upi_qr_scanner.png" alt="Shop Owner UPI QR Code"
-                  style="width: 160px; height: 160px; object-fit: contain; display: block; margin: 0 auto;">
+            <!-- SUB-VIEW 1: QR PAY (Existing QR Payment Flow) -->
+            <div id="subviewQrPay">
+              <div style="text-align: center; margin-bottom: 0.85rem;">
+                <span class="status-badge"
+                  style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.8rem; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-qrcode"></i> Scan Shop Owner QR Code to Pay
+                </span>
               </div>
-              <button type="button" class="btn-qr-zoom" title="Click to zoom QR Code scanner" onclick="event.stopPropagation(); app.zoomCheckoutQrCode()">
-                <i class="fa-solid fa-magnifying-glass-plus"></i> <span>Zoom QR Code</span>
-              </button>
+
+              <!-- Shop Owner's Uploaded QR Code Display with Interactive Zoom Button -->
+              <div class="checkout-qr-wrapper" id="checkoutQrWrapper" style="position: relative; width: 190px; margin: 0 auto 1.2rem; cursor: pointer;" onclick="app.zoomCheckoutQrCode()">
+                <div class="qr-card-box" style="background: #FFFFFF; padding: 12px; border-radius: 14px; border: 2px solid var(--accent-gold); text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.5); transition: transform 0.2s ease;">
+                  <img id="checkoutQrScannerImg" src="" alt="Shop Owner UPI QR Code"
+                    style="width: 160px; height: 160px; object-fit: contain; display: block; margin: 0 auto;">
+                </div>
+                <button type="button" class="btn-qr-zoom" title="Click to zoom QR Code scanner" onclick="event.stopPropagation(); app.zoomCheckoutQrCode()">
+                  <i class="fa-solid fa-magnifying-glass-plus"></i> <span>Zoom QR Code</span>
+                </button>
+              </div>
+
+              <!-- Unavailable QR Code Notice -->
+              <div id="checkoutQrUnavailableMsg" class="hidden" style="text-align: center; padding: 1.2rem 1rem; background: rgba(229,57,53,0.1); border: 1px dashed #E53935; border-radius: var(--radius-md); margin-bottom: 1.2rem; color: #FF5252;">
+                <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.5rem; margin-bottom: 6px; display: block;"></i>
+                <strong style="font-size: 0.9rem; display: block; color: #FFF; margin-bottom: 4px;">Online payment scanner is currently unavailable.</strong>
+                <span style="font-size: 0.78rem; color: #FF8A80;">Please pay using cash on counter/delivery or copy the UPI ID below.</span>
+              </div>
+
+              <!-- UPI ID & Copy Bar -->
+              <div
+                style="display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px 14px; border-radius: var(--radius-full); margin-bottom: 1rem; border: 1px solid var(--border-color);">
+                <span style="font-size: 0.82rem; font-weight: 700; color: #FFF;"><i class="fa-solid fa-at"
+                    style="color: var(--accent-gold);"></i> <span
+                    id="checkoutUpiIdDisplay">annapurna.tiffin@upi</span></span>
+                <button type="button" class="btn-sm-status" onclick="app.copyUpiId()"
+                  style="background: var(--accent-gold); color: #000; font-weight: 800; border: none; padding: 3px 10px; border-radius: 12px; font-size: 0.74rem; cursor: pointer;">
+                  <i class="fa-regular fa-copy"></i> Copy
+                </button>
+              </div>
             </div>
 
-            <!-- UPI ID & Copy Bar -->
-            <div
-              style="display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px 14px; border-radius: var(--radius-full); margin-bottom: 1rem; border: 1px solid var(--border-color);">
-              <span style="font-size: 0.82rem; font-weight: 700; color: #FFF;"><i class="fa-solid fa-at"
-                  style="color: var(--accent-gold);"></i> <span
-                  id="checkoutUpiIdDisplay">annapurna.tiffin@upi</span></span>
-              <button type="button" class="btn-sm-status" onclick="app.copyUpiId()"
-                style="background: var(--accent-gold); color: #000; font-weight: 800; border: none; padding: 3px 10px; border-radius: 12px; font-size: 0.74rem; cursor: pointer;">
-                <i class="fa-regular fa-copy"></i> Copy
+            <!-- SUB-VIEW 2: PHONEPE (Direct PhonePe App Deep-Link Intent Flow) -->
+            <div id="subviewPhonePe" class="hidden">
+              <div style="background: rgba(95, 37, 159, 0.15); border: 1.5px solid #8e44ad; padding: 1rem; border-radius: var(--radius-md); text-align: center; margin-bottom: 1.2rem;">
+                <span style="font-size: 0.78rem; color: #D1C4E9; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">Total Payable via PhonePe</span>
+                <h2 style="font-size: 2rem; color: #FFF; margin: 0; font-weight: 800;">₹<span id="phonePePayableAmount">0</span></h2>
+                <div style="font-size: 0.75rem; color: #B39DDB; margin-top: 4px;">
+                  <i class="fa-solid fa-shield-halved" style="color: #00E676;"></i> Direct PhonePe Secure Payment Integration
+                </div>
+              </div>
+
+              <!-- PhonePe Direct App Launch Button -->
+              <button type="button" class="btn-phonepe-pay" onclick="app.openPhonePePaymentApp()">
+                <i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i>
+                <span>Pay ₹<span id="phonePeBtnAmount">0</span> with PhonePe</span>
               </button>
+
+              <div style="font-size: 0.76rem; color: #D1C4E9; text-align: center; margin-bottom: 0.5rem; background: rgba(95, 37, 159, 0.1); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(142, 68, 173, 0.3);">
+                <i class="fa-solid fa-circle-check" style="color: #00E676;"></i> Instant Verification! No screenshot upload or UTR entry needed for PhonePe.
+              </div>
             </div>
 
-            <!-- Step 1: Upload Payment Screenshot -->
-            <div
-              style="text-align: left; margin-bottom: 1rem; background: rgba(26, 26, 34, 0.8); padding: 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-              <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
-                <i class="fa-solid fa-camera" style="color: var(--primary);"></i> 1. Upload Payment Screenshot <span
-                  style="color: var(--primary);">*</span>
-              </label>
-              <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 8px;">Upload a screenshot of your
-                successful UPI payment receipt.</p>
-
-              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <label class="btn-secondary-outline"
-                  style="font-size: 0.78rem; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
-                  <i class="fa-solid fa-upload"></i> Choose Screenshot File
-                  <input type="file" id="ordPaymentScreenshot" accept="image/*"
-                    onchange="app.handleCustomerScreenshotUpload(event)" style="display: none;">
+            <!-- PROOF OF PAYMENT SECTION (For QR Pay Only - Hidden for PhonePe) -->
+            <div id="onlineProofSection">
+              <!-- Step 1: Upload Payment Screenshot -->
+              <div
+                style="text-align: left; margin-bottom: 1rem; background: rgba(26, 26, 34, 0.8); padding: 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
+                  <i class="fa-solid fa-camera" style="color: var(--primary);"></i> 1. Upload Payment Screenshot <span
+                    style="color: var(--primary);">*</span>
                 </label>
-                <span id="screenshotFileName"
-                  style="font-size: 0.75rem; color: var(--accent-gold); font-style: italic;">No file selected</span>
+                <p style="font-size: 0.74rem; color: var(--text-muted); margin-bottom: 8px;">Upload a screenshot of your
+                  successful UPI payment receipt.</p>
+
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <label class="btn-secondary-outline"
+                    style="font-size: 0.78rem; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-upload"></i> Choose Screenshot File
+                    <input type="file" id="ordPaymentScreenshot" accept="image/*"
+                      onchange="app.handleCustomerScreenshotUpload(event)" style="display: none;">
+                  </label>
+                  <span id="screenshotFileName"
+                    style="font-size: 0.75rem; color: var(--accent-gold); font-style: italic;">No file selected</span>
+                </div>
+
+                <div id="screenshotPreviewWrapper" class="hidden"
+                  style="margin-top: 8px; position: relative; width: 100px; height: 100px; border-radius: 8px; overflow: hidden; border: 1px solid var(--accent-gold);">
+                  <img id="screenshotPreviewImg" style="width: 100%; height: 100%; object-fit: cover;">
+                  <button type="button" onclick="app.removeCustomerScreenshot()"
+                    style="position: absolute; top: 2px; right: 2px; background: rgba(229,57,53,0.9); color: #FFF; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 0.7rem; cursor: pointer;">✕</button>
+                </div>
               </div>
 
-              <div id="screenshotPreviewWrapper" class="hidden"
-                style="margin-top: 8px; position: relative; width: 100px; height: 100px; border-radius: 8px; overflow: hidden; border: 1px solid var(--accent-gold);">
-                <img id="screenshotPreviewImg" style="width: 100%; height: 100%; object-fit: cover;">
-                <button type="button" onclick="app.removeCustomerScreenshot()"
-                  style="position: absolute; top: 2px; right: 2px; background: rgba(229,57,53,0.9); color: #FFF; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 0.7rem; cursor: pointer;">✕</button>
+              <!-- Step 2: Enter Exact 12-Digit UTR / Transaction Ref Number -->
+              <div
+                style="text-align: left; background: rgba(26, 26, 34, 0.8); padding: 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
+                  <i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> 2. Enter 12-Digit UTR /
+                  Transaction No <span style="color: var(--primary);">*</span>
+                </label>
+                <input type="text" class="form-control" id="ordUTRNumber" placeholder="e.g. 623491827364 or TXN987123"
+                  maxlength="30"
+                  style="font-family: monospace; font-size: 0.9rem; font-weight: 700; letter-spacing: 1px;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">Copy the
+                  12-digit UTR/Ref number from GPay/PhonePe/Paytm transaction details.</span>
               </div>
-            </div>
-
-            <!-- Step 2: Enter Exact 12-Digit UTR / Transaction Ref Number -->
-            <div
-              style="text-align: left; background: rgba(26, 26, 34, 0.8); padding: 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-              <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
-                <i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> 2. Enter 12-Digit UTR /
-                Transaction No <span style="color: var(--primary);">*</span>
-              </label>
-              <input type="text" class="form-control" id="ordUTRNumber" placeholder="e.g. 623491827364 or TXN987123"
-                maxlength="30"
-                style="font-family: monospace; font-size: 0.9rem; font-weight: 700; letter-spacing: 1px;">
-              <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">Copy the
-                12-digit UTR/Ref number from GPay/PhonePe/Paytm transaction details.</span>
             </div>
           </div>
 
@@ -2123,24 +2184,47 @@
         <!-- FORGOT PASSWORD FORM -->
         <form id="authForgotPasswordForm" class="auth-form hidden" onsubmit="app.handleForgotPasswordSubmit(event)">
           <div class="auth-form-header">
-            <h4 style="color: var(--accent-gold); margin-bottom: 4px;"><i class="fa-solid fa-key"></i> Reset Your Password</h4>
-            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">Enter your registered Mobile Number or Email to update your password.</p>
+            <h4 style="color: var(--accent-gold); margin-bottom: 4px;"><i class="fa-solid fa-key"></i> Reset Customer Password</h4>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;" id="forgotFormSubtitle">Enter your registered 10-digit mobile number to verify your customer account.</p>
           </div>
 
-          <div class="input-icon-group">
+          <!-- Phase 1: Mobile Number Account Search -->
+          <div class="input-icon-group" id="grpForgotIdentifier">
             <i class="fa-solid fa-mobile-screen input-icon"></i>
-            <input type="text" class="icon-input" id="forgotIdentifier" placeholder="Registered Mobile or Email" required>
+            <input type="text" class="icon-input" id="forgotIdentifier" placeholder="Registered 10-digit Mobile Number" required>
           </div>
 
-          <div class="input-icon-group password-group">
-            <i class="fa-solid fa-lock input-icon"></i>
-            <input type="password" class="icon-input" id="forgotNewPassword" placeholder="Enter new password" required>
-            <i class="fa-solid fa-eye toggle-password-icon" id="toggleForgotNewPassword" onclick="app.togglePasswordVisibility('forgotNewPassword', 'toggleForgotNewPassword')" title="Toggle password visibility"></i>
-          </div>
-
-          <button type="submit" class="auth-submit-btn login-btn" id="btnForgotSubmit" style="margin-top: 8px;">
-            <span>Reset Password</span> <i class="fa-solid fa-rotate"></i>
+          <button type="button" class="auth-submit-btn login-btn" id="btnForgotVerify" onclick="app.verifyForgotPasswordAccount()" style="margin-top: 6px;">
+            <span>Verify Mobile & Find Account</span> <i class="fa-solid fa-user-check"></i>
           </button>
+
+          <!-- Phase 2: OTP Verification & New Password Reset Fields (Revealed after account is verified) -->
+          <div id="grpForgotResetFields" class="hidden" style="margin-top: 12px; border-top: 1px dashed var(--border-color); padding-top: 12px;">
+            <div id="forgotAccountFoundInfo" style="background: rgba(76, 175, 80, 0.15); border: 1px solid #4CAF50; color: #81C784; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px; text-align: left;">
+              <i class="fa-solid fa-circle-check"></i> Account Verified! OTP Sent: <strong>123456</strong>
+            </div>
+
+            <div class="input-icon-group" style="margin-bottom: 10px;">
+              <i class="fa-solid fa-shield-halved input-icon" style="color: var(--accent-gold);"></i>
+              <input type="text" class="icon-input" id="forgotOtp" placeholder="6-digit Verification Code (e.g. 123456)" value="123456" required>
+            </div>
+
+            <div class="input-icon-group password-group" style="margin-bottom: 10px;">
+              <i class="fa-solid fa-lock input-icon"></i>
+              <input type="password" class="icon-input" id="forgotNewPassword" placeholder="Create new password" required>
+              <i class="fa-solid fa-eye toggle-password-icon" id="toggleForgotNewPassword" onclick="app.togglePasswordVisibility('forgotNewPassword', 'toggleForgotNewPassword')" title="Toggle password visibility"></i>
+            </div>
+
+            <div class="input-icon-group password-group" style="margin-bottom: 10px;">
+              <i class="fa-solid fa-lock input-icon"></i>
+              <input type="password" class="icon-input" id="forgotConfirmPassword" placeholder="Confirm new password" required>
+              <i class="fa-solid fa-eye toggle-password-icon" id="toggleForgotConfirmPassword" onclick="app.togglePasswordVisibility('forgotConfirmPassword', 'toggleForgotConfirmPassword')" title="Toggle password visibility"></i>
+            </div>
+
+            <button type="submit" class="auth-submit-btn register-btn" id="btnForgotSubmit" style="margin-top: 8px;">
+              <span>Reset Password & Login</span> <i class="fa-solid fa-rotate"></i>
+            </button>
+          </div>
 
           <div class="auth-extra-row" style="justify-content: center; margin-top: 14px;">
             <a href="javascript:void(0)" class="forgot-password-link" onclick="app.setAuthMode('LOGIN')">
@@ -2432,7 +2516,7 @@
   </div>
 
   <!-- JavaScript Entry Point -->
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=2"></script>
   <!-- Owner Reply to Customer Review Modal -->
   <div class="modal-backdrop" id="ownerReviewReplyModalBackdrop" onclick="app.closeReviewReplyModal()">
     <div class="modal-card" style="max-width: 520px;" onclick="event.stopPropagation()">
@@ -2455,6 +2539,51 @@
           <button type="submit" class="btn-primary-block" style="margin-top: 1rem; background: linear-gradient(135deg, var(--accent-gold), var(--primary));">
             <i class="fa-solid fa-paper-plane"></i> Post Owner Reply
           </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hotel Owner Rejection Reason Modal -->
+  <div class="modal-backdrop" id="rejectOrderModalBackdrop" onclick="app.closeRejectOrderModal()">
+    <div class="modal-card" style="max-width: 500px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 style="color: #FF5252; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-circle-xmark"></i> Reject Order <span id="rejectOrderNumDisplay" style="color: #FFF;">#TF1001</span>
+        </h3>
+        <button class="icon-btn" onclick="app.closeRejectOrderModal()" style="width: 32px; height: 32px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <form id="rejectOrderForm" onsubmit="app.submitOrderRejection(event)">
+          <input type="hidden" id="rejectTargetOrderId">
+          
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 0.5rem;">
+            Select Rejection Reason:
+          </label>
+
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button type="button" class="filter-chip" onclick="app.setRejectReasonChip('Items Out of Stock')">🍛 Items Out of Stock</button>
+            <button type="button" class="filter-chip" onclick="app.setRejectReasonChip('Outside Delivery Zone')">📍 Outside Delivery Zone</button>
+            <button type="button" class="filter-chip" onclick="app.setRejectReasonChip('Kitchen Closing Early')">⏰ Kitchen Closing Early</button>
+            <button type="button" class="filter-chip" onclick="app.setRejectReasonChip('High Order Surge / Busy')">🔥 High Order Surge</button>
+            <button type="button" class="filter-chip" onclick="app.setRejectReasonChip('Invalid Contact / Address')">📞 Invalid Contact Info</button>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">Custom Rejection Reason / Note</label>
+            <textarea class="form-control" id="rejectOrderReasonInput" rows="3" placeholder="Enter reason for customer (e.g. Idly batter finished for the day)..." required></textarea>
+          </div>
+
+          <p style="font-size: 0.76rem; color: #FF8A80; margin-bottom: 1rem;">
+            <i class="fa-solid fa-triangle-exclamation"></i> The customer will be notified with this reason. The order will be moved to the <strong>Rejected Orders</strong> section and can be restored or managed manually.
+          </p>
+
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-secondary-outline" onclick="app.closeRejectOrderModal()" style="flex: 1;">Cancel</button>
+            <button type="submit" class="btn-primary-block" style="flex: 2; background: linear-gradient(135deg, #E53935, #C62828); box-shadow: 0 4px 14px rgba(229,57,53,0.4);">
+              <i class="fa-solid fa-ban"></i> Confirm Order Rejection
+            </button>
+          </div>
         </form>
       </div>
     </div>

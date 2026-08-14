@@ -26,3 +26,8 @@ desktop.ini
 # Temp files
 *.tmp
 *.temp
+
+# Runtime QR Uploads
+public/images/qr_uploads/*
+!public/images/qr_uploads/.gitkeep
+
