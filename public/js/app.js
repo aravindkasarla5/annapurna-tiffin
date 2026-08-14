@@ -1663,10 +1663,22 @@ class TiffinApp {
     this.showToast(`Added ${qty}x ${item.name} to cart!`, 'success');
   }
 
+  calculateCartTotals() {
+    const items = this.cart || [];
+    const subtotal = items.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 1)), 0);
+    const walletDiscount = Number(this.appliedWalletDiscount || 0);
+    const grandTotal = Math.max(0, subtotal - walletDiscount);
+    return {
+      subtotal,
+      walletDiscount,
+      grandTotal
+    };
+  }
+
   updateCartUI() {
     const badge = document.getElementById('cartBadgeCount');
     const mobileBadge = document.getElementById('mobileCartBadgeCount');
-    const totalCount = this.cart.reduce((acc, c) => acc + c.quantity, 0);
+    const totalCount = (this.cart || []).reduce((acc, c) => acc + c.quantity, 0);
 
     if (totalCount > 0) {
       if (badge) { badge.innerText = totalCount; badge.classList.remove('hidden'); }
@@ -1678,44 +1690,47 @@ class TiffinApp {
 
     document.querySelectorAll('.cart-count-text').forEach(el => el.innerText = totalCount);
 
-    const container = document.getElementById('cartItemsContainer');
-    if (!container) return;
+    const { subtotal, grandTotal } = this.calculateCartTotals();
 
-    if (!this.cart.length) {
-      container.innerHTML = `
-        <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
-          <i class="fa-solid fa-cart-flatbed" style="font-size: 2.5rem; margin-bottom: 0.5rem;"></i>
-          <p>Your shopping cart is empty.</p>
-        </div>`;
-      document.getElementById('cartSubtotal').innerText = '₹0';
-      document.getElementById('cartGrandTotal').innerText = '₹0';
-      return;
+    const container = document.getElementById('cartItemsContainer');
+    if (container) {
+      if (!this.cart.length) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-cart-flatbed" style="font-size: 2.5rem; margin-bottom: 0.5rem;"></i>
+            <p>Your shopping cart is empty.</p>
+          </div>`;
+      } else {
+        container.innerHTML = this.cart.map(item => {
+          const itemTotal = item.price * item.quantity;
+          return `
+            <div class="cart-item">
+              <img src="${item.image}" alt="${item.name}" class="cart-item-img" onerror="this.src='/images/idly_sambar.png'">
+              <div class="cart-item-details">
+                <div class="cart-item-title">${item.name}</div>
+                <div class="cart-item-price">₹${item.price} x ${item.quantity} = ₹${itemTotal}</div>
+              </div>
+              <div class="qty-selector" style="transform: scale(0.85);">
+                <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', -1)">-</button>
+                <span class="qty-val">${item.quantity}</span>
+                <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', 1)">+</button>
+              </div>
+              <button class="cart-item-remove" onclick="app.removeCartItem('${item.id}')" title="Remove Item"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          `;
+        }).join('');
+      }
     }
 
-    let subtotal = 0;
-    container.innerHTML = this.cart.map(item => {
-      const itemTotal = item.price * item.quantity;
-      subtotal += itemTotal;
-      return `
-        <div class="cart-item">
-          <img src="${item.image}" alt="${item.name}" class="cart-item-img" onerror="this.src='/images/idly_sambar.png'">
-          <div class="cart-item-details">
-            <div class="cart-item-title">${item.name}</div>
-            <div class="cart-item-price">₹${item.price} x ${item.quantity} = ₹${itemTotal}</div>
-          </div>
-          <div class="qty-selector" style="transform: scale(0.85);">
-            <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', -1)">-</button>
-            <span class="qty-val">${item.quantity}</span>
-            <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', 1)">+</button>
-          </div>
-          <button class="cart-item-remove" onclick="app.removeCartItem('${item.id}')" title="Remove Item"><i class="fa-solid fa-trash"></i></button>
-        </div>
-      `;
-    }).join('');
+    const elCartSub = document.getElementById('cartSubtotal');
+    const elCartGrand = document.getElementById('cartGrandTotal');
+    const elCheckoutGrand = document.getElementById('checkoutGrandTotalDisplay');
 
-    document.getElementById('cartSubtotal').innerText = `₹${subtotal}`;
-    document.getElementById('cartGrandTotal').innerText = `₹${subtotal}`;
-    document.getElementById('checkoutGrandTotalDisplay').innerText = `₹${subtotal}`;
+    if (elCartSub) elCartSub.innerText = `₹${subtotal}`;
+    if (elCartGrand) elCartGrand.innerText = `₹${grandTotal}`;
+    if (elCheckoutGrand) elCheckoutGrand.innerText = `₹${grandTotal}`;
+
+    this.updatePhonePeAmountDisplay();
   }
 
   updateCartItemQty(itemId, delta) {
@@ -1777,6 +1792,7 @@ class TiffinApp {
     }
 
     this.handleCheckoutOrderTypeChange();
+    this.updateCartUI();
     this.toggleCheckoutModal(true);
   }
 
@@ -1853,8 +1869,10 @@ class TiffinApp {
   }
 
   async openPhonePePaymentApp() {
-    if (!this.cart || !this.cart.length) {
-      this.showToast('Your cart is empty!', 'warning');
+    const { grandTotal } = this.calculateCartTotals();
+
+    if (!this.cart || !this.cart.length || grandTotal <= 0) {
+      this.showToast('Invalid payment amount. Please check your order.', 'error');
       return;
     }
 
@@ -5096,6 +5114,8 @@ class TiffinApp {
     } else {
       this.appliedWalletDiscount = 0;
     }
+
+    this.updateCartUI();
   }
 
   toggleOwnerReferralProgram() {
