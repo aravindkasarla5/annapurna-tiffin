@@ -2413,6 +2413,12 @@ textarea.form-control {
   margin: 0 auto;
 }
 
+.search-filter-card {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto 1.25rem auto;
+}
+
 .co-row-card {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-color);

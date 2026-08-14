@@ -174,6 +174,9 @@
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn-tray-sound-toggle" id="btnTraySoundToggle" onclick="app.toggleSoundPreference()" title="Toggle Notification Sound" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-volume-high" style="color: var(--accent-gold);"></i> <span>Sound ON</span>
+          </button>
           <button type="button" class="btn-clear-notif" onclick="app.clearAllNotifications()" title="Clear all notifications">
             <i class="fa-solid fa-trash-can"></i> Clear All
           </button>
@@ -302,6 +305,79 @@
           style="width: auto; padding: 8px 18px; background: linear-gradient(135deg, #E53935, #C62828); font-size: 0.82rem; font-weight: 800; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(229, 57, 53, 0.35);">
           <i class="fa-solid fa-trash-can"></i> Delete All Orders
         </button>
+      </div>
+
+      <!-- Customer Orders Search & Filter Controls -->
+      <div class="search-filter-card" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.1rem; max-width: 1080px; width: 100%; margin: 0 auto 1.25rem auto; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+        <!-- Search Input Bar -->
+        <div style="position: relative; margin-bottom: 0.85rem;">
+          <input type="text" id="custOrderSearchInput" class="form-input-custom" placeholder="🔍 Search my orders by Order ID (TF1001), UTR / Transaction ID, or Date..." oninput="app.handleCustomerSearchInput(this.value)" style="padding-left: 2.75rem; font-size: 0.9rem; border-radius: var(--radius-md); background: rgba(0,0,0,0.3); color: #FFF; border: 1px solid var(--border-color);">
+          <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--accent-gold); font-size: 1rem; pointer-events: none;"></i>
+        </div>
+
+        <!-- Filter Controls Row (Auto-Filter) -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: center;">
+          <!-- Order Status Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-signal"></i> ORDER STATUS</label>
+            <select id="custFilterOrderStatus" class="form-select-custom" onchange="app.handleCustomerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Statuses</option>
+              <option value="Received">Received / Pending</option>
+              <option value="Preparing">Preparing</option>
+              <option value="Ready">Ready</option>
+              <option value="Completed">Completed / Delivered</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          <!-- Payment Status Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-wallet"></i> PAYMENT STATUS</label>
+            <select id="custFilterPaymentStatus" class="form-select-custom" onchange="app.handleCustomerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Payment Statuses</option>
+              <option value="Paid">Paid / Verified</option>
+              <option value="Pending Verification">Pending Verification</option>
+              <option value="Pending">Pending</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </div>
+
+          <!-- Payment Method Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-credit-card"></i> PAYMENT METHOD</label>
+            <select id="custFilterPaymentMethod" class="form-select-custom" onchange="app.handleCustomerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Methods</option>
+              <option value="UPI">UPI (QR Pay / PhonePe)</option>
+              <option value="Cash">Cash on Delivery</option>
+            </select>
+          </div>
+
+          <!-- Date Preset Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-calendar"></i> DATE RANGE</label>
+            <select id="custFilterDatePreset" class="form-select-custom" onchange="app.handleCustomerDatePresetChange(this.value)" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Time</option>
+              <option value="TODAY">Today</option>
+              <option value="YESTERDAY">Yesterday</option>
+              <option value="LAST_7_DAYS">Last 7 Days</option>
+              <option value="LAST_30_DAYS">Last 30 Days</option>
+              <option value="CUSTOM">Custom Range</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Custom Date Range Sub-row (Hidden by default) -->
+        <div id="custCustomDateWrapper" class="hidden" style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 130px;">
+            <label style="font-size: 0.7rem; color: var(--text-muted);">From Date:</label>
+            <input type="date" id="custFilterStartDate" class="form-input-custom" onchange="app.handleCustomerFilterChange()" style="padding: 5px 10px; font-size: 0.8rem; border-radius: 6px;">
+          </div>
+          <div style="flex: 1; min-width: 130px;">
+            <label style="font-size: 0.7rem; color: var(--text-muted);">To Date:</label>
+            <input type="date" id="custFilterEndDate" class="form-input-custom" onchange="app.handleCustomerFilterChange()" style="padding: 5px 10px; font-size: 0.8rem; border-radius: 6px;">
+          </div>
+        </div>
       </div>
 
       <div class="orders-list" id="customerOrdersList">
@@ -726,6 +802,26 @@
               </div>
             </div>
 
+            <!-- Notification Sound Preferences Panel -->
+            <div class="profile-card-panel alt-bg">
+              <div class="panel-header">
+                <div class="panel-title-icon gold"><i class="fa-solid fa-volume-high"></i></div>
+                <div>
+                  <h3 class="panel-title">Notification Sound</h3>
+                  <p class="panel-subtitle">Audible alerts for order & payment updates</p>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 0;">
+                <span style="font-size: 0.86rem; color: #FFF; font-weight: 700;">Sound Alert</span>
+                <div class="availability-switch" id="profSoundSwitch" onclick="app.toggleSoundPreference()" style="cursor: pointer;">
+                  <div class="switch-track">
+                    <div class="switch-thumb"></div>
+                  </div>
+                  <span style="font-size: 0.8rem; font-weight: 700;" id="profSoundLabel">🟢 SOUND ON</span>
+                </div>
+              </div>
+            </div>
+
             <!-- Security & Session Control Panel -->
             <div class="profile-card-panel alt-bg">
               <div class="panel-header">
@@ -994,6 +1090,36 @@
         </div>
       </div>
 
+      <!-- Live Real-Time Notifications Feed Card for Hotel Owner -->
+      <div id="ownerDashboardNotifCard" style="background: var(--bg-surface-elevated); border: 1px solid var(--accent-gold); border-radius: var(--radius-lg); padding: 1.2rem; margin-bottom: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.3);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.65rem;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+              <i class="fa-solid fa-bell"></i>
+            </div>
+            <div>
+              <h3 style="font-size: 1rem; color: #FFF; margin: 0; display: flex; align-items: center; gap: 8px;">
+                Live Activity & Notifications <span class="badge" id="ownerDashUnreadBadge" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px;">0 Unread</span>
+              </h3>
+              <p style="font-size: 0.76rem; color: var(--text-muted); margin: 0;">Real-time customer orders, payment receipts, and alert updates</p>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn-tray-sound-toggle" id="btnDashSoundToggle" onclick="app.toggleSoundPreference()" title="Toggle Notification Sound" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-volume-high" style="color: var(--accent-gold);"></i> <span>Sound ON</span>
+            </button>
+            <button type="button" class="btn-secondary-outline" onclick="app.toggleNotificationsTray()" style="padding: 4px 12px; font-size: 0.78rem;">
+              <i class="fa-solid fa-expand"></i> View All
+            </button>
+          </div>
+        </div>
+
+        <div id="ownerDashNotifFeedList" style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto;">
+          <!-- Dynamically populated by JS -->
+        </div>
+      </div>
+
       <!-- Detailed Sales Analytics & Performance Breakdown Box -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 2rem;">
         <!-- Left: Payment Method & Order Type Breakdown -->
@@ -1131,6 +1257,80 @@
             onclick="app.setOwnerOrderFilter('COMPLETED')">Completed (<span id="cntMgmtTabCompleted">0</span>)</button>
           <button type="button" class="tab-pill" id="tabMgmtFilterRejected"
             onclick="app.setOwnerOrderFilter('REJECTED')">Rejected (<span id="cntMgmtTabRejected">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- Owner Orders Search & Multi-Filter Control Panel -->
+      <div class="search-filter-card" style="background: var(--bg-surface-elevated); border: 1px solid var(--accent-gold); border-radius: var(--radius-lg); padding: 1.1rem; max-width: 1080px; width: 100%; margin: 0 auto 1.25rem auto; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <!-- Search Input Bar -->
+        <div style="position: relative; margin-bottom: 0.85rem;">
+          <input type="text" id="ownerOrderSearchInput" class="form-input-custom" placeholder="🔍 Search all hotel orders by Order ID (TF1001), Customer Name, Mobile, UTR/Transaction ID, Date..." oninput="app.handleOwnerSearchInput(this.value)" style="padding-left: 2.75rem; font-size: 0.9rem; border-radius: var(--radius-md); background: rgba(0,0,0,0.3); color: #FFF; border: 1px solid var(--border-color);">
+          <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--accent-gold); font-size: 1rem; pointer-events: none;"></i>
+        </div>
+
+        <!-- Filter Controls Row (Auto-Filter) -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: center;">
+          <!-- Order Status Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-signal"></i> ORDER STATUS</label>
+            <select id="ownerFilterOrderStatus" class="form-select-custom" onchange="app.handleOwnerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Statuses</option>
+              <option value="Received">Received (Pending)</option>
+              <option value="Preparing">Preparing</option>
+              <option value="Ready">Ready</option>
+              <option value="Completed">Completed (Delivered)</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          <!-- Payment Status Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-wallet"></i> PAYMENT STATUS</label>
+            <select id="ownerFilterPaymentStatus" class="form-select-custom" onchange="app.handleOwnerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Payment Statuses</option>
+              <option value="Paid">Paid / Verified</option>
+              <option value="Pending Verification">Pending Verification</option>
+              <option value="Pending">Pending</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </div>
+
+          <!-- Payment Method Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-credit-card"></i> PAYMENT METHOD</label>
+            <select id="ownerFilterPaymentMethod" class="form-select-custom" onchange="app.handleOwnerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Methods</option>
+              <option value="QRPay">QR Pay (UPI)</option>
+              <option value="PhonePe">PhonePe</option>
+              <option value="Cash">Cash on Delivery</option>
+            </select>
+          </div>
+
+          <!-- Date Preset Filter -->
+          <div>
+            <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-calendar"></i> DATE RANGE</label>
+            <select id="ownerFilterDatePreset" class="form-select-custom" onchange="app.handleOwnerDatePresetChange(this.value)" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+              <option value="ALL">All Time</option>
+              <option value="TODAY">Today</option>
+              <option value="YESTERDAY">Yesterday</option>
+              <option value="LAST_7_DAYS">Last 7 Days</option>
+              <option value="LAST_30_DAYS">Last 30 Days</option>
+              <option value="CUSTOM">Custom Range</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Custom Date Range Sub-row (Hidden by default) -->
+        <div id="ownerCustomDateWrapper" class="hidden" style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <div style="flex: 1; min-width: 130px;">
+            <label style="font-size: 0.7rem; color: var(--text-muted);">From Date:</label>
+            <input type="date" id="ownerFilterStartDate" class="form-input-custom" onchange="app.handleOwnerFilterChange()" style="padding: 5px 10px; font-size: 0.8rem; border-radius: 6px;">
+          </div>
+          <div style="flex: 1; min-width: 130px;">
+            <label style="font-size: 0.7rem; color: var(--text-muted);">To Date:</label>
+            <input type="date" id="ownerFilterEndDate" class="form-input-custom" onchange="app.handleOwnerFilterChange()" style="padding: 5px 10px; font-size: 0.8rem; border-radius: 6px;">
+          </div>
         </div>
       </div>
 
@@ -1348,6 +1548,20 @@
                   <div class="switch-thumb"></div>
                 </div>
                 <span id="settingHotelOpenLabel" class="status-pill-label">🟢 HOTEL OPEN</span>
+              </div>
+            </div>
+
+            <!-- Master Notification Sound Toggle -->
+            <div class="hotel-status-toggle-card" style="margin-top: 10px;">
+              <div class="status-toggle-text">
+                <span class="toggle-title"><i class="fa-solid fa-volume-high" style="color: var(--accent-gold);"></i> Notification Sound Chime</span>
+                <span class="toggle-desc">Audible chime when new customer orders, payments, or cancellations arrive</span>
+              </div>
+              <div class="availability-switch" id="setSoundSwitch" onclick="app.toggleSoundPreference()" style="cursor: pointer;">
+                <div class="switch-track">
+                  <div class="switch-thumb"></div>
+                </div>
+                <span id="setSoundLabel" class="status-pill-label">🟢 SOUND ON</span>
               </div>
             </div>
           </div>

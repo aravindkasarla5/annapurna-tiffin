@@ -223,8 +223,12 @@ function loadDB() {
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     const data = JSON.parse(raw);
-    const db = { ...defaultSeed, ...data };
-    if (!db.users || !db.users.length) db.users = defaultSeed.users;
+    const db = { ...defaultSeed, ...data, settings: { ...defaultSeed.settings, ...(data.settings || {}) } };
+    if (!db.users || !db.users.length) db.users = JSON.parse(JSON.stringify(defaultSeed.users));
+    const hasOwner = (db.users || []).some(u => u.role === 'OWNER' || u.id === 'usr_owner_1' || normalizePhone(u.mobile) === '9392874900');
+    if (!hasOwner) {
+      db.users.unshift(JSON.parse(JSON.stringify(defaultSeed.users[0])));
+    }
     if (!db.faqs || !db.faqs.length) db.faqs = defaultSeed.faqs;
     if (!db.tiffins || !db.tiffins.length) db.tiffins = defaultSeed.tiffins;
     if (!db.orders) db.orders = [];
@@ -256,8 +260,17 @@ function saveDB(data) {
   }
 }
 
-// 30 Minutes Inactivity Timeout for all users (Customer & Owner)
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+// Sanitize User Object for Client
+function sanitizeUser(user) {
+  if (!user) return null;
+  const userSafe = { ...user };
+  delete userSafe.password;
+  if (!userSafe.cart) userSafe.cart = [];
+  if (!userSafe.favorites) userSafe.favorites = [];
+  if (userSafe.loyalty_points === undefined) userSafe.loyalty_points = 0;
+  if (userSafe.sound_enabled === undefined) userSafe.sound_enabled = true;
+  return userSafe;
+}
 
 // Generate Auth Token Helper
 function generateToken(userId, role = 'CUSTOMER') {
@@ -269,14 +282,11 @@ function generateToken(userId, role = 'CUSTOMER') {
   db.tokens[token] = {
     user_id: userId,
     role: userRole,
-    created_at: Date.now(),
-    last_activity: Date.now()
+    created_at: Date.now()
   };
   saveDB(db);
   return token;
-}
-
-// Authentication Middleware
+}// Authentication Middleware (Session remains active until explicit logout, with token auto-healing)
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const tokenHeader = req.headers['x-auth-token'];
@@ -293,10 +303,25 @@ function authenticateToken(req, res, next) {
   }
 
   const db = loadDB();
-  const tokenEntry = db.tokens ? db.tokens[token] : null;
+  let tokenEntry = db.tokens ? db.tokens[token] : null;
+
+  // AUTO-HEAL: If token is missing from db.tokens (e.g. after server restart or DB reload)
+  if (!tokenEntry && typeof token === 'string' && token.startsWith('tok_')) {
+    const matchingUser = (db.users || []).find(u => token.startsWith('tok_' + u.id + '_'));
+    if (matchingUser) {
+      if (!db.tokens) db.tokens = {};
+      db.tokens[token] = {
+        user_id: matchingUser.id,
+        role: matchingUser.role,
+        created_at: Date.now()
+      };
+      saveDB(db);
+      tokenEntry = db.tokens[token];
+    }
+  }
 
   if (!tokenEntry) {
-    return res.status(401).json({ success: false, expired: true, message: "Your session has expired. Please log in again." });
+    return res.status(401).json({ success: false, message: "Session invalid or logged out. Please log in again." });
   }
 
   const userId = typeof tokenEntry === 'string' ? tokenEntry : tokenEntry.user_id;
@@ -310,42 +335,12 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ success: false, message: "User account not found." });
   }
 
-  // Enforce session expiration for ALL logged in users (Customer & Owner)
-  const lastActivity = (typeof tokenEntry === 'object' && tokenEntry.last_activity) ? tokenEntry.last_activity : Date.now();
-  const isBackgroundPoll = req.headers['x-background-poll'] === 'true';
-  const idleDuration = Date.now() - lastActivity;
-
-  if (idleDuration > SESSION_TIMEOUT_MS) {
-    delete db.tokens[token];
-    saveDB(db);
-    return res.status(401).json({
-      success: false,
-      expired: true,
-      message: "Your session has expired. Please log in again."
-    });
-  }
-
-  // Update last_activity ONLY for user-initiated non-polling requests
-  if (!isBackgroundPoll) {
-    if (typeof tokenEntry === 'object') {
-      tokenEntry.last_activity = Date.now();
-    } else {
-      db.tokens[token] = {
-        user_id: userId,
-        role: user.role,
-        created_at: Date.now(),
-        last_activity: Date.now()
-      };
-    }
-    saveDB(db);
-  }
-
   req.user = user;
   req.token = token;
   next();
 }
 
-// Optional Auth Middleware (attaches req.user if token provided)
+// Optional Auth Middleware (attaches req.user if valid token provided)
 function optionalAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   const tokenHeader = req.headers['x-auth-token'];
@@ -359,31 +354,22 @@ function optionalAuth(req, res, next) {
 
   if (token) {
     const db = loadDB();
-    const tokenEntry = db.tokens ? db.tokens[token] : null;
+    let tokenEntry = db.tokens ? db.tokens[token] : null;
+
+    if (!tokenEntry && typeof token === 'string' && token.startsWith('tok_')) {
+      const matchingUser = (db.users || []).find(u => token.startsWith('tok_' + u.id + '_'));
+      if (matchingUser) {
+        if (!db.tokens) db.tokens = {};
+        db.tokens[token] = { user_id: matchingUser.id, role: matchingUser.role, created_at: Date.now() };
+        saveDB(db);
+        tokenEntry = db.tokens[token];
+      }
+    }
+
     if (tokenEntry) {
       const userId = typeof tokenEntry === 'string' ? tokenEntry : tokenEntry.user_id;
       const user = (db.users || []).find(u => u.id === userId);
       if (user) {
-        const lastActivity = (typeof tokenEntry === 'object' && tokenEntry.last_activity) ? tokenEntry.last_activity : Date.now();
-        const idleDuration = Date.now() - lastActivity;
-        if (idleDuration > SESSION_TIMEOUT_MS) {
-          delete db.tokens[token];
-          saveDB(db);
-          return next();
-        }
-        if (req.headers['x-background-poll'] !== 'true') {
-          if (typeof tokenEntry === 'object') {
-            tokenEntry.last_activity = Date.now();
-          } else {
-            db.tokens[token] = {
-              user_id: userId,
-              role: user.role,
-              created_at: Date.now(),
-              last_activity: Date.now()
-            };
-          }
-          saveDB(db);
-        }
         req.user = user;
         req.token = token;
       }
@@ -398,27 +384,17 @@ function requireRole(role) {
     if (!req.user) {
       return res.status(401).json({ success: false, message: "Authentication required." });
     }
-    if (req.user.role !== role) {
+
+    const isMatch = req.user.role === role || (role === 'CUSTOMER' && req.user.role === 'CUSTOMER');
+    if (!isMatch) {
       return res.status(403).json({ success: false, message: `Access denied. ${role} permissions required.` });
     }
+
     next();
   };
 }
 
-// Sanitize User Object for Client
-function sanitizeUser(user) {
-  const userSafe = { ...user };
-  delete userSafe.password;
-  if (!userSafe.cart) userSafe.cart = [];
-  if (!userSafe.favorites) userSafe.favorites = [];
-  if (userSafe.loyalty_points === undefined) userSafe.loyalty_points = 0;
-  return userSafe;
-}
-
-// =========================================================================
-// REST API ROUTES
-// =========================================================================
-
+// Normalize Mobile Phone Numbers
 function normalizePhone(phone) {
   if (!phone) return '';
   let digits = phone.toString().replace(/[^0-9]/g, '');
@@ -427,6 +403,49 @@ function normalizePhone(phone) {
   if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
   if (digits.length > 10) return digits.slice(-10);
   return digits;
+}
+
+// Robust User Search Helper for Login, Forgot Password, Reset Password
+function findUserByIdentifier(db, rawIdentifier) {
+  if (!rawIdentifier) return null;
+  const str = rawIdentifier.toString().trim();
+  if (!str) return null;
+
+  const users = db.users || [];
+  const normPhone = normalizePhone(str);
+  const cleanStr = str.toLowerCase();
+
+  // Priority 1: Match by normalized mobile number
+  if (normPhone && normPhone.length >= 7) {
+    const byMobile = users.find(u => {
+      const uNorm = normalizePhone(u.mobile);
+      if (uNorm && uNorm === normPhone) return true;
+      const cleanRaw = (u.mobile || '').toString().replace(/[^0-9]/g, '');
+      const cleanInput = str.replace(/[^0-9]/g, '');
+      return cleanInput && cleanInput.length >= 7 && cleanRaw === cleanInput;
+    });
+    if (byMobile) return byMobile;
+  }
+
+  // Priority 2: Match by exact User ID
+  const byId = users.find(u => u.id === str);
+  if (byId) return byId;
+
+  // Priority 3: Match by exact Email
+  const byEmail = users.find(u => (u.email || '').toLowerCase().trim() === cleanStr);
+  if (byEmail) return byEmail;
+
+  // Priority 4: Match by Username/Name
+  const byName = users.find(u => (u.name || '').toLowerCase().trim() === cleanStr);
+  if (byName) return byName;
+
+  return null;
+}
+
+function checkPasswordMatch(userPassword, inputPassword) {
+  const uPass = String(userPassword !== undefined && userPassword !== null ? userPassword : '').trim();
+  const iPass = String(inputPassword !== undefined && inputPassword !== null ? inputPassword : '').trim();
+  return uPass.length > 0 && uPass === iPass;
 }
 
 // AUTH 1. Register New Customer
@@ -448,7 +467,7 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ success: false, message: "This mobile number is reserved for Hotel Owner. Please login." });
   }
 
-  const existing = (db.users || []).find(u => normalizePhone(u.mobile) === cleanMobile);
+  const existing = findUserByIdentifier(db, cleanMobile || mobile);
   if (existing) {
     return res.status(400).json({ success: false, message: "Mobile number already registered. Please login." });
   }
@@ -543,20 +562,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ success: false, message: "Username / Mobile / Email and password are required." });
   }
 
-  const cleanIdentifier = rawIdentifier.toLowerCase();
-  const normPhone = normalizePhone(rawIdentifier);
-
-  const user = (db.users || []).find(u => {
-    const normUserPhone = normalizePhone(u.mobile);
-    const uEmail = (u.email || '').toLowerCase().trim();
-    const uName = (u.name || '').toLowerCase().trim();
-
-    if (normPhone && normPhone.length >= 7 && normUserPhone === normPhone) return true;
-    if (cleanIdentifier && uEmail && uEmail === cleanIdentifier) return true;
-    if (cleanIdentifier && uName && uName === cleanIdentifier) return true;
-
-    return false;
-  });
+  const user = findUserByIdentifier(db, rawIdentifier);
 
   if (!user) {
     return res.status(401).json({ 
@@ -565,7 +571,7 @@ app.post('/api/auth/login', (req, res) => {
     });
   }
 
-  if (user.password.trim() !== password) {
+  if (!checkPasswordMatch(user.password, password)) {
     return res.status(401).json({ 
       success: false, 
       message: "Invalid username or password." 
@@ -592,16 +598,7 @@ app.post('/api/auth/forgot-password', (req, res) => {
     return res.status(400).json({ success: false, message: "Registered Phone number or Email is required." });
   }
 
-  const cleanIdentifier = rawIdentifier.toLowerCase();
-  const normPhone = normalizePhone(rawIdentifier);
-
-  const user = (db.users || []).find(u => {
-    const normUserPhone = normalizePhone(u.mobile);
-    const uEmail = (u.email || '').toLowerCase().trim();
-    if (normPhone && normPhone.length >= 7 && normUserPhone === normPhone) return true;
-    if (cleanIdentifier && uEmail && uEmail === cleanIdentifier) return true;
-    return false;
-  });
+  const user = findUserByIdentifier(db, rawIdentifier);
 
   if (!user) {
     return res.status(404).json({ success: false, message: "No account found with this number." });
@@ -643,23 +640,14 @@ app.post('/api/auth/reset-password', (req, res) => {
     return res.status(400).json({ success: false, message: "Password must be at least 4 characters long." });
   }
 
-  const cleanIdentifier = rawIdentifier.toLowerCase();
-  const normPhone = normalizePhone(rawIdentifier);
-
-  const user = (db.users || []).find(u => {
-    const normUserPhone = normalizePhone(u.mobile);
-    const uEmail = (u.email || '').toLowerCase().trim();
-    if (normPhone && normPhone.length >= 7 && normUserPhone === normPhone) return true;
-    if (cleanIdentifier && uEmail && uEmail === cleanIdentifier) return true;
-    return false;
-  });
+  const user = findUserByIdentifier(db, rawIdentifier);
 
   if (!user) {
     return res.status(404).json({ success: false, message: "No account found with this number." });
   }
 
   // Update password ONLY for this matched customer account
-  user.password = newPassword;
+  user.password = newPassword.trim();
   if (db.password_resets && db.password_resets[user.id]) {
     delete db.password_resets[user.id];
   }
@@ -709,16 +697,36 @@ app.put('/api/profile', authenticateToken, (req, res) => {
     return res.status(404).json({ success: false, message: "User profile not found." });
   }
 
-  const { name, email, address } = req.body;
+  const { name, email, address, sound_enabled } = req.body;
   if (name) db.users[userIndex].name = name.trim();
   if (email !== undefined) db.users[userIndex].email = email.trim();
   if (address !== undefined) db.users[userIndex].address = address.trim();
+  if (sound_enabled !== undefined) db.users[userIndex].sound_enabled = Boolean(sound_enabled);
 
   saveDB(db);
   res.json({
     success: true,
     data: sanitizeUser(db.users[userIndex]),
     message: "Profile details updated successfully."
+  });
+});
+
+// PATCH Update Notification Sound Settings
+app.patch('/api/profile/sound-settings', authenticateToken, (req, res) => {
+  const db = loadDB();
+  const userIndex = db.users.findIndex(u => u.id === req.user.id);
+  if (userIndex === -1) {
+    return res.status(404).json({ success: false, message: "User account not found." });
+  }
+
+  const sound_enabled = Boolean(req.body.sound_enabled);
+  db.users[userIndex].sound_enabled = sound_enabled;
+
+  saveDB(db);
+  res.json({
+    success: true,
+    sound_enabled: sound_enabled,
+    message: `Notification sound ${sound_enabled ? 'enabled' : 'disabled'}.`
   });
 });
 
@@ -1608,6 +1616,20 @@ app.delete('/api/customer/orders/:id', authenticateToken, requireRole('CUSTOMER'
 
   db.orders = db.orders.filter(o => o.id !== order.id);
   db.payments = db.payments.filter(p => p.order_number !== order.order_number);
+
+  // Notify Owner about customer order cancellation
+  if (!db.notifications) db.notifications = [];
+  db.notifications.unshift({
+    id: 'notif_' + Date.now(),
+    customer_id: null,
+    target_role: 'OWNER',
+    order_number: order.order_number,
+    type: 'ORDER',
+    message: `⚠️ Order #${order.order_number} (₹${order.grand_total}) was cancelled by customer ${req.user.name}`,
+    is_read: false,
+    created_at: new Date().toISOString()
+  });
+
   saveDB(db);
 
   res.json({ success: true, message: `Order #${order.order_number} deleted from your history.` });
@@ -1735,7 +1757,7 @@ app.get('/api/notifications', authenticateToken, (req, res) => {
   let list = db.notifications || [];
 
   if (req.user.role === 'CUSTOMER') {
-    list = list.filter(n => n.target_role === 'CUSTOMER' && (n.customer_id === req.user.id || (!n.customer_id && n.created_at >= req.user.created_at)));
+    list = list.filter(n => n.target_role === 'CUSTOMER' && (n.customer_id === req.user.id || !n.customer_id));
   } else {
     list = list.filter(n => n.target_role === 'OWNER');
   }
@@ -1755,6 +1777,18 @@ app.patch('/api/notifications/read-all', authenticateToken, (req, res) => {
   });
   saveDB(db);
   res.json({ success: true, message: "Notifications marked as read." });
+});
+
+// 17.0 PATCH Mark Single Notification Read
+app.patch('/api/notifications/:id/read', authenticateToken, (req, res) => {
+  const db = loadDB();
+  const { id } = req.params;
+  const notif = (db.notifications || []).find(n => n.id === id);
+  if (notif) {
+    notif.is_read = true;
+    saveDB(db);
+  }
+  res.json({ success: true, message: "Notification marked as read." });
 });
 
 // 17.1 DELETE Clear All Notifications

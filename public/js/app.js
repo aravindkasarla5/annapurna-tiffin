@@ -39,14 +39,25 @@ class TiffinApp {
     this.appliedWalletDiscount = 0;
     this.customerProfile = null;
     this.ownerReviewFilter = 'All';
-    this.ownerReviews = [];
-    this.lastActivityTime = Date.now();
-    this.lastCustomerActivityTime = Date.now();
-    this.inactivityTimer = null;
-    this.customerInactivityTimer = null;
     this.isLoadingOrders = false;
     this.isLoadingPayments = false;
     this.isLoadingStats = false;
+    this.knownNotificationIds = new Set();
+    this.isFirstNotificationFetch = true;
+    this.audioCtx = null;
+
+    // Order Search & Filter State
+    this.custOrderSearch = '';
+    this.custOrderStatus = 'ALL';
+    this.custPaymentStatus = 'ALL';
+    this.custPaymentMethod = 'ALL';
+    this.custDatePreset = 'ALL';
+
+    this.ownerOrderSearch = '';
+    this.ownerFilterOrderStatus = 'ALL';
+    this.ownerFilterPaymentStatus = 'ALL';
+    this.ownerFilterPaymentMethod = 'ALL';
+    this.ownerFilterDatePreset = 'ALL';
   }
 
   async fetchWithAuth(url, options = {}) {
@@ -61,8 +72,7 @@ class TiffinApp {
     try {
       const res = await fetch(url, { ...options, headers });
       if (res.status === 401 && this.currentUser) {
-        console.warn('Session expired or 401 Unauthorized returned for', url);
-        this.logout(true, true);
+        console.warn('401 Unauthorized returned for:', url, '- preserving user session state');
       }
       return res;
     } catch (err) {
@@ -108,52 +118,10 @@ class TiffinApp {
     // Start 2-second live polling engine for real-time status and availability sync
     this.startPolling();
 
-    // Initialize 30-minute inactivity session expiration tracker for Customer and Owner
-    this.initInactivityTracker();
-  }
-
-  initInactivityTracker() {
-    this.lastActivityTime = Date.now();
-    this.lastCustomerActivityTime = this.lastActivityTime;
-
-    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll', 'click'];
-    let lastThrottleTime = 0;
-
-    const handleUserActivity = () => {
-      const now = Date.now();
-      if (now - lastThrottleTime > 1000) {
-        lastThrottleTime = now;
-        if (this.currentUser) {
-          this.lastActivityTime = now;
-          this.lastCustomerActivityTime = now;
-        }
-      }
-    };
-
-    activityEvents.forEach(evt => {
-      window.addEventListener(evt, handleUserActivity, { passive: true });
+    // Bind Web Audio Context unlocking on user gesture
+    ['mousedown', 'click', 'keydown', 'touchstart'].forEach(evt => {
+      window.addEventListener(evt, () => this.initAudioContext(), { passive: true });
     });
-
-    if (this.inactivityTimer) clearInterval(this.inactivityTimer);
-    if (this.customerInactivityTimer) clearInterval(this.customerInactivityTimer);
-
-    const timer = setInterval(() => {
-      if (this.currentUser) {
-        const idleMs = Date.now() - this.lastActivityTime;
-        // Exactly 30 minutes (30 * 60 * 1000 ms)
-        if (idleMs >= 30 * 60 * 1000) {
-          console.warn('30-minute inactivity threshold reached. Expiring session...');
-          this.logout(true, true);
-        }
-      }
-    }, 5000);
-
-    this.inactivityTimer = timer;
-    this.customerInactivityTimer = timer;
-  }
-
-  initCustomerInactivityTracker() {
-    this.initInactivityTracker();
   }
 
   async loadUserData() {
@@ -278,23 +246,162 @@ class TiffinApp {
     }
   }
 
+  // =========================================================================
+  // NOTIFICATION SOUND ENGINE & AUDIO SYNTHESIZER
+  // =========================================================================
+
+  initAudioContext() {
+    if (!this.audioCtx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        this.audioCtx = new AudioContextClass();
+      }
+    }
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume();
+    }
+  }
+
+  playNotificationChime() {
+    try {
+      this.initAudioContext();
+      if (!this.audioCtx) return;
+
+      const now = this.audioCtx.currentTime;
+
+      // Harmonic 3-Note Chime: C5 (523.25 Hz) -> E5 (659.25 Hz) -> G5 (783.99 Hz)
+      const notes = [
+        { freq: 523.25, start: now, duration: 0.15 },
+        { freq: 659.25, start: now + 0.08, duration: 0.2 },
+        { freq: 783.99, start: now + 0.18, duration: 0.35 }
+      ];
+
+      notes.forEach(note => {
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(note.freq, note.start);
+
+        gain.gain.setValueAtTime(0, note.start);
+        gain.gain.linearRampToValueAtTime(0.2, note.start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, note.start + note.duration);
+
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+
+        osc.start(note.start);
+        osc.stop(note.start + note.duration);
+      });
+    } catch (e) {
+      console.warn('Audio chime play warning:', e);
+    }
+  }
+
+  isSoundEnabled() {
+    if (!this.currentUser) return true;
+    return this.currentUser.sound_enabled !== false;
+  }
+
+  async toggleSoundPreference() {
+    if (!this.currentUser) return;
+    const current = this.isSoundEnabled();
+    const newState = !current;
+    this.currentUser.sound_enabled = newState;
+    localStorage.setItem('tiffin_user', JSON.stringify(this.currentUser));
+
+    this.updateSoundToggleUI();
+
+    if (newState) {
+      this.playNotificationChime();
+    }
+
+    try {
+      await this.fetchWithAuth(`${API_BASE}/profile/sound-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sound_enabled: newState })
+      });
+      this.showToast(`Notification sound ${newState ? 'ON 🔔' : 'OFF 🔕'}`, 'info');
+    } catch (err) {
+      console.error('Error saving sound preference:', err);
+    }
+  }
+
+  updateSoundToggleUI() {
+    const isEnabled = this.isSoundEnabled();
+
+    // 1. Notification Tray header button
+    const trayBtn = document.getElementById('btnTraySoundToggle');
+    if (trayBtn) {
+      trayBtn.innerHTML = isEnabled
+        ? '<i class="fa-solid fa-volume-high" style="color: var(--accent-gold);"></i> <span>Sound ON</span>'
+        : '<i class="fa-solid fa-volume-xmark" style="color: var(--text-muted);"></i> <span>Sound OFF</span>';
+    }
+
+    // 1b. Dashboard Notification card sound toggle button
+    const dashBtn = document.getElementById('btnDashSoundToggle');
+    if (dashBtn) {
+      dashBtn.innerHTML = isEnabled
+        ? '<i class="fa-solid fa-volume-high" style="color: var(--accent-gold);"></i> <span>Sound ON</span>'
+        : '<i class="fa-solid fa-volume-xmark" style="color: var(--text-muted);"></i> <span>Sound OFF</span>';
+    }
+
+    // 2. Customer Profile Sound switch
+    const profSwitch = document.getElementById('profSoundSwitch');
+    const profLabel = document.getElementById('profSoundLabel');
+    if (profSwitch) profSwitch.classList.toggle('active', isEnabled);
+    if (profLabel) profLabel.innerText = isEnabled ? '🟢 SOUND ON' : '🔴 SOUND OFF';
+
+    // 3. Owner Settings Sound switch
+    const setSwitch = document.getElementById('setSoundSwitch');
+    const setLabel = document.getElementById('setSoundLabel');
+    if (setSwitch) setSwitch.classList.toggle('active', isEnabled);
+    if (setLabel) setLabel.innerText = isEnabled ? '🟢 SOUND ON' : '🔴 SOUND OFF';
+  }
+
+  getNotifKey(n, idx = 0) {
+    if (!n) return `notif_idx_${idx}`;
+    return String(n.id || (n._id || (n.order_number ? `notif_ord_${n.order_number}_${n.created_at || ''}` : `notif_msg_${n.message}_${n.created_at || idx}`)));
+  }
+
   async fetchNotifications(silent = false) {
     if (!this.currentUser) {
       this.notifications = [];
+      this.knownNotificationIds.clear();
+      this.isFirstNotificationFetch = true;
       return;
     }
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/notifications`);
       const json = await res.json();
       if (json.success) {
-        const oldUnreadCount = this.notifications.filter(n => !n.is_read).length;
-        this.notifications = json.data;
-        const newUnreadCount = this.notifications.filter(n => !n.is_read).length;
+        const incoming = Array.isArray(json.data) ? json.data : [];
 
-        // Show toast if new notification arrived
-        if (silent && newUnreadCount > oldUnreadCount && this.notifications.length > 0) {
-          const newest = this.notifications[0];
-          this.showToast(newest.message, 'info');
+        // On first fetch / login load: populate known IDs without playing sound
+        if (this.isFirstNotificationFetch) {
+          this.isFirstNotificationFetch = false;
+          incoming.forEach((n, idx) => this.knownNotificationIds.add(this.getNotifKey(n, idx)));
+          this.notifications = incoming;
+          this.renderNotificationsUI();
+          return;
+        }
+
+        // Detect genuinely NEW notifications not present in known set
+        const brandNewNotifs = incoming.filter((n, idx) => !this.knownNotificationIds.has(this.getNotifKey(n, idx)));
+
+        // Add all incoming IDs to known set
+        incoming.forEach((n, idx) => this.knownNotificationIds.add(this.getNotifKey(n, idx)));
+        this.notifications = incoming;
+
+        if (brandNewNotifs.length > 0) {
+          if (this.isSoundEnabled()) {
+            this.playNotificationChime();
+          }
+
+          // Show toast for newest notification
+          const newest = brandNewNotifs[0];
+          this.showToast(newest.message || 'New notification received!', 'info');
         }
 
         this.renderNotificationsUI();
@@ -490,6 +597,49 @@ class TiffinApp {
     }
   }
 
+  async loadUserData() {
+    if (!this.currentUser) return;
+    this.updateSoundToggleUI();
+    await this.fetchOrders();
+    await this.fetchNotifications();
+    await this.fetchSupportTickets(true);
+
+    if (this.currentRole === 'CUSTOMER') {
+      await this.fetchPayments();
+      await this.fetchReferralStats();
+      await this.fetchCart();
+      await this.fetchFavorites();
+      this.renderCustomerProfile();
+    } else {
+      await this.fetchSettings();
+      await this.fetchStats();
+      await this.fetchPayments();
+      await this.fetchOwnerReviews(true);
+      await this.fetchMenu(true);
+    }
+  }
+
+  async loadCustomerUserData() {
+    return this.loadUserData();
+  }
+
+  startPolling() {
+    if (this.pollingTimer) clearInterval(this.pollingTimer);
+    this.pollingTimer = setInterval(async () => {
+      await this.fetchSettings(true);
+      await this.fetchMenu(true);
+      if (this.currentUser) {
+        await this.fetchOrders(true);
+        await this.fetchNotifications(true);
+        await this.fetchSupportTickets(true);
+        if (this.currentRole === 'OWNER') {
+          this.fetchStats(true);
+          this.fetchPayments(true);
+        }
+      }
+    }, 2000);
+  }
+
   normalizePhone(phone) {
     if (!phone) return '';
     let digits = phone.toString().replace(/[^0-9]/g, '');
@@ -503,7 +653,7 @@ class TiffinApp {
   async verifyForgotPasswordAccount() {
     const identifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
     if (!identifier) {
-      this.showToast('Please enter your registered 10-digit mobile number.', 'warning');
+      this.showToast('Please enter your registered mobile number or email.', 'warning');
       return;
     }
 
@@ -603,8 +753,7 @@ class TiffinApp {
     }
   }
 
-  logout(sessionExpired = false, isExpired = false) {
-    const expiredRole = this.currentRole || 'CUSTOMER';
+  logout() {
     if (this.authToken) {
       fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
@@ -627,17 +776,14 @@ class TiffinApp {
     this.isLoadingOrders = false;
     this.isLoadingPayments = false;
     this.isLoadingStats = false;
+    this.knownNotificationIds.clear();
+    this.isFirstNotificationFetch = true;
 
     localStorage.removeItem('tiffin_token');
     localStorage.removeItem('tiffin_user');
     sessionStorage.clear();
 
-    if (sessionExpired || isExpired) {
-      this.showToast('Your session has expired. Please log in again.', 'warning');
-      this.openAuthModal(expiredRole, 'LOGIN');
-    } else {
-      this.showToast('Logged out successfully.', 'info');
-    }
+    this.showToast('Logged out successfully.', 'info');
 
     this.updateUserAuthBadgeUI();
     this.renderNavigation();
@@ -725,7 +871,65 @@ class TiffinApp {
       badge.classList.toggle('hidden', unreadCount === 0);
     }
 
+    this.renderOwnerDashboardNotifications();
     this.renderNotificationsTray();
+  }
+
+  renderOwnerDashboardNotifications() {
+    const container = document.getElementById('ownerDashNotifFeedList');
+    const badge = document.getElementById('ownerDashUnreadBadge');
+    if (!container) return;
+
+    if (this.currentRole !== 'OWNER') return;
+
+    const notifs = (this.notifications || []).filter(n => n.target_role === 'OWNER' || (!n.target_role && !n.customer_id));
+    const unreadCount = notifs.filter(n => !n.is_read && !n.read).length;
+
+    if (badge) {
+      badge.innerText = `${unreadCount} Unread`;
+      badge.style.background = unreadCount > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)';
+    }
+
+    if (!notifs.length) {
+      container.innerHTML = `
+        <p style="text-align: center; color: var(--text-muted); font-size: 0.82rem; padding: 1rem 0;">
+          <i class="fa-regular fa-bell-slash"></i> No notifications yet. Live customer orders & payments will appear here.
+        </p>
+      `;
+      return;
+    }
+
+    const recent = notifs.slice(0, 5);
+    container.innerHTML = recent.map((n, idx) => {
+      const isRead = Boolean(n.is_read || n.read);
+      const timeStr = n.created_at ? new Date(n.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Just now';
+      const notifId = n.id || idx;
+
+      return `
+        <div style="background: ${isRead ? 'rgba(255,255,255,0.02)' : 'rgba(234, 162, 33, 0.1)'}; border: 1px solid ${isRead ? 'var(--border-color)' : 'var(--accent-gold)'}; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer;" onclick="app.handleNotifClick('${notifId}')">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <i class="fa-solid ${this.getNotifIcon(n)}" style="color: var(--accent-gold); font-size: 1.1rem;"></i>
+            <div>
+              <div style="font-size: 0.85rem; font-weight: 700; color: #FFF;">${n.message || ''}</div>
+              <span style="font-size: 0.72rem; color: var(--text-muted);">${timeStr} ${n.order_number ? `• Order #${n.order_number}` : ''}</span>
+            </div>
+          </div>
+          <button class="btn-secondary-outline" style="padding: 4px 10px; font-size: 0.75rem; white-space: nowrap;">
+            Open <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  getNotifIcon(n) {
+    const type = n ? (n.type || '').toUpperCase() : '';
+    const msg = n && n.message ? n.message.toLowerCase() : '';
+    if (type === 'PAYMENT' || msg.includes('payment') || msg.includes('upi') || msg.includes('cash')) return 'fa-wallet';
+    if (type === 'SUPPORT' || msg.includes('ticket') || msg.includes('support')) return 'fa-headset';
+    if (type === 'REVIEW' || msg.includes('rating') || msg.includes('star')) return 'fa-star';
+    if (msg.includes('cancelled')) return 'fa-triangle-exclamation';
+    return 'fa-receipt';
   }
 
   toggleNotificationsTray(open = null) {
@@ -840,9 +1044,41 @@ class TiffinApp {
       notif.is_read = true;
       notif.read = true;
       this.renderNotificationsUI();
+
+      // Persist read status to backend if notification has an id
+      if (typeof notif.id === 'string' && notif.id.startsWith('notif_')) {
+        this.fetchWithAuth(`${API_BASE}/notifications/${notif.id}/read`, { method: 'PATCH' }).catch(err => {
+          console.error('Error marking notification read:', err);
+        });
+      }
     }
     this.toggleNotificationsTray(false);
-    this.switchView('secCustomerOrders');
+
+    const isOwner = this.currentRole === 'OWNER';
+    const notifType = notif ? (notif.type || '').toUpperCase() : '';
+    const msg = notif && notif.message ? notif.message.toLowerCase() : '';
+
+    if (isOwner) {
+      if (notifType === 'PAYMENT' || msg.includes('payment') || msg.includes('upi') || msg.includes('cash')) {
+        this.switchView('secOwnerPayments');
+      } else if (notifType === 'SUPPORT' || msg.includes('ticket') || msg.includes('support')) {
+        this.switchView('secOwnerSupport');
+      } else if (notifType === 'REVIEW' || msg.includes('rating') || msg.includes('review') || msg.includes('star')) {
+        this.switchView('secOwnerReviews');
+      } else {
+        this.switchView('secOwnerOrders');
+      }
+    } else {
+      if (notifType === 'PAYMENT' || msg.includes('payment') || msg.includes('paid')) {
+        this.switchView('secCustomerPayments');
+      } else if (notifType === 'SUPPORT' || msg.includes('ticket') || msg.includes('reply')) {
+        this.switchView('secCustomerSupport');
+      } else if (notifType === 'REFERRAL' || msg.includes('referral') || msg.includes('reward')) {
+        this.switchView('secCustomerReferral');
+      } else {
+        this.switchView('secCustomerOrders');
+      }
+    }
   }
 
   renderNavigation() {
@@ -891,10 +1127,12 @@ class TiffinApp {
           <a class="nav-item ${this.activeView === 'secCustomerProfile' ? 'active' : ''}" onclick="app.switchView('secCustomerProfile')"><i class="fa-solid fa-user-gear"></i> My Profile</a>
         `;
       } else {
+        const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read && n.target_role === 'OWNER').length;
         desktopNav.innerHTML = `
           <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
           <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
           <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders Management</a>
+          <a class="nav-item" onclick="app.toggleNotificationsTray()"><i class="fa-solid fa-bell" style="color: var(--accent-gold);"></i> Notifications ${unreadNotifCount > 0 ? `<span class="sidebar-badge-count" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px;">${unreadNotifCount}</span>` : ''}</a>
           <a class="nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews</a>
           <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
           <a class="nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')"><i class="fa-solid fa-headset"></i> Support Inbox</a>
@@ -2391,6 +2629,244 @@ class TiffinApp {
     }
   }
 
+  // =========================================================================
+  // SEARCH & FILTER ENGINE FOR CUSTOMER & OWNER ORDERS
+  // =========================================================================
+
+  handleCustomerSearchInput(val) {
+    this.custOrderSearch = (val || '').trim().toLowerCase();
+    this.renderOrders();
+  }
+
+  handleCustomerFilterChange() {
+    this.custOrderStatus = document.getElementById('custFilterOrderStatus')?.value || 'ALL';
+    this.custPaymentStatus = document.getElementById('custFilterPaymentStatus')?.value || 'ALL';
+    this.custPaymentMethod = document.getElementById('custFilterPaymentMethod')?.value || 'ALL';
+    this.renderOrders();
+  }
+
+  handleCustomerDatePresetChange(val) {
+    this.custDatePreset = val;
+    const wrapper = document.getElementById('custCustomDateWrapper');
+    if (wrapper) wrapper.classList.toggle('hidden', val !== 'CUSTOM');
+    this.handleCustomerFilterChange();
+  }
+
+  resetCustomerOrderFilters() {
+    this.custOrderSearch = '';
+    this.custOrderStatus = 'ALL';
+    this.custPaymentStatus = 'ALL';
+    this.custPaymentMethod = 'ALL';
+    this.custDatePreset = 'ALL';
+
+    const inputSearch = document.getElementById('custOrderSearchInput');
+    const selStatus = document.getElementById('custFilterOrderStatus');
+    const selPayStatus = document.getElementById('custFilterPaymentStatus');
+    const selPayMethod = document.getElementById('custFilterPaymentMethod');
+    const selPreset = document.getElementById('custFilterDatePreset');
+    const startDate = document.getElementById('custFilterStartDate');
+    const endDate = document.getElementById('custFilterEndDate');
+    const wrapper = document.getElementById('custCustomDateWrapper');
+
+    if (inputSearch) inputSearch.value = '';
+    if (selStatus) selStatus.value = 'ALL';
+    if (selPayStatus) selPayStatus.value = 'ALL';
+    if (selPayMethod) selPayMethod.value = 'ALL';
+    if (selPreset) selPreset.value = 'ALL';
+    if (startDate) startDate.value = '';
+    if (endDate) endDate.value = '';
+    if (wrapper) wrapper.classList.add('hidden');
+
+    this.renderOrders();
+  }
+
+  handleOwnerSearchInput(val) {
+    this.ownerOrderSearch = (val || '').trim().toLowerCase();
+    this.renderOrders();
+  }
+
+  handleOwnerFilterChange() {
+    this.ownerFilterOrderStatus = document.getElementById('ownerFilterOrderStatus')?.value || 'ALL';
+    this.ownerFilterPaymentStatus = document.getElementById('ownerFilterPaymentStatus')?.value || 'ALL';
+    this.ownerFilterPaymentMethod = document.getElementById('ownerFilterPaymentMethod')?.value || 'ALL';
+    this.renderOrders();
+  }
+
+  handleOwnerDatePresetChange(val) {
+    this.ownerFilterDatePreset = val;
+    const wrapper = document.getElementById('ownerCustomDateWrapper');
+    if (wrapper) wrapper.classList.toggle('hidden', val !== 'CUSTOM');
+    this.handleOwnerFilterChange();
+  }
+
+  resetOwnerOrderFilters() {
+    this.ownerOrderSearch = '';
+    this.ownerFilterOrderStatus = 'ALL';
+    this.ownerFilterPaymentStatus = 'ALL';
+    this.ownerFilterPaymentMethod = 'ALL';
+    this.ownerFilterDatePreset = 'ALL';
+    this.ownerOrderFilter = 'ALL';
+
+    const inputSearch = document.getElementById('ownerOrderSearchInput');
+    const selStatus = document.getElementById('ownerFilterOrderStatus');
+    const selPayStatus = document.getElementById('ownerFilterPaymentStatus');
+    const selPayMethod = document.getElementById('ownerFilterPaymentMethod');
+    const selPreset = document.getElementById('ownerFilterDatePreset');
+    const startDate = document.getElementById('ownerFilterStartDate');
+    const endDate = document.getElementById('ownerFilterEndDate');
+    const wrapper = document.getElementById('ownerCustomDateWrapper');
+
+    if (inputSearch) inputSearch.value = '';
+    if (selStatus) selStatus.value = 'ALL';
+    if (selPayStatus) selPayStatus.value = 'ALL';
+    if (selPayMethod) selPayMethod.value = 'ALL';
+    if (selPreset) selPreset.value = 'ALL';
+    if (startDate) startDate.value = '';
+    if (endDate) endDate.value = '';
+    if (wrapper) wrapper.classList.add('hidden');
+
+    this.setOwnerOrderFilter('ALL');
+  }
+
+  parseOrderDate(order) {
+    if (!order) return new Date();
+    if (order.created_at) {
+      const d = new Date(order.created_at);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (order.date_time) {
+      const d = new Date(order.date_time);
+      if (!isNaN(d.getTime())) return d;
+
+      // Parse Indian locale format: DD/MM/YYYY, hh:mm:ss am/pm
+      const parts = order.date_time.split(',');
+      if (parts.length >= 1) {
+        const dateParts = parts[0].trim().split('/');
+        if (dateParts.length === 3) {
+          const day = parseInt(dateParts[0], 10);
+          const month = parseInt(dateParts[1], 10) - 1;
+          const year = parseInt(dateParts[2], 10);
+          const parsed = new Date(year, month, day);
+          if (!isNaN(parsed.getTime())) return parsed;
+        }
+      }
+    }
+    return new Date();
+  }
+
+  filterSingleOrder(order, isOwner) {
+    if (!order) return false;
+
+    const rawQuery = isOwner ? this.ownerOrderSearch : this.custOrderSearch;
+    const cleanQuery = (rawQuery || '').replace(/^#/, '').trim().toLowerCase();
+
+    const statusFilter = isOwner ? this.ownerFilterOrderStatus : this.custOrderStatus;
+    const payStatusFilter = isOwner ? this.ownerFilterPaymentStatus : this.custPaymentStatus;
+    const payMethodFilter = isOwner ? this.ownerFilterPaymentMethod : this.custPaymentMethod;
+    const datePreset = isOwner ? this.ownerFilterDatePreset : this.custDatePreset;
+    const startDateVal = isOwner ? document.getElementById('ownerFilterStartDate')?.value : document.getElementById('custFilterStartDate')?.value;
+    const endDateVal = isOwner ? document.getElementById('ownerFilterEndDate')?.value : document.getElementById('custFilterEndDate')?.value;
+
+    // 1. Keyword Search (Case-Insensitive & Trimmed)
+    if (cleanQuery) {
+      const orderNum = (order.order_number || '').toString().toLowerCase();
+      const custName = (order.customer_name || '').toString().toLowerCase();
+      const custMobile = (order.customer_mobile || '').toString().toLowerCase();
+      const cleanMobile = custMobile.replace(/[^0-9]/g, '');
+      const cleanQueryDigits = cleanQuery.replace(/[^0-9]/g, '');
+
+      const utrNum = (order.utr_number || '').toString().toLowerCase();
+      const txnId = (order.transaction_id || '').toString().toLowerCase();
+      const dateTime = (order.date_time || order.created_at || '').toString().toLowerCase();
+      const itemsStr = (order.items || []).map(i => i.name).join(' ').toLowerCase();
+
+      const matchOrderNum = orderNum.includes(cleanQuery) || (`tf${orderNum}`).includes(cleanQuery);
+      const matchCustName = isOwner && custName.includes(cleanQuery);
+      const matchMobile = isOwner && (custMobile.includes(cleanQuery) || (cleanQueryDigits.length >= 4 && cleanMobile.includes(cleanQueryDigits)));
+      const matchUtr = utrNum.includes(cleanQuery) || txnId.includes(cleanQuery);
+      const matchDate = dateTime.includes(cleanQuery);
+      const matchItems = itemsStr.includes(cleanQuery);
+
+      if (!matchOrderNum && !matchCustName && !matchMobile && !matchUtr && !matchDate && !matchItems) {
+        return false;
+      }
+    }
+
+    // 2. Order Status Filter
+    if (statusFilter && statusFilter !== 'ALL') {
+      const ordStat = (order.order_status || '').toLowerCase();
+      const reqStat = statusFilter.toLowerCase();
+      if (reqStat === 'received') {
+        if (!['received', 'pending'].includes(ordStat)) return false;
+      } else if (reqStat === 'completed') {
+        if (!['completed', 'delivered'].includes(ordStat)) return false;
+      } else {
+        if (ordStat !== reqStat) return false;
+      }
+    }
+
+    // 3. Payment Status Filter
+    if (payStatusFilter && payStatusFilter !== 'ALL') {
+      const payStat = (order.payment_status || '').toLowerCase();
+      const reqPayStat = payStatusFilter.toLowerCase();
+      if (reqPayStat === 'paid') {
+        if (!['paid', 'verified'].includes(payStat)) return false;
+      } else if (reqPayStat === 'pending verification') {
+        if (!['pending verification', 'pending_verification'].includes(payStat)) return false;
+      } else {
+        if (!payStat.includes(reqPayStat)) return false;
+      }
+    }
+
+    // 4. Payment Method Filter
+    if (payMethodFilter && payMethodFilter !== 'ALL') {
+      const payMethod = (order.payment_method || '').toLowerCase();
+      const reqMethod = payMethodFilter.toLowerCase();
+      if (reqMethod === 'upi') {
+        if (!payMethod.includes('upi') && !payMethod.includes('qr') && !payMethod.includes('phonepe') && !payMethod.includes('online')) return false;
+      } else if (reqMethod === 'qrpay') {
+        if (!payMethod.includes('qr')) return false;
+      } else if (reqMethod === 'phonepe') {
+        if (!payMethod.includes('phonepe')) return false;
+      } else if (reqMethod === 'cash') {
+        if (!payMethod.includes('cash')) return false;
+      }
+    }
+
+    // 5. Date Preset Filter
+    if (datePreset && datePreset !== 'ALL') {
+      const orderDate = this.parseOrderDate(order);
+      const now = new Date();
+      const todayStr = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+      if (datePreset === 'TODAY') {
+        const orderDayStr = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate()).getTime();
+        if (orderDayStr !== todayStr) return false;
+      } else if (datePreset === 'YESTERDAY') {
+        const yesterdayStr = todayStr - 86400000;
+        const orderDayStr = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate()).getTime();
+        if (orderDayStr !== yesterdayStr) return false;
+      } else if (datePreset === 'LAST_7_DAYS') {
+        const sevenDaysAgo = Date.now() - (7 * 86400000);
+        if (orderDate.getTime() < sevenDaysAgo) return false;
+      } else if (datePreset === 'LAST_30_DAYS') {
+        const thirtyDaysAgo = Date.now() - (30 * 86400000);
+        if (orderDate.getTime() < thirtyDaysAgo) return false;
+      } else if (datePreset === 'CUSTOM') {
+        if (startDateVal) {
+          const startMs = new Date(startDateVal).setHours(0, 0, 0, 0);
+          if (orderDate.getTime() < startMs) return false;
+        }
+        if (endDateVal) {
+          const endMs = new Date(endDateVal).setHours(23, 59, 59, 999);
+          if (orderDate.getTime() > endMs) return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   renderOrders() {
     if (this.currentRole === 'CUSTOMER') {
       const container = document.getElementById('customerOrdersList');
@@ -2421,14 +2897,29 @@ class TiffinApp {
         return;
       }
 
-      container.innerHTML = this.orders.map(order => {
+      // Filter Customer Orders
+      const filteredCustomerOrders = this.orders.filter(o => this.filterSingleOrder(o, false));
+
+      if (!filteredCustomerOrders.length) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+            <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.05); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; margin: 0 auto 1rem auto;">
+              <i class="fa-solid fa-magnifying-glass"></i>
+            </div>
+            <h3 style="color: var(--text-main); font-size: 1.1rem; margin-bottom: 0.4rem;">No matching orders found</h3>
+            <p style="font-size: 0.85rem; max-width: 380px; margin: 0 auto;">No order matches your current search query or filter settings.</p>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = filteredCustomerOrders.map(order => {
         return this.createCustomerOrderCardHTML(order);
       }).join('');
     } else {
       // First update sales analytics & KPI numbers
       this.renderSalesAnalytics();
 
-      // Apply owner order filter
+      // Apply owner order tab filter
       let filtered = this.orders;
       if (this.ownerOrderFilter === 'ACTIVE') {
         filtered = this.orders.filter(o => ['Received', 'Preparing', 'Ready'].includes(o.order_status));
@@ -2438,13 +2929,20 @@ class TiffinApp {
         filtered = this.orders.filter(o => ['Rejected', 'Cancelled'].includes(o.order_status));
       }
 
+      // Apply owner search & multi-filter controls
+      filtered = filtered.filter(o => this.filterSingleOrder(o, true));
+
+      const emptyMsg = (this.ownerOrderSearch || this.ownerFilterOrderStatus !== 'ALL' || this.ownerFilterPaymentStatus !== 'ALL' || this.ownerFilterPaymentMethod !== 'ALL' || this.ownerFilterDatePreset !== 'ALL')
+        ? 'No matching orders found for your search and filter criteria.'
+        : (this.ownerOrderFilter === 'ALL' ? 'No orders found.' : `No ${this.ownerOrderFilter.toLowerCase()} orders found.`);
+
       // Owner Dashboard Orders List
       const dashContainer = document.getElementById('ownerDashboardOrdersList');
       if (dashContainer) {
         if (this.isLoadingOrders && !filtered.length) {
           dashContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i>Loading orders...</div>`;
         } else if (!filtered.length) {
-          dashContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">No ${this.ownerOrderFilter.toLowerCase()} orders found.</div>`;
+          dashContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">${emptyMsg}</div>`;
         } else {
           dashContainer.innerHTML = filtered.map(order => this.createOwnerOrderCardHTML(order)).join('');
         }
@@ -2456,7 +2954,13 @@ class TiffinApp {
         if (this.isLoadingOrders && !filtered.length) {
           listContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);"><i class="fa-solid fa-spinner fa-spin" style="margin-right: 8px;"></i>Loading orders...</div>`;
         } else if (!filtered.length) {
-          listContainer.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">No ${this.ownerOrderFilter.toLowerCase()} orders found.</div>`;
+          listContainer.innerHTML = `
+            <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted); background: var(--bg-surface-elevated); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+              <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; margin: 0 auto 1rem auto;">
+                <i class="fa-solid fa-magnifying-glass"></i>
+              </div>
+              <h3 style="color: #FFF; font-size: 1.1rem;">${emptyMsg}</h3>
+            </div>`;
         } else {
           listContainer.innerHTML = filtered.map(order => this.createOwnerOrderCardHTML(order)).join('');
         }
