@@ -153,6 +153,9 @@ class TiffinApp {
       await this.fetchFavorites();
       this.renderCustomerProfile();
     } else {
+      // Always re-fetch settings for Owner on login/session-restore to ensure
+      // the latest PostgreSQL values are loaded into the form
+      await this.fetchSettings();
       await this.fetchStats();
       await this.fetchPayments();
       await this.fetchOwnerReviews(true);
@@ -185,19 +188,24 @@ class TiffinApp {
   // API FETCHERS
   // =========================================================================
 
-  async fetchSettings() {
+  async fetchSettings(silent = false) {
     try {
       const res = await fetch(`${API_BASE}/settings`);
       const json = await res.json();
-      if (json.success) {
-        this.settings = json.settings || json.data || {};
+      if (json.success && json.success !== false) {
+        const incoming = json.settings || json.data || {};
+        // Only update if we got a non-empty result, never overwrite saved values with empty
+        if (Object.keys(incoming).length > 0) {
+          this.settings = incoming;
+        }
         this.updateHeaderAndSettingsUI();
+        // Auto-populate settings form whenever owner is viewing Business Settings
         if (this.activeView === 'secOwnerSettings') {
           this.populateSettingsForm();
         }
       }
     } catch (err) {
-      console.error('Error fetching settings:', err);
+      if (!silent) console.error('Error fetching settings:', err);
     }
   }
 
@@ -1655,7 +1663,11 @@ class TiffinApp {
       this.renderPayments();
     }
     if (this.activeView === 'secOwnerSupport') this.fetchSupportTickets();
-    if (this.activeView === 'secOwnerSettings') this.populateSettingsForm();
+    if (this.activeView === 'secOwnerSettings') {
+      // Always re-fetch from PostgreSQL when opening Business Settings to ensure
+      // the form shows the latest saved values, not stale in-memory state
+      this.fetchSettings().then(() => this.populateSettingsForm());
+    }
   }
 
   // =========================================================================
@@ -4381,7 +4393,14 @@ class TiffinApp {
   // =========================================================================
 
   populateSettingsForm() {
-    if (!this.settings) return;
+    // If settings not yet loaded, fetch from server and return — will re-populate once loaded
+    if (!this.settings || Object.keys(this.settings).length === 0) {
+      this.fetchSettings();
+      return;
+    }
+
+    const s = this.settings;
+
     const elName = document.getElementById('setHotelName');
     const elPhone = document.getElementById('setPhone');
     const elAddr = document.getElementById('setAddr');
@@ -4391,18 +4410,20 @@ class TiffinApp {
     const elUpi = document.getElementById('setUpiId');
     const elDesc = document.getElementById('setDesc');
 
-    if (elName) elName.value = this.settings.hotel_name || '';
-    if (elPhone) elPhone.value = this.settings.phone || '';
-    if (elAddr) elAddr.value = this.settings.address || '';
-    if (elOpen) elOpen.value = this.settings.open_time || '';
-    if (elClose) elClose.value = this.settings.close_time || '';
-    if (elHolidays) elHolidays.value = this.settings.holidays || '';
-    if (elUpi) elUpi.value = this.settings.upi_id || '';
-    if (elDesc) elDesc.value = this.settings.description || '';
+    // Only set value if element exists — never overwrite saved values with empty strings
+    if (elName && s.hotel_name !== undefined) elName.value = s.hotel_name || '';
+    if (elPhone && s.phone !== undefined) elPhone.value = s.phone || '';
+    if (elAddr && s.address !== undefined) elAddr.value = s.address || '';
+    if (elOpen && s.open_time !== undefined) elOpen.value = s.open_time || '';
+    if (elClose && s.close_time !== undefined) elClose.value = s.close_time || '';
+    if (elHolidays && s.holidays !== undefined) elHolidays.value = s.holidays || '';
+    if (elUpi && s.upi_id !== undefined) elUpi.value = s.upi_id || '';
+    if (elDesc && s.description !== undefined) elDesc.value = s.description || '';
 
+    // QR preview image
     const qrImg = document.getElementById('setQrPreviewImg');
     if (qrImg) {
-      const qrSrc = (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) ? this.tempOwnerQrCode : (this.settings.upi_qr_code || '');
+      const qrSrc = (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) ? this.tempOwnerQrCode : (s.upi_qr_code || '');
       if (qrSrc) {
         qrImg.src = qrSrc;
         qrImg.style.display = 'block';
@@ -4412,8 +4433,28 @@ class TiffinApp {
       }
     }
 
+    // Store Open/Closed Switch
+    const storeSwitch = document.getElementById('settingHotelOpenSwitch');
+    const storeLabel = document.getElementById('settingHotelOpenLabel');
+    const isOpen = Boolean(s.is_open !== false);
+    if (storeSwitch) storeSwitch.classList.toggle('active', isOpen);
+    if (storeLabel) storeLabel.innerText = isOpen ? '🟢 HOTEL OPEN' : '🔴 HOTEL CLOSED';
+
+    // QR Pay & PhonePe switches
+    const swQr = document.getElementById('setQrPayEnabledSwitch');
+    const lblQr = document.getElementById('setQrPayEnabledLabel');
+    const isQrEnabled = s.is_qr_pay_enabled !== false;
+    if (swQr) swQr.classList.toggle('active', isQrEnabled);
+    if (lblQr) lblQr.innerText = isQrEnabled ? '🟢 ON' : '🔴 OFF';
+
+    const swPhonePe = document.getElementById('setPhonePeEnabledSwitch');
+    const lblPhonePe = document.getElementById('setPhonePeEnabledLabel');
+    const isPhonePeEnabled = s.is_phonepe_enabled !== false;
+    if (swPhonePe) swPhonePe.classList.toggle('active', isPhonePeEnabled);
+    if (lblPhonePe) lblPhonePe.innerText = isPhonePeEnabled ? '🟢 ON' : '🔴 OFF';
+
     // Referral Program Settings Controls
-    const ref = this.settings.referral || {};
+    const ref = s.referral || {};
     const swEnabled = document.getElementById('setRefEnabledSwitch');
     const lblEnabled = document.getElementById('setRefEnabledLabel');
     const elReward = document.getElementById('setRefReferrerReward');
@@ -4423,10 +4464,10 @@ class TiffinApp {
 
     if (swEnabled) swEnabled.classList.toggle('active', ref.enabled !== false);
     if (lblEnabled) lblEnabled.innerText = ref.enabled !== false ? '🟢 PROGRAM ON' : '🔴 PROGRAM OFF';
-    if (elReward) elReward.value = ref.referrer_reward || 30;
-    if (elDiscount) elDiscount.value = ref.new_customer_discount || 30;
-    if (elMinOrder) elMinOrder.value = ref.min_order_value || 150;
-    if (elLimit) elLimit.value = ref.monthly_limit || 500;
+    if (elReward) elReward.value = ref.referrer_reward ?? 30;
+    if (elDiscount) elDiscount.value = ref.new_customer_discount ?? 30;
+    if (elMinOrder) elMinOrder.value = ref.min_order_value ?? 150;
+    if (elLimit) elLimit.value = ref.monthly_limit ?? 500;
   }
 
   saveBusinessSettings(e) {
@@ -4436,8 +4477,9 @@ class TiffinApp {
   async saveSettings(e) {
     if (e) e.preventDefault();
 
+    // Read all switch states directly from DOM to ensure we capture latest user intent
     const swEnabled = document.getElementById('setRefEnabledSwitch');
-    const refEnabled = swEnabled ? swEnabled.classList.contains('active') : true;
+    const refEnabled = swEnabled ? swEnabled.classList.contains('active') : (this.settings?.referral?.enabled !== false);
 
     const swQr = document.getElementById('setQrPayEnabledSwitch');
     const isQrEnabled = swQr ? swQr.classList.contains('active') : (this.settings ? (this.settings.is_qr_pay_enabled !== false) : true);
@@ -4445,39 +4487,47 @@ class TiffinApp {
     const swPhonePe = document.getElementById('setPhonePeEnabledSwitch');
     const isPhonePeEnabled = swPhonePe ? swPhonePe.classList.contains('active') : (this.settings ? (this.settings.is_phonepe_enabled !== false) : true);
 
+    // Read hotel open/close state from DOM switch (not stale this.settings)
+    const storeSwitch = document.getElementById('settingHotelOpenSwitch');
+    const isHotelOpen = storeSwitch ? storeSwitch.classList.contains('active') : (this.settings ? (this.settings.is_open !== false) : true);
+
+    // QR code: use temp (newly uploaded) or existing saved value
     let qrVal = this.settings ? (this.settings.upi_qr_code || '') : '';
     if (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) {
       qrVal = this.tempOwnerQrCode;
     }
 
-    const hotelNameInput = document.getElementById('setHotelName')?.value;
-    const phoneInput = document.getElementById('setPhone')?.value;
-    const addrInput = document.getElementById('setAddr')?.value;
-    const openTimeInput = document.getElementById('setOpenTime')?.value;
-    const closeTimeInput = document.getElementById('setCloseTime')?.value;
-    const holidaysInput = document.getElementById('setHolidays')?.value;
-    const upiIdInput = document.getElementById('setUpiId')?.value;
-    const descInput = document.getElementById('setDesc')?.value;
+    // Read text fields from DOM
+    const hotelNameInput = document.getElementById('setHotelName')?.value?.trim();
+    const phoneInput = document.getElementById('setPhone')?.value?.trim();
+    const addrInput = document.getElementById('setAddr')?.value?.trim();
+    const openTimeInput = document.getElementById('setOpenTime')?.value?.trim();
+    const closeTimeInput = document.getElementById('setCloseTime')?.value?.trim();
+    const holidaysInput = document.getElementById('setHolidays')?.value?.trim();
+    const upiIdInput = document.getElementById('setUpiId')?.value?.trim();
+    const descInput = document.getElementById('setDesc')?.value?.trim();
 
+    // Build payload: only send non-empty values; fall back to existing saved values
+    // to prevent overwriting unchanged fields with empty strings
     const payload = {
-      hotel_name: hotelNameInput !== undefined && hotelNameInput !== null && hotelNameInput !== '' ? hotelNameInput : (this.settings?.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center'),
-      phone: phoneInput !== undefined && phoneInput !== null ? phoneInput : (this.settings?.phone || ''),
-      address: addrInput !== undefined && addrInput !== null ? addrInput : (this.settings?.address || ''),
-      open_time: openTimeInput !== undefined && openTimeInput !== null ? openTimeInput : (this.settings?.open_time || ''),
-      close_time: closeTimeInput !== undefined && closeTimeInput !== null ? closeTimeInput : (this.settings?.close_time || ''),
-      holidays: holidaysInput !== undefined && holidaysInput !== null ? holidaysInput : (this.settings?.holidays || ''),
-      upi_id: upiIdInput !== undefined && upiIdInput !== null ? upiIdInput : (this.settings?.upi_id || ''),
-      description: descInput !== undefined && descInput !== null ? descInput : (this.settings?.description || ''),
+      hotel_name: (hotelNameInput && hotelNameInput !== '') ? hotelNameInput : (this.settings?.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center'),
+      phone: (phoneInput !== undefined && phoneInput !== null) ? phoneInput : (this.settings?.phone || ''),
+      address: (addrInput !== undefined && addrInput !== null) ? addrInput : (this.settings?.address || ''),
+      open_time: (openTimeInput !== undefined && openTimeInput !== null) ? openTimeInput : (this.settings?.open_time || ''),
+      close_time: (closeTimeInput !== undefined && closeTimeInput !== null) ? closeTimeInput : (this.settings?.close_time || ''),
+      holidays: (holidaysInput !== undefined && holidaysInput !== null) ? holidaysInput : (this.settings?.holidays || ''),
+      upi_id: (upiIdInput !== undefined && upiIdInput !== null) ? upiIdInput : (this.settings?.upi_id || ''),
+      description: (descInput !== undefined && descInput !== null) ? descInput : (this.settings?.description || ''),
       upi_qr_code: qrVal,
-      is_open: this.settings ? (this.settings.is_open !== false) : true,
+      is_open: isHotelOpen,
       is_qr_pay_enabled: isQrEnabled,
       is_phonepe_enabled: isPhonePeEnabled,
       referral: {
         enabled: refEnabled,
-        referrer_reward: Number(document.getElementById('setRefReferrerReward')?.value || 30),
-        new_customer_discount: Number(document.getElementById('setRefCustomerDiscount')?.value || 30),
-        min_order_value: Number(document.getElementById('setRefMinOrderValue')?.value || 150),
-        monthly_limit: Number(document.getElementById('setRefMonthlyLimit')?.value || 500)
+        referrer_reward: Number(document.getElementById('setRefReferrerReward')?.value ?? (this.settings?.referral?.referrer_reward ?? 30)),
+        new_customer_discount: Number(document.getElementById('setRefCustomerDiscount')?.value ?? (this.settings?.referral?.new_customer_discount ?? 30)),
+        min_order_value: Number(document.getElementById('setRefMinOrderValue')?.value ?? (this.settings?.referral?.min_order_value ?? 150)),
+        monthly_limit: Number(document.getElementById('setRefMonthlyLimit')?.value ?? (this.settings?.referral?.monthly_limit ?? 500))
       }
     };
 
@@ -4489,17 +4539,20 @@ class TiffinApp {
       });
       const json = await res.json();
       if (json.success) {
+        // Update local state from PostgreSQL response — never use stale local values
         this.settings = json.settings || json.data;
         this.tempOwnerQrCode = null;
         this.updateHeaderAndSettingsUI();
         this.populateSettingsForm();
-        this.showToast('🟢 Business settings saved and published successfully to PostgreSQL!', 'success');
+        this.showToast('🟢 Settings saved & published successfully!', 'success');
       } else {
-        this.showToast(json.message || 'Unable to save business settings. Previously saved settings remain active.', 'error');
+        // Do NOT clear fields or overwrite previous saved values on failure
+        this.showToast(json.message || 'Failed to save settings. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error saving settings:', err);
-      this.showToast('Unable to save business settings. Previously saved settings remain active.', 'error');
+      // Do NOT clear fields or overwrite previous saved values on network error
+      this.showToast('Failed to save settings. Please try again.', 'error');
     }
   }
 

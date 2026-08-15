@@ -676,6 +676,7 @@ const handleSaveSettings = async (req, res) => {
 
 app.put('/api/settings', authenticateToken, requireRole('OWNER'), handleSaveSettings);
 app.post('/api/settings', authenticateToken, requireRole('OWNER'), handleSaveSettings);
+app.patch('/api/settings', authenticateToken, requireRole('OWNER'), handleSaveSettings);
 
 const defaultTiffinsList = [
   { id: "tf_1", name: "Idly (4 Pieces)", description: "Steaming soft rice cakes served with hot sambar and freshly ground coconut chutney.", price: 40, category: "Breakfast", image: "/images/idly_sambar.png", is_available: true },
