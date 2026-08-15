@@ -6,28 +6,29 @@ let pool = null;
 let sqliteDb = null;
 let usePg = false;
 
-// Check if DATABASE_URL or PostgreSQL environment is configured
-if (process.env.DATABASE_URL) {
+const dbUrl = (process.env.DATABASE_URL || '').trim();
+
+if (dbUrl) {
   usePg = true;
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1') 
+    connectionString: dbUrl,
+    ssl: dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1') 
       ? false 
       : { rejectUnauthorized: false }
   });
-  console.log('PostgreSQL Connection Initialized via DATABASE_URL');
+  console.log('PostgreSQL Connection Pool Initialized via DATABASE_URL');
 } else {
-  // Offline / Local Development Fallback Engine via SQLite
+  // Local Development Engine
   try {
     const sqlite3 = require('sqlite3').verbose();
     const dbPath = path.join(__dirname, 'local_postgres.db');
     sqliteDb = new sqlite3.Database(dbPath);
     console.log('Local Development SQL Database Initialized:', dbPath);
   } catch (err) {
-    console.warn('SQLite fallback driver not available, defaulting to PG driver pool');
+    console.warn('PostgreSQL Pool fallback initialized');
     usePg = true;
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/annapurna_tiffin'
+      connectionString: 'postgres://postgres:postgres@localhost:5432/annapurna_tiffin'
     });
   }
 }

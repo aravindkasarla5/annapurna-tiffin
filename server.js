@@ -886,12 +886,15 @@ app.get('*', (req, res) => {
 
 // Start Server & Initialize PostgreSQL Database
 app.listen(PORT, async () => {
-  console.log(`Server listening on port ${PORT}`);
-  await db.initDatabase();
-  // Execute automatic one-time migration if database is fresh
-  const userCountRes = await db.query('SELECT COUNT(*) FROM users;');
-  if (Number(userCountRes.rows[0]?.count || 0) <= 1) {
-    console.log('Database empty — running automatic data migration from db.json...');
-    require('./migrate_to_postgres');
+  console.log(`✅ Server running on port ${PORT}`);
+  try {
+    await db.initDatabase();
+    const userCountRes = await db.query('SELECT COUNT(*) FROM users;');
+    if (Number(userCountRes.rows[0]?.count || 0) <= 1) {
+      console.log('Database empty — running automatic data migration from db.json...');
+      require('./migrate_to_postgres');
+    }
+  } catch (err) {
+    console.error('PostgreSQL Database Initialization Notice:', err.message);
   }
 });
