@@ -1,27 +1,22 @@
 const fs = require('fs');
 const path = require('path');
-const db = require('./db');
-
-const DB_FILE = path.join(__dirname, 'db.json');
-
 async function migrate() {
   console.log('======================================================');
   console.log('   STARTING ONE-TIME db.json TO POSTGRESQL MIGRATION  ');
   console.log('======================================================\n');
 
-  if (!fs.existsSync(DB_FILE)) {
-    console.warn('Notice: db.json file not found at:', DB_FILE, '- Default seed initialization complete.');
+  let targetFile = path.join(__dirname, 'db.json');
+  if (!fs.existsSync(targetFile)) {
+    targetFile = path.join(__dirname, 'seed_data.json');
+  }
+
+  if (!fs.existsSync(targetFile)) {
+    console.warn('Notice: Neither db.json nor seed_data.json found at:', targetFile);
     return;
   }
 
-  // Backup file check
-  const backupFile = path.join(__dirname, 'db.json.backup.json');
-  if (!fs.existsSync(backupFile)) {
-    fs.copyFileSync(DB_FILE, backupFile);
-    console.log('Backup verified at:', backupFile);
-  }
-
-  const raw = fs.readFileSync(DB_FILE, 'utf8');
+  console.log('Loading database migration source from:', targetFile);
+  const raw = fs.readFileSync(targetFile, 'utf8');
   const dbData = JSON.parse(raw);
 
   // Initialize DB tables

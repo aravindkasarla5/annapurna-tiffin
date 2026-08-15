@@ -301,6 +301,21 @@ async function initDatabase() {
   }
 
   console.log('PostgreSQL database schemas successfully initialized.');
+
+  // Auto-seed from seed_data.json if database is fresh
+  try {
+    const tiffinCountRes = await query(`SELECT COUNT(*) FROM tiffins;`);
+    const count = Number(tiffinCountRes.rows[0]?.count || 0);
+    if (count === 0) {
+      console.log('Database empty on startup — running automated seed migration from seed_data.json...');
+      const migrateModule = require('./migrate_to_postgres');
+      if (typeof migrateModule === 'function') {
+        await migrateModule();
+      }
+    }
+  } catch (seedErr) {
+    console.error('Auto-seed check notice:', seedErr.message);
+  }
 }
 
 // Atomic Sequence Counter Helper for Globally Unique Order IDs
