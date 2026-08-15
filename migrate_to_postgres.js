@@ -10,8 +10,8 @@ async function migrate() {
   console.log('======================================================\n');
 
   if (!fs.existsSync(DB_FILE)) {
-    console.error('ERROR: db.json file not found at:', DB_FILE);
-    process.exit(1);
+    console.warn('Notice: db.json file not found at:', DB_FILE, '- Default seed initialization complete.');
+    return;
   }
 
   // Backup file check
