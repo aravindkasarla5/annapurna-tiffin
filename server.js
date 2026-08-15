@@ -162,11 +162,14 @@ async function findUserByIdentifier(rawIdentifier) {
   if (!str) return null;
 
   try {
-    const uCheck = await db.query('SELECT COUNT(*) FROM users;');
-    if (Number(uCheck.rows[0]?.count || 0) === 0) {
-      console.log('Users table empty — populating database from seed_data.json...');
-      const migrate = require('./migrate_to_postgres');
-      await migrate();
+    const ownerRes = await db.query("SELECT * FROM users WHERE mobile = '9392874900' OR id = 'usr_owner_1';");
+    if (!ownerRes.rows || ownerRes.rows.length === 0) {
+      console.log('Owner user missing — seeding owner account...');
+      await seedOwnerUser();
+      try {
+        const migrate = require('./migrate_to_postgres');
+        await migrate();
+      } catch(e) {}
     }
   } catch (e) {}
 
@@ -614,17 +617,55 @@ app.put('/api/settings', authenticateToken, requireRole('OWNER'), async (req, re
   }
 });
 
+const defaultTiffinsList = [
+  { id: "tf_1", name: "Idly (4 Pieces)", description: "Steaming soft rice cakes served with hot sambar and freshly ground coconut chutney.", price: 40, category: "Breakfast", image: "/images/idly_sambar.png", is_available: true },
+  { id: "tf_2", name: "Medu Vada (2 Pieces)", description: "Crispy fried lentil doughnuts seasoned with pepper, curry leaves, served with chutneys.", price: 45, category: "Breakfast", image: "/images/medu_vada.png", is_available: true },
+  { id: "tf_3", name: "Masala Dosa", description: "Golden crispy crepe smeared with red chutney and stuffed with spiced potato masala.", price: 70, category: "Breakfast", image: "/images/masala_dosa.png", is_available: true },
+  { id: "tf_4", name: "Puri Sagu (3 Pieces)", description: "Fluffy puffed fried puri served with aromatic spicy potato and vegetable sagu curry.", price: 60, category: "Breakfast", image: "/images/puri_sagu.png", is_available: true },
+  { id: "tf_5", name: "Ghee Ven Pongal", description: "Classic rice and moong dal porridge tempered with pure ghee, cashews, cumin, and pepper.", price: 55, category: "Breakfast", image: "https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=500&q=80", is_available: true },
+  { id: "tf_6", name: "Hot Rava Upma", description: "Savory roasted semolina cooked with mustard seeds, veggies, cashews, served with coconut chutney.", price: 35, category: "Breakfast", image: "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=500&q=80", is_available: true },
+  { id: "tf_7", name: "Plain Dosa", description: "Thin and crispy South Indian rice crepe served with flavorful sambar and 2 chutneys.", price: 50, category: "Breakfast", image: "https://images.unsplash.com/photo-1668236543090-82eba5ee5976?auto=format&fit=crop&w=500&q=80", is_available: true },
+  { id: "tf_8", name: "South Indian Mini Meals", description: "Authentic thali platter with Steamed Rice, Sambar, Rasam, Vegetable Poriyal, Curd, Papad, and Payasam.", price: 110, category: "Lunch", image: "/images/south_indian_meals.png", is_available: true },
+  { id: "tf_9", name: "Tangy Lemon Rice", description: "Fragrant rice tossed with fresh lemon juice, crunchy peanuts, curry leaves, and green chillies.", price: 45, category: "Lunch", image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=500&q=80", is_available: true },
+  { id: "tf_10", name: "Seasoned Curd Rice", description: "Cooling soothing curd rice tempered with mustard, pomegranates, green chillies, and ginger.", price: 50, category: "Lunch", image: "https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=500&q=80", is_available: true },
+  { id: "tf_11", name: "Spicy Tomato Rice", description: "Flavorful spicy tomato cooked rice infused with South Indian spices, served with onion raita.", price: 50, category: "Lunch", image: "https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=500&q=80", is_available: true },
+  { id: "tf_12", name: "Chapati (2 Pieces + Kurma)", description: "Soft whole wheat chapatis served with aromatic mixed vegetable spicy kurma curry.", price: 50, category: "Dinner", image: "https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=500&q=80", is_available: true }
+];
+
+async function seedDefaultTiffins() {
+  for (let t of defaultTiffinsList) {
+    try {
+      await db.query(
+        `INSERT INTO tiffins (id, name, description, price, category, image, is_available)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (id) DO NOTHING;`,
+        [t.id, t.name, t.description, t.price, t.category, t.image, t.is_available]
+      );
+    } catch(e) {}
+  }
+}
+
+async function seedOwnerUser() {
+  try {
+    await db.query(
+      `INSERT INTO users (id, name, mobile, password, role, email, address)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (id) DO NOTHING;`,
+      ['usr_owner_1', 'Lakshmi Narayana (Owner)', '9392874900', '9392874900', 'OWNER', 'owner@annapurna.com', '#42, Temple Road, Bengaluru, KA']
+    );
+  } catch(e) {}
+}
+
 app.get('/api/menu', async (req, res) => {
   let tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
   if (!tRes.rows || tRes.rows.length === 0) {
-    console.log('Menu table empty — populating database from seed_data.json...');
+    console.log('Menu table empty — seeding default tiffins list...');
+    await seedDefaultTiffins();
     try {
       const migrate = require('./migrate_to_postgres');
       await migrate();
-      tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
-    } catch (e) {
-      console.error('Auto-seed error on GET /api/menu:', e.message);
-    }
+    } catch (e) {}
+    tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
   }
   res.json({ success: true, data: tRes.rows || [] });
 });
