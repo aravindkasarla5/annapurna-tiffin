@@ -536,19 +536,19 @@ app.get('/api/settings', async (req, res) => {
   try {
     const sRes = await db.query('SELECT * FROM settings WHERE id = 1;');
     if (sRes.rows.length === 0) {
-      return res.json({ success: true, settings: {} });
+      return res.json({ success: true, settings: {}, data: {} });
     }
     const s = sRes.rows[0];
     if (typeof s.referral === 'string') {
       try { s.referral = JSON.parse(s.referral); } catch (e) {}
     }
-    res.json({ success: true, settings: s });
+    res.json({ success: true, settings: s, data: s });
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to fetch settings." });
   }
 });
 
-app.put('/api/settings', authenticateToken, requireRole('OWNER'), async (req, res) => {
+const handleSaveSettings = async (req, res) => {
   try {
     const sRes = await db.query('SELECT * FROM settings WHERE id = 1;');
     const s = sRes.rows[0] || {};
@@ -559,7 +559,7 @@ app.put('/api/settings', authenticateToken, requireRole('OWNER'), async (req, re
       is_phonepe_enabled, description, referral
     } = req.body;
 
-    const newHotelName = hotel_name !== undefined ? hotel_name : s.hotel_name;
+    const newHotelName = hotel_name !== undefined && hotel_name !== null && hotel_name !== '' ? hotel_name : (s.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center');
     const newHotelLogo = hotel_logo !== undefined ? hotel_logo : s.hotel_logo;
     const newPhone = phone !== undefined ? phone : s.phone;
     const newAddress = address !== undefined ? address : s.address;
@@ -567,11 +567,11 @@ app.put('/api/settings', authenticateToken, requireRole('OWNER'), async (req, re
     const newCloseTime = close_time !== undefined ? close_time : s.close_time;
     const newHolidays = holidays !== undefined ? holidays : s.holidays;
     const newUpiId = upi_id !== undefined ? upi_id : s.upi_id;
-    const newUpiName = upi_name !== undefined ? upi_name : s.upi_name;
+    const newUpiName = upi_name !== undefined ? upi_name : (s.upi_name || newHotelName);
     const newUpiQrCode = upi_qr_code !== undefined ? upi_qr_code : s.upi_qr_code;
-    const newIsOpen = is_open !== undefined ? Boolean(is_open) : s.is_open;
-    const newIsQrPay = is_qr_pay_enabled !== undefined ? Boolean(is_qr_pay_enabled) : s.is_qr_pay_enabled;
-    const newIsPhonepe = is_phonepe_enabled !== undefined ? Boolean(is_phonepe_enabled) : s.is_phonepe_enabled;
+    const newIsOpen = is_open !== undefined ? Boolean(is_open) : (s.is_open !== false);
+    const newIsQrPay = is_qr_pay_enabled !== undefined ? Boolean(is_qr_pay_enabled) : (s.is_qr_pay_enabled !== false);
+    const newIsPhonepe = is_phonepe_enabled !== undefined ? Boolean(is_phonepe_enabled) : (s.is_phonepe_enabled !== false);
     const newDesc = description !== undefined ? description : s.description;
 
     let newRef = s.referral;
@@ -605,17 +605,24 @@ app.put('/api/settings', authenticateToken, requireRole('OWNER'), async (req, re
       [
         newHotelName, newHotelLogo, newPhone, newAddress, newOpenTime, newCloseTime,
         newHolidays, newUpiId, newUpiName, newUpiQrCode, newIsOpen, newIsQrPay,
-        newIsPhonepe, newDesc, JSON.stringify(newRef)
+        newIsPhonepe, newDesc, typeof newRef === 'object' ? JSON.stringify(newRef) : newRef
       ]
     );
 
     const updated = await db.query('SELECT * FROM settings WHERE id = 1;');
-    res.json({ success: true, settings: updated.rows[0], message: "Business settings updated successfully." });
+    const updatedSettings = updated.rows[0];
+    if (typeof updatedSettings.referral === 'string') {
+      try { updatedSettings.referral = JSON.parse(updatedSettings.referral); } catch (e) {}
+    }
+    res.json({ success: true, settings: updatedSettings, data: updatedSettings, message: "Business settings updated successfully." });
   } catch (err) {
     console.error('Update Settings Error:', err);
-    res.status(500).json({ success: false, message: "Failed to save settings." });
+    res.status(500).json({ success: false, message: "Database error updating business settings." });
   }
-});
+};
+
+app.put('/api/settings', authenticateToken, requireRole('OWNER'), handleSaveSettings);
+app.post('/api/settings', authenticateToken, requireRole('OWNER'), handleSaveSettings);
 
 const defaultTiffinsList = [
   { id: "tf_1", name: "Idly (4 Pieces)", description: "Steaming soft rice cakes served with hot sambar and freshly ground coconut chutney.", price: 40, category: "Breakfast", image: "/images/idly_sambar.png", is_available: true },

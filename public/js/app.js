@@ -190,8 +190,11 @@ class TiffinApp {
       const res = await fetch(`${API_BASE}/settings`);
       const json = await res.json();
       if (json.success) {
-        this.settings = json.data;
+        this.settings = json.settings || json.data || {};
         this.updateHeaderAndSettingsUI();
+        if (this.activeView === 'secOwnerSettings') {
+          this.populateSettingsForm();
+        }
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
