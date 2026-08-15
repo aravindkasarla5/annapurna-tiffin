@@ -161,6 +161,15 @@ async function findUserByIdentifier(rawIdentifier) {
   const str = rawIdentifier.toString().trim();
   if (!str) return null;
 
+  try {
+    const uCheck = await db.query('SELECT COUNT(*) FROM users;');
+    if (Number(uCheck.rows[0]?.count || 0) === 0) {
+      console.log('Users table empty — populating database from seed_data.json...');
+      const migrate = require('./migrate_to_postgres');
+      await migrate();
+    }
+  } catch (e) {}
+
   const normPhone = normalizePhone(str);
   const cleanStr = str.toLowerCase();
 
@@ -606,8 +615,18 @@ app.put('/api/settings', authenticateToken, requireRole('OWNER'), async (req, re
 });
 
 app.get('/api/menu', async (req, res) => {
-  const tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
-  res.json({ success: true, data: tRes.rows });
+  let tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
+  if (!tRes.rows || tRes.rows.length === 0) {
+    console.log('Menu table empty — populating database from seed_data.json...');
+    try {
+      const migrate = require('./migrate_to_postgres');
+      await migrate();
+      tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
+    } catch (e) {
+      console.error('Auto-seed error on GET /api/menu:', e.message);
+    }
+  }
+  res.json({ success: true, data: tRes.rows || [] });
 });
 
 app.post('/api/menu', authenticateToken, requireRole('OWNER'), async (req, res) => {
