@@ -441,9 +441,14 @@ async function migrate() {
   console.log(`Global order_counter set to: ${maxOrderNum}`);
   console.log(`Global ticket_counter set to: ${maxTicketNum}`);
   console.log('======================================================\n');
+  return report;
 }
 
-migrate().catch(err => {
-  console.error('Migration execution failed:', err);
-  process.exit(1);
-});
+module.exports = migrate;
+
+if (require.main === module) {
+  migrate().catch(err => {
+    console.error('Migration execution failed:', err);
+    process.exit(1);
+  });
+}

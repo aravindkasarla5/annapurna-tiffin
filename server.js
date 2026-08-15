@@ -892,10 +892,12 @@ app.listen(PORT, async () => {
   console.log(`✅ Server running on port ${PORT}`);
   try {
     await db.initDatabase();
-    const userCountRes = await db.query('SELECT COUNT(*) FROM users;');
-    if (Number(userCountRes.rows[0]?.count || 0) <= 1) {
-      console.log('Database empty — running automatic data migration from db.json...');
-      require('./migrate_to_postgres');
+    const tiffinCheck = await db.query('SELECT COUNT(*) FROM tiffins;');
+    const tCount = Number(tiffinCheck.rows[0]?.count || 0);
+    if (tCount === 0) {
+      console.log('PostgreSQL database empty — populating seed data from seed_data.json...');
+      const migrate = require('./migrate_to_postgres');
+      await migrate();
     }
   } catch (err) {
     console.error('PostgreSQL Database Initialization Notice:', err.message);
