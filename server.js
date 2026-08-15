@@ -569,6 +569,9 @@ const handleSaveSettings = async (req, res) => {
     const newUpiId = upi_id !== undefined ? upi_id : s.upi_id;
     const newUpiName = upi_name !== undefined ? upi_name : (s.upi_name || newHotelName);
     const newUpiQrCode = upi_qr_code !== undefined ? upi_qr_code : s.upi_qr_code;
+    const qrChanged = newUpiQrCode !== s.upi_qr_code;
+    const newQrUpdatedAt = qrChanged ? Date.now() : (s.upi_qr_updated_at || Date.now());
+
     const newIsOpen = is_open !== undefined ? Boolean(is_open) : (s.is_open !== false);
     const newIsQrPay = is_qr_pay_enabled !== undefined ? Boolean(is_qr_pay_enabled) : (s.is_qr_pay_enabled !== false);
     const newIsPhonepe = is_phonepe_enabled !== undefined ? Boolean(is_phonepe_enabled) : (s.is_phonepe_enabled !== false);
@@ -584,8 +587,8 @@ const handleSaveSettings = async (req, res) => {
       `INSERT INTO settings (
         id, hotel_name, hotel_logo, phone, address, open_time, close_time, 
         holidays, upi_id, upi_name, upi_qr_code, is_open, is_qr_pay_enabled, 
-        is_phonepe_enabled, description, referral
-      ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        is_phonepe_enabled, description, referral, upi_qr_updated_at
+      ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       ON CONFLICT (id) DO UPDATE SET
         hotel_name = EXCLUDED.hotel_name,
         hotel_logo = EXCLUDED.hotel_logo,
@@ -601,11 +604,13 @@ const handleSaveSettings = async (req, res) => {
         is_qr_pay_enabled = EXCLUDED.is_qr_pay_enabled,
         is_phonepe_enabled = EXCLUDED.is_phonepe_enabled,
         description = EXCLUDED.description,
-        referral = EXCLUDED.referral;`,
+        referral = EXCLUDED.referral,
+        upi_qr_updated_at = EXCLUDED.upi_qr_updated_at;`,
       [
         newHotelName, newHotelLogo, newPhone, newAddress, newOpenTime, newCloseTime,
         newHolidays, newUpiId, newUpiName, newUpiQrCode, newIsOpen, newIsQrPay,
-        newIsPhonepe, newDesc, typeof newRef === 'object' ? JSON.stringify(newRef) : newRef
+        newIsPhonepe, newDesc, typeof newRef === 'object' ? JSON.stringify(newRef) : newRef,
+        newQrUpdatedAt
       ]
     );
 

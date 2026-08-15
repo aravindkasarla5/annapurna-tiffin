@@ -4439,8 +4439,8 @@ class TiffinApp {
     const elCheckoutUpi = document.getElementById('checkoutUpiIdDisplay');
     if (elCheckoutUpi) elCheckoutUpi.innerText = upi;
 
-    const updatedAt = this.settings.upi_qr_updated_at || Date.now();
-    const cacheBustQr = qrCode ? (qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`) : '';
+    const updatedAt = this.settings?.upi_qr_updated_at || Date.now();
+    const cacheBustQr = qrCode ? (qrCode.startsWith('data:') ? qrCode : (qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`)) : '';
 
     const checkoutQr = document.getElementById('checkoutQrScannerImg');
     const checkoutQrWrapper = document.getElementById('checkoutQrWrapper');
