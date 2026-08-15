@@ -2025,12 +2025,19 @@ class TiffinApp {
   }
 
   openOrderCheckoutModal() {
-    if (!this.cart.length) {
-      this.showToast('Your cart is empty!', 'error');
+    if (!this.cart || !this.cart.length) {
+      this.showToast('Your cart is empty! Please add items from menu.', 'error');
       return;
     }
-    if (!this.settings.is_open) {
+    if (this.settings && this.settings.is_open === false) {
       this.showToast('Hotel is currently closed. Orders are not being accepted.', 'error');
+      return;
+    }
+
+    if (!this.currentUser) {
+      this.toggleCartDrawer(false);
+      this.showToast('Please login or register to complete your order.', 'info');
+      this.openAuthModal('LOGIN');
       return;
     }
 
