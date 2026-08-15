@@ -2533,7 +2533,7 @@ class TiffinApp {
     const validOrders = allOrders.filter(o => !['Rejected', 'Cancelled'].includes(o.order_status));
 
     // Stats values
-    const totalSales = validOrders.reduce((acc, o) => acc + (Number(o.grand_total) || 0), 0);
+    const totalSales = validOrders.reduce((acc, o) => acc + (Number(o.net_amount ?? o.total_amount ?? o.grand_total) || 0), 0);
     const avgOrderVal = validOrders.length ? Math.round(totalSales / validOrders.length) : 0;
 
     // Update KPI grid numbers
@@ -2580,9 +2580,9 @@ class TiffinApp {
     let cashTotal = 0;
     validOrders.forEach(o => {
       if ((o.payment_method || '').includes('UPI') || (o.payment_method || '').includes('Online')) {
-        upiTotal += Number(o.grand_total) || 0;
+        upiTotal += Number(o.net_amount ?? o.total_amount ?? o.grand_total) || 0;
       } else {
-        cashTotal += Number(o.grand_total) || 0;
+        cashTotal += Number(o.net_amount ?? o.total_amount ?? o.grand_total) || 0;
       }
     });
 
@@ -3066,7 +3066,7 @@ class TiffinApp {
             </div>
             <div class="co-total-amount-block">
               <span class="co-total-title-label">Total Amount</span>
-              <span class="co-row-total-val">₹${order.grand_total}</span>
+              <span class="co-row-total-val">₹${order.net_amount ?? order.total_amount ?? order.grand_total ?? 0}</span>
             </div>
           </div>
         </div>
@@ -3306,7 +3306,7 @@ class TiffinApp {
             </div>
             <div class="co-total-amount-block">
               <span class="co-total-title-label">Total Amount</span>
-              <span class="co-row-total-val">₹${order.grand_total}</span>
+              <span class="co-row-total-val">₹${order.net_amount ?? order.total_amount ?? order.grand_total ?? 0}</span>
             </div>
           </div>
         </div>
@@ -3513,7 +3513,7 @@ class TiffinApp {
 
       <div class="od-total-bar">
         <span>Grand Total</span>
-        <span class="od-grand">₹${order.grand_total}</span>
+        <span class="od-grand">₹${order.net_amount ?? order.total_amount ?? order.grand_total ?? 0}</span>
       </div>
 
       <!-- Progress -->
@@ -3612,7 +3612,7 @@ class TiffinApp {
 
         <div class="total-row">
           <span>Grand Total</span>
-          <span class="amount">₹${order.grand_total}</span>
+          <span class="amount">₹${order.net_amount ?? order.total_amount ?? order.grand_total ?? 0}</span>
         </div>
 
         <div class="footer">
@@ -3681,7 +3681,7 @@ class TiffinApp {
             <span class="badge-status ${order.payment_status.includes('Paid') ? 'Completed' : 'Received'}" style="font-size: 0.65rem; margin-left: 4px;">${order.payment_status}</span>
           </div>
           <div style="font-family: 'Outfit', sans-serif; font-size: 1.15rem; font-weight: 800; color: var(--text-main);">
-            Total: ₹${order.grand_total}
+            Total: ₹${order.net_amount ?? order.total_amount ?? order.grand_total ?? 0}
           </div>
         </div>
 
@@ -5172,7 +5172,7 @@ class TiffinApp {
 
       orderSelect.innerHTML = `
         <option value="General Inquiry">General Inquiry (No specific order)</option>
-        ${userOrders.map(o => `<option value="${o.order_number}">Order #${o.order_number} (${o.order_type} - ₹${o.grand_total})</option>`).join('')}
+        ${userOrders.map(o => `<option value="${o.order_number}">Order #${o.order_number} (${o.order_type} - ₹${o.net_amount ?? o.total_amount ?? o.grand_total ?? 0})</option>`).join('')}
       `;
     }
 

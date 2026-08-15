@@ -849,11 +849,73 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
   await db.query('UPDATE orders SET order_status = $1, payment_status = $2 WHERE id = $3;', [newOrderStatus, newPaymentStatus, order.id]);
   await db.query('UPDATE payments SET payment_status = $1 WHERE order_number = $2;', [newPaymentStatus, order.order_number]);
 
+  // Dispatch Customer Notification on Status Update
+  if (order.customer_id) {
+    const notifTitle = order_status ? `Order #${order.order_number} is ${newOrderStatus}` : `Payment Updated`;
+    const notifMsg = order_status 
+      ? `Your order #${order.order_number} status is now "${newOrderStatus}".`
+      : `Payment status for Order #${order.order_number} is updated to "${newPaymentStatus}".`;
+    await db.query(
+      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+      [
+        'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        'CUSTOMER',
+        order.customer_id,
+        notifTitle,
+        notifMsg,
+        'ORDER',
+        false,
+        new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      ]
+    );
+  }
+
   const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
   const updatedOrder = updatedRes.rows[0];
   try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
 
   res.json({ success: true, data: updatedOrder, message: `Order #${order.order_number} status updated to ${newOrderStatus}.` });
+});
+
+// PATCH Payment Verify Route for Owner
+app.patch('/api/orders/:id/payment-verify', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  const { id } = req.params;
+  const { payment_status } = req.body;
+
+  const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+  const order = oRes.rows[0];
+  if (!order) {
+    return res.status(404).json({ success: false, message: "Order not found." });
+  }
+
+  const newPaymentStatus = payment_status || order.payment_status;
+  await db.query('UPDATE orders SET payment_status = $1 WHERE id = $2;', [newPaymentStatus, order.id]);
+  await db.query('UPDATE payments SET payment_status = $1 WHERE order_number = $2;', [newPaymentStatus, order.order_number]);
+
+  // Dispatch Customer Notification
+  if (order.customer_id) {
+    await db.query(
+      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+      [
+        'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        'CUSTOMER',
+        order.customer_id,
+        'Payment Status Updated',
+        `Payment status for Order #${order.order_number} updated to "${newPaymentStatus}".`,
+        'ORDER',
+        false,
+        new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      ]
+    );
+  }
+
+  const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
+  const updatedOrder = updatedRes.rows[0];
+  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+
+  res.json({ success: true, data: updatedOrder, message: `Order #${order.order_number} payment status updated to ${newPaymentStatus}.` });
 });
 
 app.delete('/api/orders/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
