@@ -181,11 +181,14 @@ async function migrate() {
             id, order_number, customer_id, customer_name, customer_mobile, 
             order_type, delivery_address, notes, total_amount, used_wallet_amount, 
             net_amount, payment_method, payment_status, order_status, items, 
-            cancellation_reason, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            cancellation_reason, utr_number, payment_screenshot, screenshot_url, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
           ON CONFLICT (id) DO UPDATE SET
             order_status = EXCLUDED.order_status,
-            payment_status = EXCLUDED.payment_status;`,
+            payment_status = EXCLUDED.payment_status,
+            utr_number = EXCLUDED.utr_number,
+            payment_screenshot = EXCLUDED.payment_screenshot,
+            screenshot_url = EXCLUDED.screenshot_url;`,
           [
             o.id,
             o.order_number,
@@ -203,6 +206,9 @@ async function migrate() {
             o.order_status || 'Received',
             itemsJson,
             o.cancellation_reason || null,
+            o.utr_number || null,
+            o.payment_screenshot || o.screenshot_url || null,
+            o.screenshot_url || o.payment_screenshot || null,
             o.created_at || new Date().toISOString()
           ]
         );

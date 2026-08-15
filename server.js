@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
@@ -12,6 +13,44 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+/**
+ * Saves a base64 encoded data URL or string to permanent disk storage
+ * under public/uploads/<subfolder>/ and returns a relative URL path (/uploads/<subfolder>/...).
+ */
+async function saveBase64Image(base64Str, subfolder = 'screenshots') {
+  if (!base64Str || typeof base64Str !== 'string') return null;
+  const trimmed = base64Str.trim();
+  if (!trimmed) return null;
+
+  // If already a relative or full HTTP URL, return as-is
+  if (trimmed.startsWith('/') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  // Check if base64 data URL
+  const matches = trimmed.match(/^data:image\/([a-zA-Z0-9+\-+.]+);base64,(.+)$/);
+  if (!matches) {
+    if (trimmed.length < 500 && !trimmed.includes('\n')) return trimmed;
+    throw new Error('Invalid image encoding format.');
+  }
+
+  const extRaw = matches[1].toLowerCase();
+  const ext = extRaw === 'jpeg' ? 'jpg' : (['png', 'jpg', 'webp', 'gif', 'svg'].includes(extRaw) ? extRaw : 'png');
+  const base64Data = matches[2];
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  const uploadDir = path.join(__dirname, 'public', 'uploads', subfolder);
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const filename = `${subfolder}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+  const filePath = path.join(uploadDir, filename);
+
+  await fs.promises.writeFile(filePath, buffer);
+  return `/uploads/${subfolder}/${filename}`;
+}
 
 // Standardize Phone Normalization
 function normalizePhone(phone) {
@@ -568,7 +607,16 @@ const handleSaveSettings = async (req, res) => {
     const newHolidays = holidays !== undefined ? holidays : s.holidays;
     const newUpiId = upi_id !== undefined ? upi_id : s.upi_id;
     const newUpiName = upi_name !== undefined ? upi_name : (s.upi_name || newHotelName);
-    const newUpiQrCode = upi_qr_code !== undefined ? upi_qr_code : s.upi_qr_code;
+    let rawQrCode = upi_qr_code !== undefined ? upi_qr_code : s.upi_qr_code;
+    if (rawQrCode && rawQrCode.startsWith('data:image/')) {
+      try {
+        rawQrCode = await saveBase64Image(rawQrCode, 'qr');
+      } catch (uploadErr) {
+        console.error('QR scanner image save error:', uploadErr);
+        return res.status(400).json({ success: false, message: "QR scanner image upload failed." });
+      }
+    }
+    const newUpiQrCode = rawQrCode;
     const qrChanged = newUpiQrCode !== s.upi_qr_code;
     const newQrUpdatedAt = qrChanged ? Date.now() : (s.upi_qr_updated_at || Date.now());
 
@@ -738,6 +786,9 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       if (typeof o.items === 'string') {
         try { o.items = JSON.parse(o.items); } catch (e) { o.items = []; }
       }
+      const screenshot = o.payment_screenshot || o.screenshot_url || '';
+      o.payment_screenshot = screenshot;
+      o.screenshot_url = screenshot;
       return o;
     });
     res.json({ success: true, data: parsedOrders });
@@ -755,7 +806,7 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       return res.status(400).json({ success: false, message: "Hotel is currently closed. Orders are not being accepted." });
     }
 
-    const { order_type, delivery_address, notes, payment_method, items, used_wallet_amount } = req.body;
+    const { order_type, delivery_address, notes, payment_method, items, used_wallet_amount, payment_screenshot, utr_number } = req.body;
 
     if (!items || !items.length) {
       return res.status(400).json({ success: false, message: "Ordered items are required." });
@@ -764,6 +815,18 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
     if ((payment_method === 'UPI (QR Pay)' || payment_method === 'UPI') && settings.is_qr_pay_enabled === false) {
       return res.status(400).json({ success: false, message: "QR Pay is currently disabled by hotel owner." });
     }
+
+    let savedScreenshotUrl = null;
+    if (payment_screenshot) {
+      try {
+        savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+      } catch (uploadErr) {
+        console.error('Payment screenshot upload error:', uploadErr);
+        return res.status(400).json({ success: false, message: "Screenshot upload failed." });
+      }
+    }
+
+    const cleanUtr = utr_number ? utr_number.trim() : null;
 
     // Atomic Sequence Counter for Non-repeating Globally Unique Order ID (#TF1047, #TF1048...)
     const orderSeq = await db.getNextCounter('order_counter');
@@ -805,22 +868,24 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       `INSERT INTO orders (
         id, order_number, customer_id, customer_name, customer_mobile, 
         order_type, delivery_address, notes, total_amount, used_wallet_amount, 
-        net_amount, payment_method, payment_status, order_status, items
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);`,
+        net_amount, payment_method, payment_status, order_status, items,
+        utr_number, payment_screenshot, screenshot_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);`,
       [
         newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
         order_type || 'Takeaway', delivery_address || null, notes || null,
         grand_total, walletDeducted, netAmount, payment_method || 'Cash',
-        payment_method === 'Cash' ? 'Pending' : 'Pending', 'Received', JSON.stringify(formattedItems)
+        payment_method === 'Cash' ? 'Pending' : 'Pending', 'Received', JSON.stringify(formattedItems),
+        cleanUtr, savedScreenshotUrl, savedScreenshotUrl
       ]
     );
 
     // Create Payment Record
     const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
     await db.query(
-      `INSERT INTO payments (id, order_number, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
-      [newPayId, orderNum, req.user.id, req.user.name, req.user.mobile, netAmount, payment_method || 'Cash', 'Pending', `Payment for Order #${orderNum}`]
+      `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, screenshot_url, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+      [newPayId, orderNum, newOrderId, req.user.id, req.user.name, req.user.mobile, netAmount, payment_method || 'Cash', 'Pending', cleanUtr, savedScreenshotUrl, `Payment for Order #${orderNum}`]
     );
 
     // Notify Owner
@@ -833,6 +898,8 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
     const createdRes = await db.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
     const createdOrder = createdRes.rows[0];
     try { createdOrder.items = JSON.parse(createdOrder.items); } catch(e) {}
+    createdOrder.payment_screenshot = createdOrder.payment_screenshot || createdOrder.screenshot_url || '';
+    createdOrder.screenshot_url = createdOrder.screenshot_url || createdOrder.payment_screenshot || '';
 
     res.json({
       success: true,
@@ -842,6 +909,60 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
   } catch (err) {
     console.error('Order Creation Error:', err);
     res.status(500).json({ success: false, message: "Database server error creating order." });
+  }
+});
+
+app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payment_screenshot, utr_number } = req.body;
+
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+    if (!oRes.rows || oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+    const order = oRes.rows[0];
+
+    if (req.user.role === 'CUSTOMER' && order.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Unauthorized access to order." });
+    }
+
+    let savedScreenshotUrl = order.payment_screenshot || order.screenshot_url || null;
+    if (payment_screenshot) {
+      try {
+        savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+      } catch (uploadErr) {
+        console.error('Payment screenshot upload error:', uploadErr);
+        return res.status(400).json({ success: false, message: "Screenshot upload failed." });
+      }
+    }
+
+    const cleanUtr = utr_number !== undefined && utr_number !== null ? utr_number.trim() : (order.utr_number || null);
+
+    await db.query(
+      `UPDATE orders SET utr_number = $1, payment_screenshot = $2, screenshot_url = $2 WHERE id = $3;`,
+      [cleanUtr, savedScreenshotUrl, order.id]
+    );
+
+    await db.query(
+      `UPDATE payments SET utr_number = $1, screenshot_url = $2 WHERE order_number = $3 OR order_id = $4;`,
+      [cleanUtr, savedScreenshotUrl, order.order_number, order.id]
+    );
+
+    const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
+    const updatedOrder = updatedRes.rows[0];
+    try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+    updatedOrder.payment_screenshot = updatedOrder.payment_screenshot || updatedOrder.screenshot_url || '';
+    updatedOrder.screenshot_url = updatedOrder.screenshot_url || updatedOrder.payment_screenshot || '';
+
+    res.json({
+      success: true,
+      data: updatedOrder,
+      message: "Payment proof submitted successfully."
+    });
+  } catch (err) {
+    console.error('Payment Proof Error:', err);
+    res.status(500).json({ success: false, message: "Failed to save payment proof." });
   }
 });
 
@@ -954,7 +1075,12 @@ app.get('/api/payments', authenticateToken, async (req, res) => {
     params = [req.user.id];
   }
   const pRes = await db.query(queryStr, params);
-  res.json({ success: true, data: pRes.rows });
+  const mappedPayments = pRes.rows.map(p => ({
+    ...p,
+    payment_screenshot: p.payment_screenshot || p.screenshot_url || '',
+    screenshot_url: p.screenshot_url || p.payment_screenshot || ''
+  }));
+  res.json({ success: true, data: mappedPayments });
 });
 
 app.patch('/api/payments/:id/status', authenticateToken, requireRole('OWNER'), async (req, res) => {
@@ -1052,23 +1178,103 @@ app.patch('/api/support/tickets/:id/status', authenticateToken, requireRole('OWN
 // =========================================================================
 
 app.get('/api/notifications', authenticateToken, async (req, res) => {
-  let queryStr = "SELECT * FROM notifications WHERE target_role = 'OWNER' ORDER BY created_at DESC;";
-  let params = [];
-  if (req.user.role === 'CUSTOMER') {
-    queryStr = "SELECT * FROM notifications WHERE target_role = 'CUSTOMER' AND (customer_id = $1 OR customer_id IS NULL) ORDER BY created_at DESC;";
-    params = [req.user.id];
+  try {
+    let queryStr = "SELECT * FROM notifications WHERE target_role = 'OWNER' ORDER BY created_at DESC;";
+    let params = [];
+    if (req.user.role === 'CUSTOMER') {
+      queryStr = "SELECT * FROM notifications WHERE target_role = 'CUSTOMER' AND (customer_id = $1 OR customer_id IS NULL) ORDER BY created_at DESC;";
+      params = [req.user.id];
+    }
+    const nRes = await db.query(queryStr, params);
+    res.json({ success: true, data: nRes.rows });
+  } catch (err) {
+    console.error('Fetch Notifications Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch notifications." });
   }
-  const nRes = await db.query(queryStr, params);
-  res.json({ success: true, data: nRes.rows });
 });
 
 app.patch('/api/notifications/read-all', authenticateToken, async (req, res) => {
-  if (req.user.role === 'CUSTOMER') {
-    await db.query("UPDATE notifications SET is_read = true WHERE target_role = 'CUSTOMER' AND (customer_id = $1 OR customer_id IS NULL);", [req.user.id]);
-  } else {
-    await db.query("UPDATE notifications SET is_read = true WHERE target_role = 'OWNER';");
+  try {
+    if (req.user.role === 'CUSTOMER') {
+      await db.query("UPDATE notifications SET is_read = true WHERE target_role = 'CUSTOMER' AND (customer_id = $1 OR customer_id IS NULL);", [req.user.id]);
+    } else {
+      await db.query("UPDATE notifications SET is_read = true WHERE target_role = 'OWNER';");
+    }
+    res.json({ success: true, message: "Notifications marked as read." });
+  } catch (err) {
+    console.error('Read All Notifications Error:', err);
+    res.status(500).json({ success: false, message: "Failed to mark notifications read." });
   }
-  res.json({ success: true, message: "Notifications marked as read." });
+});
+
+app.patch('/api/notifications/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (req.user.role === 'CUSTOMER') {
+      await db.query(
+        "UPDATE notifications SET is_read = true WHERE id = $1 AND target_role = 'CUSTOMER' AND (customer_id = $2 OR customer_id IS NULL);",
+        [id, req.user.id]
+      );
+    } else {
+      await db.query("UPDATE notifications SET is_read = true WHERE id = $1 AND target_role = 'OWNER';", [id]);
+    }
+    res.json({ success: true, message: "Notification marked as read." });
+  } catch (err) {
+    console.error('Read Notification Error:', err);
+    res.status(500).json({ success: false, message: "Failed to mark notification as read." });
+  }
+});
+
+app.delete('/api/notifications/clear-all', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role === 'CUSTOMER') {
+      await db.query(
+        "DELETE FROM notifications WHERE target_role = 'CUSTOMER' AND (customer_id = $1 OR customer_id IS NULL);",
+        [req.user.id]
+      );
+    } else {
+      await db.query("DELETE FROM notifications WHERE target_role = 'OWNER';");
+    }
+    res.json({ success: true, message: "All notifications cleared permanently from database." });
+  } catch (err) {
+    console.error('Clear All Notifications Error:', err);
+    res.status(500).json({ success: false, message: "Failed to clear notifications." });
+  }
+});
+
+app.delete('/api/notifications/clear', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role === 'CUSTOMER') {
+      await db.query(
+        "DELETE FROM notifications WHERE target_role = 'CUSTOMER' AND (customer_id = $1 OR customer_id IS NULL);",
+        [req.user.id]
+      );
+    } else {
+      await db.query("DELETE FROM notifications WHERE target_role = 'OWNER';");
+    }
+    res.json({ success: true, message: "All notifications cleared permanently from database." });
+  } catch (err) {
+    console.error('Clear Notifications Error:', err);
+    res.status(500).json({ success: false, message: "Failed to clear notifications." });
+  }
+});
+
+app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (req.user.role === 'CUSTOMER') {
+      await db.query(
+        "DELETE FROM notifications WHERE id = $1 AND target_role = 'CUSTOMER' AND (customer_id = $2 OR customer_id IS NULL);",
+        [id, req.user.id]
+      );
+    } else {
+      await db.query("DELETE FROM notifications WHERE id = $1 AND target_role = 'OWNER';", [id]);
+    }
+    res.json({ success: true, message: "Notification deleted permanently from database." });
+  } catch (err) {
+    console.error('Delete Notification Error:', err);
+    res.status(500).json({ success: false, message: "Failed to delete notification." });
+  }
 });
 
 // Catch-all SPA route to serve index.html for root and client routes

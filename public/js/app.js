@@ -933,9 +933,14 @@ class TiffinApp {
               <span style="font-size: 0.72rem; color: var(--text-muted);">${timeStr} ${n.order_number ? `• Order #${n.order_number}` : ''}</span>
             </div>
           </div>
-          <button class="btn-secondary-outline" style="padding: 4px 10px; font-size: 0.75rem; white-space: nowrap;">
-            Open <i class="fa-solid fa-arrow-right"></i>
-          </button>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button class="btn-secondary-outline" onclick="event.stopPropagation(); app.handleNotifClick('${notifId}')" style="padding: 4px 10px; font-size: 0.75rem; white-space: nowrap;">
+              Open <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <button type="button" class="btn-del-single-notif" onclick="event.stopPropagation(); app.deleteSingleNotification('${notifId}')" title="Delete notification" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-muted); width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
         </div>
       `;
     }).join('');
@@ -1033,26 +1038,45 @@ class TiffinApp {
   }
 
   async clearAllNotifications() {
+    if (!this.notifications || !this.notifications.length) {
+      this.showToast('No notifications to clear', 'info');
+      return;
+    }
     this.notifications = [];
     this.renderNotificationsUI();
     this.showToast('Cleared all notifications', 'info');
 
     try {
-      await this.fetchWithAuth(`${API_BASE}/notifications/clear-all`, { method: 'DELETE' });
+      const res = await this.fetchWithAuth(`${API_BASE}/notifications/clear-all`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!json.success) {
+        console.error('Error clearing all notifications:', json.message);
+        await this.fetchNotifications(true);
+      }
     } catch (err) {
       console.error('Error clearing all notifications:', err);
+      await this.fetchNotifications(true);
     }
   }
 
   async deleteSingleNotification(idOrIdx) {
-    this.notifications = (this.notifications || []).filter((n, idx) => n.id !== idOrIdx && String(idx) !== String(idOrIdx));
+    const targetNotif = (this.notifications || []).find((n, idx) => n.id === idOrIdx || String(idx) === String(idOrIdx));
+    const targetId = targetNotif ? targetNotif.id : idOrIdx;
+
+    this.notifications = (this.notifications || []).filter((n, idx) => n.id !== targetId && String(idx) !== String(idOrIdx));
     this.renderNotificationsUI();
 
-    if (typeof idOrIdx === 'string' && idOrIdx.startsWith('notif_')) {
+    if (targetId) {
       try {
-        await this.fetchWithAuth(`${API_BASE}/notifications/${idOrIdx}`, { method: 'DELETE' });
+        const res = await this.fetchWithAuth(`${API_BASE}/notifications/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+        const json = await res.json();
+        if (!json.success) {
+          console.error('Error deleting single notification:', json.message);
+          await this.fetchNotifications(true);
+        }
       } catch (err) {
         console.error('Error deleting single notification:', err);
+        await this.fetchNotifications(true);
       }
     }
   }
@@ -1064,9 +1088,8 @@ class TiffinApp {
       notif.read = true;
       this.renderNotificationsUI();
 
-      // Persist read status to backend if notification has an id
-      if (typeof notif.id === 'string' && notif.id.startsWith('notif_')) {
-        this.fetchWithAuth(`${API_BASE}/notifications/${notif.id}/read`, { method: 'PATCH' }).catch(err => {
+      if (notif.id) {
+        this.fetchWithAuth(`${API_BASE}/notifications/${encodeURIComponent(notif.id)}/read`, { method: 'PATCH' }).catch(err => {
           console.error('Error marking notification read:', err);
         });
       }
@@ -2391,18 +2414,65 @@ class TiffinApp {
     });
   }
 
-  viewFullScreenshot(src) {
-    const lightbox = document.getElementById('lightboxModalBackdrop');
+  viewFullScreenshot(src, title = 'Customer Payment Proof') {
+    const backdrop = document.getElementById('lightboxModalBackdrop');
     const img = document.getElementById('lightboxImg');
-    if (lightbox && img) {
-      img.src = src;
-      lightbox.classList.add('open');
+    const titleEl = document.getElementById('lightboxTitle');
+    const iconEl = document.getElementById('lightboxIcon');
+    const loader = document.getElementById('lightboxLoader');
+    const errorBox = document.getElementById('lightboxError');
+
+    if (!src) {
+      this.showToast('Image URL is not available.', 'warning');
+      return;
     }
+
+    if (titleEl) titleEl.innerText = title;
+    if (iconEl) {
+      const isQr = title.toLowerCase().includes('qr') || title.toLowerCase().includes('scanner');
+      iconEl.className = isQr ? 'fa-solid fa-qrcode' : 'fa-solid fa-camera';
+    }
+
+    if (loader) loader.classList.remove('hidden');
+    if (errorBox) errorBox.classList.add('hidden');
+    if (img) {
+      img.style.display = 'none';
+      img.src = src;
+    }
+
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  onLightboxImgLoad() {
+    const loader = document.getElementById('lightboxLoader');
+    const errorBox = document.getElementById('lightboxError');
+    const img = document.getElementById('lightboxImg');
+    if (loader) loader.classList.add('hidden');
+    if (errorBox) errorBox.classList.add('hidden');
+    if (img) img.style.display = 'block';
+  }
+
+  onLightboxImgError() {
+    const loader = document.getElementById('lightboxLoader');
+    const errorBox = document.getElementById('lightboxError');
+    const img = document.getElementById('lightboxImg');
+    if (loader) loader.classList.add('hidden');
+    if (img) img.style.display = 'none';
+    if (errorBox) errorBox.classList.remove('hidden');
   }
 
   closeLightbox() {
-    const lightbox = document.getElementById('lightboxModalBackdrop');
-    if (lightbox) lightbox.classList.remove('open');
+    const backdrop = document.getElementById('lightboxModalBackdrop');
+    const img = document.getElementById('lightboxImg');
+    const loader = document.getElementById('lightboxLoader');
+    const errorBox = document.getElementById('lightboxError');
+    if (backdrop) backdrop.classList.remove('open');
+    if (loader) loader.classList.add('hidden');
+    if (errorBox) errorBox.classList.add('hidden');
+    if (img) {
+      img.src = '';
+      img.style.display = 'none';
+    }
   }
 
   async verifyOrderPayment(orderId, newStatus) {
@@ -2498,6 +2568,50 @@ class TiffinApp {
       this.showToast('Server communication error.', 'error');
     } finally {
       this.isSubmittingOrder = false;
+    }
+  }
+
+  async submitPaymentProof(orderId) {
+    const screenshotInput = document.getElementById(`proofScreenshotInput_${orderId}`);
+    const utrInput = document.getElementById(`proofUtrInput_${orderId}`);
+
+    const utrNumber = utrInput ? utrInput.value.trim() : '';
+    const file = screenshotInput && screenshotInput.files ? screenshotInput.files[0] : null;
+
+    if (!utrNumber && !file) {
+      this.showToast('Please provide a UTR number or upload a screenshot.', 'warning');
+      return;
+    }
+
+    let base64Screenshot = null;
+    if (file) {
+      base64Screenshot = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/payment-proof`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_screenshot: base64Screenshot,
+          utr_number: utrNumber
+        })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast('Payment proof submitted successfully.', 'success');
+        await this.fetchOrders();
+        await this.fetchPayments();
+      } else {
+        this.showToast(json.message || 'Failed to submit payment proof.', 'error');
+      }
+    } catch (err) {
+      console.error('Error submitting payment proof:', err);
+      this.showToast('Server communication error.', 'error');
     }
   }
 
@@ -3131,7 +3245,7 @@ class TiffinApp {
                   </div>
                 ` : ''}
                 ${order.payment_screenshot ? `
-                  <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}')" style="background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 4px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
+                  <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}', 'Customer Payment Proof - Order #${order.order_number}')" style="background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 4px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
                     <i class="fa-solid fa-camera"></i> View Uploaded Screenshot
                   </button>
                 ` : ''}
@@ -3346,7 +3460,7 @@ class TiffinApp {
               <div class="co-payment-utr-line">
                 ${order.utr_number ? `<span class="utr-code"><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> UTR: <code style="background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; color: #FFF; font-family: monospace;">${order.utr_number}</code></span>` : ''}
                 ${order.payment_screenshot ? `
-                  <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}')" style="background: rgba(41,182,246,0.15); color: #29B6F6; border: 1px solid rgba(41,182,246,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
+                  <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}', 'Payment Screenshot - Order #${order.order_number}')" style="background: rgba(41,182,246,0.15); color: #29B6F6; border: 1px solid rgba(41,182,246,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
                     <i class="fa-solid fa-camera"></i> View Screenshot
                   </button>
                 ` : ''}
@@ -3693,7 +3807,7 @@ class TiffinApp {
             ${order.utr_number ? `<div><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> <strong>UTR Number:</strong> <code style="background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px;">${order.utr_number}</code></div>` : ''}
             ${order.payment_screenshot ? `
               <div style="margin-top: 6px;">
-                <button type="button" class="btn-secondary-outline" onclick="app.viewFullScreenshot('${order.payment_screenshot}')" style="padding: 4px 10px; font-size: 0.74rem;">
+                <button type="button" class="btn-secondary-outline" onclick="app.viewFullScreenshot('${order.payment_screenshot}', 'Customer Payment Screenshot - Order #${order.order_number}')" style="padding: 4px 10px; font-size: 0.74rem;">
                   <i class="fa-solid fa-camera"></i> View Uploaded Payment Screenshot
                 </button>
               </div>
@@ -4194,8 +4308,8 @@ class TiffinApp {
         <td style="padding: 14px 16px; vertical-align: middle;">
           ${p.payment_screenshot ? `
             <div style="display: flex; align-items: center; gap: 10px;">
-              <img src="${p.payment_screenshot}" onclick="app.viewFullScreenshot('${p.payment_screenshot}')" class="payment-screenshot-thumb" style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer; transition: transform 0.2s ease;" title="Click to view full screenshot">
-              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${p.payment_screenshot}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+              <img src="${p.payment_screenshot}" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" class="payment-screenshot-thumb" style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer; transition: transform 0.2s ease;" title="Click to view full screenshot">
+              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                 <i class="fa-solid fa-camera"></i> View
               </button>
             </div>
@@ -4227,22 +4341,6 @@ class TiffinApp {
         </td>
       </tr>
     `;
-  }
-
-  viewFullScreenshot(imgSrc) {
-    const img = document.getElementById('lightboxImg');
-    const backdrop = document.getElementById('lightboxModalBackdrop');
-    if (img && backdrop) {
-      img.src = imgSrc;
-      backdrop.classList.add('open');
-    }
-  }
-
-  closeLightbox() {
-    const backdrop = document.getElementById('lightboxModalBackdrop');
-    if (backdrop) {
-      backdrop.classList.remove('open');
-    }
   }
 
   downloadPaymentStatementCSV() {
@@ -4528,14 +4626,21 @@ class TiffinApp {
   }
 
   zoomCheckoutQrCode() {
-    const qrCode = this.settings?.upi_qr_code || '';
-    const updatedAt = this.settings?.upi_qr_updated_at || Date.now();
-    const cacheBustQr = qrCode ? (qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`) : '';
-    if (cacheBustQr) {
-      this.viewFullScreenshot(cacheBustQr);
-    } else {
+    const checkoutImg = document.getElementById('checkoutQrScannerImg');
+    let qrCode = this.settings?.upi_qr_code || checkoutImg?.getAttribute('data-raw-src') || checkoutImg?.src || '';
+
+    if (!qrCode) {
       this.showToast('Online payment scanner is currently unavailable.', 'info');
+      return;
     }
+
+    let cacheBustQr = qrCode;
+    if (!qrCode.startsWith('data:')) {
+      const updatedAt = this.settings?.upi_qr_updated_at || Date.now();
+      cacheBustQr = qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`;
+    }
+
+    this.viewFullScreenshot(cacheBustQr, 'Owner UPI QR Code Scanner');
   }
 
   // =========================================================================
@@ -4680,8 +4785,8 @@ class TiffinApp {
         <td style="padding: 14px 16px; vertical-align: middle;">
           ${p.payment_screenshot ? `
             <div style="display: flex; align-items: center; gap: 10px;">
-              <img src="${p.payment_screenshot}" onclick="app.viewFullScreenshot('${p.payment_screenshot}')" class="payment-screenshot-thumb" style="width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer;" title="Click to view full screenshot">
-              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${p.payment_screenshot}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
+              <img src="${p.payment_screenshot}" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" class="payment-screenshot-thumb" style="width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer;" title="Click to view full screenshot">
+              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
                 <i class="fa-solid fa-camera"></i> View
               </button>
             </div>

@@ -164,12 +164,16 @@ async function initDatabase() {
       order_status VARCHAR(50) DEFAULT 'Received',
       items JSONB DEFAULT '[]'::jsonb,
       cancellation_reason TEXT,
+      utr_number VARCHAR(100),
+      payment_screenshot TEXT,
+      screenshot_url TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
 
     `CREATE TABLE IF NOT EXISTS payments (
       id VARCHAR(100) PRIMARY KEY,
       order_number VARCHAR(100) NOT NULL,
+      order_id VARCHAR(100),
       customer_id VARCHAR(100),
       customer_name VARCHAR(255),
       customer_mobile VARCHAR(50),
@@ -177,7 +181,7 @@ async function initDatabase() {
       payment_method VARCHAR(100) DEFAULT 'Cash',
       payment_status VARCHAR(50) DEFAULT 'Pending',
       utr_number VARCHAR(100),
-      screenshot_url VARCHAR(500),
+      screenshot_url TEXT,
       notes TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
@@ -297,6 +301,12 @@ async function initDatabase() {
       await query(`INSERT INTO counters (name, current_value) VALUES ('ticket_counter', 1001);`);
     }
     await query(`ALTER TABLE settings ALTER COLUMN upi_qr_code TYPE TEXT;`);
+    await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
+    await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
+    await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);
+    await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
+    await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
+    await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
     await query(`UPDATE settings SET hotel_name = 'Sri Lakshmi Annapurna Tiffin Center', upi_name = 'Sri Lakshmi Annapurna Tiffin Center' WHERE id = 1;`);
   } catch (cErr) {
     console.error('Error initializing counters:', cErr);
