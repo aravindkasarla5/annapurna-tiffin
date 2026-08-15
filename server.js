@@ -974,22 +974,77 @@ app.patch('/api/payments/:id/status', authenticateToken, requireRole('OWNER'), a
 
 app.get('/api/stats', authenticateToken, requireRole('OWNER'), async (req, res) => {
   const ordersRes = await db.query('SELECT * FROM orders;');
-  const allOrders = ordersRes.rows;
+  const allOrders = ordersRes.rows || [];
 
   const validOrders = allOrders.filter(o => !['Rejected', 'Cancelled'].includes(o.order_status));
-  const totalRevenue = validOrders.reduce((sum, o) => sum + Number(o.net_amount || 0), 0);
+  const totalRevenue = validOrders.reduce((sum, o) => sum + Number(o.net_amount || o.total_amount || 0), 0);
   const usersRes = await db.query("SELECT COUNT(*) FROM users WHERE role = 'CUSTOMER';");
 
   res.json({
     success: true,
     data: {
       total_revenue: totalRevenue,
+      total_sales: totalRevenue,
       total_orders: allOrders.length,
       active_orders: allOrders.filter(o => ['Received', 'Preparing', 'Ready'].includes(o.order_status)).length,
       completed_orders: allOrders.filter(o => o.order_status === 'Completed').length,
+      rejected_orders: allOrders.filter(o => ['Rejected', 'Cancelled'].includes(o.order_status)).length,
       total_customers: Number(usersRes.rows[0]?.count || 0)
     }
   });
+});
+
+// =========================================================================
+// SUPPORT TICKETS API
+// =========================================================================
+
+app.get('/api/support/tickets', authenticateToken, async (req, res) => {
+  try {
+    let queryStr = 'SELECT * FROM support_tickets ORDER BY created_at DESC;';
+    let params = [];
+    if (req.user.role === 'CUSTOMER') {
+      queryStr = 'SELECT * FROM support_tickets WHERE customer_id = $1 ORDER BY created_at DESC;';
+      params = [req.user.id];
+    }
+    const tRes = await db.query(queryStr, params);
+    res.json({ success: true, data: tRes.rows || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error fetching support tickets." });
+  }
+});
+
+app.post('/api/support/tickets', authenticateToken, async (req, res) => {
+  try {
+    const { subject, message, order_number, category } = req.body;
+    if (!message) {
+      return res.status(400).json({ success: false, message: "Ticket message is required." });
+    }
+    const ticketId = 'tkt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const ticketNum = 1000 + Math.floor(Math.random() * 9000);
+
+    await db.query(
+      `INSERT INTO support_tickets (id, ticket_number, customer_id, customer_name, customer_mobile, order_number, category, subject, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      [ticketId, ticketNum, req.user.id, req.user.name, req.user.mobile, order_number || null, category || 'General', subject || 'Support Request', 'Open']
+    );
+
+    const createdRes = await db.query('SELECT * FROM support_tickets WHERE id = $1;', [ticketId]);
+    res.json({ success: true, data: createdRes.rows[0], message: "Support ticket created successfully." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error creating support ticket." });
+  }
+});
+
+app.patch('/api/support/tickets/:id/status', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    await db.query('UPDATE support_tickets SET status = $1 WHERE id = $2 OR ticket_number::text = $2;', [status || 'Resolved', id]);
+    const updated = await db.query('SELECT * FROM support_tickets WHERE id = $1 OR ticket_number::text = $1;', [id]);
+    res.json({ success: true, data: updated.rows[0], message: `Ticket status updated to ${status}.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error updating ticket status." });
+  }
 });
 
 // =========================================================================

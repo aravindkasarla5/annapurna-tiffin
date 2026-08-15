@@ -444,11 +444,11 @@ class TiffinApp {
         const elRejected = document.getElementById('statRejectedOrders');
         const elSales = document.getElementById('statTodaySales');
 
-        if (elTotal) elTotal.innerText = s.total_orders;
-        if (elActive) elActive.innerText = s.active_orders;
-        if (elCompleted) elCompleted.innerText = s.completed_orders;
-        if (elRejected) elRejected.innerText = s.rejected_orders;
-        if (elSales) elSales.innerText = `₹${s.total_sales.toLocaleString('en-IN')}`;
+        if (elTotal) elTotal.innerText = s?.total_orders ?? 0;
+        if (elActive) elActive.innerText = s?.active_orders ?? 0;
+        if (elCompleted) elCompleted.innerText = s?.completed_orders ?? 0;
+        if (elRejected) elRejected.innerText = s?.rejected_orders ?? 0;
+        if (elSales) elSales.innerText = `₹${(Number(s?.total_sales ?? s?.total_revenue) || 0).toLocaleString('en-IN')}`;
       }
     } catch (err) {
       console.error('Error fetching stats:', err);
