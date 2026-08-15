@@ -217,7 +217,7 @@ def build_pdf():
     story.append(Paragraph("• <b>Live Order Status Tracking:</b> Real-time status sync (Received → Preparing → Ready → Completed → Rejected).", bullet_style))
     story.append(Paragraph("• <b>Interactive Payment Gateway:</b> Supports Cash on Delivery / Dine-in and Online UPI payments with shop owner QR scanner, UTR transaction verification, and manual receipt uploads.", bullet_style))
     story.append(Paragraph("• <b>Referral Rewards Program:</b> ₹30 first-order referral discount applied automatically via unique referral links or codes.", bullet_style))
-    story.append(Paragraph("• <b>30-Minute Inactivity Session Timeout:</b> Automatic client & server-side session expiration after 30 minutes of inactivity while preserving account history and past orders.", bullet_style))
+    story.append(Paragraph("• <b>Persistent Session Security:</b> Continuous session authentication with local token persistence while preserving account history and past orders.", bullet_style))
     story.append(Paragraph("• <b>Customer Support & Live Chat:</b> Integrated ticket creation and real-time support messaging.", bullet_style))
 
     story.append(Spacer(1, 6))
@@ -238,11 +238,11 @@ def build_pdf():
 
     arch_data = [
         [Paragraph("<b>Layer</b>", table_header_style), Paragraph("<b>Technology & Implementation</b>", table_header_style)],
-        [Paragraph("<b>Backend Server</b>", table_cell_style), Paragraph("Node.js (v18+) & Express.js REST API with CORS, Bearer Token Auth, and JSON storage.", table_cell_style)],
-        [Paragraph("<b>Database</b>", table_cell_style), Paragraph("Local JSON Database (<code>db.json</code>) managed via atomic file-system read/write operations (<code>loadDB</code> & <code>saveDB</code>).", table_cell_style)],
+        [Paragraph("<b>Backend Server</b>", table_cell_style), Paragraph("Node.js (v18+) & Express.js REST API with CORS, Bearer Token Auth, and PostgreSQL pooling.", table_cell_style)],
+        [Paragraph("<b>Database Layer</b>", table_cell_style), Paragraph("PostgreSQL Database (Render PostgreSQL) configured via <code>DATABASE_URL</code> environment variable with relational schemas and atomic counters.", table_cell_style)],
         [Paragraph("<b>Frontend UI</b>", table_cell_style), Paragraph("Vanilla JavaScript (<code>app.js</code> SPA controller), HTML5 semantic structure, FontAwesome 6 icons.", table_cell_style)],
         [Paragraph("<b>Styling System</b>", table_cell_style), Paragraph("Custom Vanilla CSS (<code>styles.css</code>) featuring modern dark glassmorphic design, HSL colors, responsive media queries across desktop, tablet, and mobile (320px–1200px+).", table_cell_style)],
-        [Paragraph("<b>Session Security</b>", table_cell_style), Paragraph("Bearer token tracking in <code>db.tokens</code> with server-side <code>last_activity</code> timestamping. Enforces 30-minute inactivity expiration for Customer accounts while excluding background status polling (<code>X-Background-Poll</code>).", table_cell_style)]
+        [Paragraph("<b>Session Security</b>", table_cell_style), Paragraph("Bearer token tracking in <code>db.tokens</code> with persistent account authentication across Customer and Owner sessions.", table_cell_style)]
     ]
     arch_table = Table(arch_data, colWidths=[1.8*inch, 5.2*inch])
     arch_table.setStyle(TableStyle([
@@ -258,16 +258,15 @@ def build_pdf():
 
     story.append(Spacer(1, 10))
 
-    # Section 3: Inactivity Expiration Workflow
-    story.append(Paragraph("3. Customer Session Expiration Logic", h1_style))
+    # Section 3: Session Authentication Workflow
+    story.append(Paragraph("3. Session Security & Persistence Rules", h1_style))
     story.append(Paragraph(
-        "To ensure robust user security without interrupting active browsing, session expiration follows a strict rule set:", body_style
+        "To ensure robust user security without interrupting active browsing, session management follows a strict rule set:", body_style
     ))
-    story.append(Paragraph("1. <b>Customer Timeout:</b> Set to exactly 30 minutes (1,800,000 ms) of continuous inactivity.", bullet_style))
-    story.append(Paragraph("2. <b>User Interaction Reset:</b> Mouse movements, clicks, keyboard typing, touch events, and navigation reset the timer.", bullet_style))
-    story.append(Paragraph("3. <b>Background Polling Exemption:</b> Automatic 2-second background status updates send <code>X-Background-Poll: true</code> headers and do <i>NOT</i> reset the token activity timer on client or server.", bullet_style))
-    story.append(Paragraph("4. <b>Server Verification:</b> Protected endpoints verify <code>Date.now() - last_activity <= 30 minutes</code>. If expired, server returns HTTP 401 <code>{ expired: true }</code>.", bullet_style))
-    story.append(Paragraph("5. <b>Data Integrity:</b> Session expiration clears only client cache (<code>localStorage</code>/<code>sessionStorage</code>). Customer orders, wallet balance, and profile remain 100% safe in <code>db.json</code>.", bullet_style))
+    story.append(Paragraph("1. <b>Continuous Authentication:</b> User sessions remain securely active until manual logout or explicit account changes.", bullet_style))
+    story.append(Paragraph("2. <b>Token Storage:</b> Tokens are securely retained in local storage for instant account restoration across page refreshes.", bullet_style))
+    story.append(Paragraph("3. <b>Background Sync:</b> Automatic 2-second background status updates synchronize live store status and order updates in real-time.", bullet_style))
+    story.append(Paragraph("4. <b>Data Integrity:</b> Database records (orders, wallet balance, profile, payments) are permanently stored in <code>db.json</code> via atomic writes.", bullet_style))
 
     story.append(Spacer(1, 10))
 

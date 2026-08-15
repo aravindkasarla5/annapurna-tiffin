@@ -81,6 +81,21 @@ class TiffinApp {
     }
   }
 
+  async fetchMe() {
+    if (!this.authToken) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/auth/me`);
+      const json = await res.json();
+      if (json.success && json.user) {
+        this.currentUser = json.user;
+        this.currentRole = json.user.role;
+        localStorage.setItem('tiffin_user', JSON.stringify(json.user));
+      }
+    } catch (err) {
+      console.error('Error refreshing profile:', err);
+    }
+  }
+
   async init() {
     console.log('Initializing Annapurna Tiffin Center App...');
 
@@ -106,6 +121,7 @@ class TiffinApp {
     await this.fetchFaqs();
 
     if (this.currentUser) {
+      await this.fetchMe();
       await this.loadUserData();
       await this.handlePhonePeCallback();
     }

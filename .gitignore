@@ -23,11 +23,12 @@ desktop.ini
 .vscode/
 .idea/
 
-# Temp files
-*.tmp
-*.temp
+# Runtime DB files
+db.json.backup.json
+db.json.bak
+local_postgres.db
+*.db
 
-# Runtime QR Uploads
 public/images/qr_uploads/*
 !public/images/qr_uploads/.gitkeep
 
