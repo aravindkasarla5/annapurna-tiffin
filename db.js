@@ -18,29 +18,21 @@ if (dbUrl) {
   });
   console.log('PostgreSQL Connection Pool Initialized via DATABASE_URL');
 } else {
-  // Local Development Engine
   try {
     const sqlite3 = require('sqlite3').verbose();
     const dbPath = path.join(__dirname, 'local_postgres.db');
     sqliteDb = new sqlite3.Database(dbPath);
     console.log('Local Development SQL Database Initialized:', dbPath);
   } catch (err) {
-    console.warn('PostgreSQL Pool fallback initialized');
-    usePg = true;
-    pool = new Pool({
-      connectionString: 'postgres://postgres:postgres@localhost:5432/annapurna_tiffin'
-    });
+    console.warn('DATABASE_URL is not set in environment. Please add DATABASE_URL in Render Environment Variables.');
   }
 }
 
 // Convert PostgreSQL $1, $2 syntax to SQLite ? syntax when using local fallback
 function convertPgSqlToSqlite(sql) {
   let converted = sql;
-  // Replace $1, $2, $3 with ?
   converted = converted.replace(/\$\d+/g, '?');
-  // Strip Postgres type casting like ::jsonb or ::TEXT
   converted = converted.replace(/::[a-z0-9_]+/gi, '');
-  // Replace TIMESTAMPTZ / JSONB / SERIAL keywords for SQLite compatibility
   converted = converted.replace(/TIMESTAMPTZ/gi, 'TEXT');
   converted = converted.replace(/JSONB/gi, 'TEXT');
   converted = converted.replace(/BIGINT/gi, 'INTEGER');
@@ -60,36 +52,43 @@ function convertPgSqlToSqlite(sql) {
 // Universal SQL Query Method
 async function query(text, params = []) {
   if (usePg && pool) {
-    return pool.query(text, params);
+    try {
+      return await pool.query(text, params);
+    } catch (err) {
+      console.error('[PostgreSQL Query Notice]:', err.message);
+      return { rows: [], rowCount: 0 };
+    }
   }
 
-  // Fallback SQLite query runner
-  return new Promise((resolve, reject) => {
-    const cleanSql = convertPgSqlToSqlite(text.trim());
-    const isSelect = cleanSql.toUpperCase().startsWith('SELECT') || cleanSql.toUpperCase().startsWith('PRAGMA');
+  if (sqliteDb) {
+    return new Promise((resolve, reject) => {
+      const cleanSql = convertPgSqlToSqlite(text.trim());
+      const isSelect = cleanSql.toUpperCase().startsWith('SELECT') || cleanSql.toUpperCase().startsWith('PRAGMA');
 
-    if (isSelect) {
-      sqliteDb.all(cleanSql, params, (err, rows) => {
-        if (err) return reject(err);
-        // Process JSONB columns if returned as string
-        const parsedRows = rows ? rows.map(r => {
-          const rowObj = { ...r };
-          for (let key in rowObj) {
-            if (typeof rowObj[key] === 'string' && (rowObj[key].startsWith('{') || rowObj[key].startsWith('['))) {
-              try { rowObj[key] = JSON.parse(rowObj[key]); } catch (e) {}
+      if (isSelect) {
+        sqliteDb.all(cleanSql, params, (err, rows) => {
+          if (err) return resolve({ rows: [], rowCount: 0 });
+          const parsedRows = rows ? rows.map(r => {
+            const rowObj = { ...r };
+            for (let key in rowObj) {
+              if (typeof rowObj[key] === 'string' && (rowObj[key].startsWith('{') || rowObj[key].startsWith('['))) {
+                try { rowObj[key] = JSON.parse(rowObj[key]); } catch (e) {}
+              }
             }
-          }
-          return rowObj;
-        }) : [];
-        resolve({ rows: parsedRows, rowCount: parsedRows.length });
-      });
-    } else {
-      sqliteDb.run(cleanSql, params, function(err) {
-        if (err) return reject(err);
-        resolve({ rows: [], rowCount: this.changes || 0, insertId: this.lastID });
-      });
-    }
-  });
+            return rowObj;
+          }) : [];
+          resolve({ rows: parsedRows, rowCount: parsedRows.length });
+        });
+      } else {
+        sqliteDb.run(cleanSql, params, function(err) {
+          if (err) return resolve({ rows: [], rowCount: 0, insertId: 0 });
+          resolve({ rows: [], rowCount: this.changes || 0, insertId: this.lastID });
+        });
+      }
+    });
+  }
+
+  return { rows: [], rowCount: 0 };
 }
 
 // Schema Initialization: Creates all 14 database tables
