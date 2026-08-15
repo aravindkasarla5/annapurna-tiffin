@@ -4341,24 +4341,39 @@ class TiffinApp {
     const swEnabled = document.getElementById('setRefEnabledSwitch');
     const refEnabled = swEnabled ? swEnabled.classList.contains('active') : true;
 
+    const swQr = document.getElementById('setQrPayEnabledSwitch');
+    const isQrEnabled = swQr ? swQr.classList.contains('active') : (this.settings ? (this.settings.is_qr_pay_enabled !== false) : true);
+
+    const swPhonePe = document.getElementById('setPhonePeEnabledSwitch');
+    const isPhonePeEnabled = swPhonePe ? swPhonePe.classList.contains('active') : (this.settings ? (this.settings.is_phonepe_enabled !== false) : true);
+
     let qrVal = this.settings ? (this.settings.upi_qr_code || '') : '';
     if (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) {
       qrVal = this.tempOwnerQrCode;
     }
 
+    const hotelNameInput = document.getElementById('setHotelName')?.value;
+    const phoneInput = document.getElementById('setPhone')?.value;
+    const addrInput = document.getElementById('setAddr')?.value;
+    const openTimeInput = document.getElementById('setOpenTime')?.value;
+    const closeTimeInput = document.getElementById('setCloseTime')?.value;
+    const holidaysInput = document.getElementById('setHolidays')?.value;
+    const upiIdInput = document.getElementById('setUpiId')?.value;
+    const descInput = document.getElementById('setDesc')?.value;
+
     const payload = {
-      hotel_name: document.getElementById('setHotelName')?.value,
-      phone: document.getElementById('setPhone')?.value,
-      address: document.getElementById('setAddr')?.value,
-      open_time: document.getElementById('setOpenTime')?.value,
-      close_time: document.getElementById('setCloseTime')?.value,
-      holidays: document.getElementById('setHolidays')?.value,
-      upi_id: document.getElementById('setUpiId')?.value,
-      description: document.getElementById('setDesc')?.value,
+      hotel_name: hotelNameInput !== undefined && hotelNameInput !== null && hotelNameInput !== '' ? hotelNameInput : (this.settings?.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center'),
+      phone: phoneInput !== undefined && phoneInput !== null ? phoneInput : (this.settings?.phone || ''),
+      address: addrInput !== undefined && addrInput !== null ? addrInput : (this.settings?.address || ''),
+      open_time: openTimeInput !== undefined && openTimeInput !== null ? openTimeInput : (this.settings?.open_time || ''),
+      close_time: closeTimeInput !== undefined && closeTimeInput !== null ? closeTimeInput : (this.settings?.close_time || ''),
+      holidays: holidaysInput !== undefined && holidaysInput !== null ? holidaysInput : (this.settings?.holidays || ''),
+      upi_id: upiIdInput !== undefined && upiIdInput !== null ? upiIdInput : (this.settings?.upi_id || ''),
+      description: descInput !== undefined && descInput !== null ? descInput : (this.settings?.description || ''),
       upi_qr_code: qrVal,
       is_open: this.settings ? (this.settings.is_open !== false) : true,
-      is_qr_pay_enabled: this.settings ? (this.settings.is_qr_pay_enabled !== false) : true,
-      is_phonepe_enabled: this.settings ? (this.settings.is_phonepe_enabled !== false) : true,
+      is_qr_pay_enabled: isQrEnabled,
+      is_phonepe_enabled: isPhonePeEnabled,
       referral: {
         enabled: refEnabled,
         referrer_reward: Number(document.getElementById('setRefReferrerReward')?.value || 30),
@@ -4376,16 +4391,17 @@ class TiffinApp {
       });
       const json = await res.json();
       if (json.success) {
-        this.settings = json.data;
+        this.settings = json.settings || json.data;
         this.tempOwnerQrCode = null;
         this.updateHeaderAndSettingsUI();
-        this.showToast('Business settings updated successfully.', 'success');
+        this.populateSettingsForm();
+        this.showToast('🟢 Business settings saved and published successfully to PostgreSQL!', 'success');
       } else {
-        this.showToast(json.message || 'Unable to save changes. Please try again.', 'error');
+        this.showToast(json.message || 'Unable to save business settings. Previously saved settings remain active.', 'error');
       }
     } catch (err) {
       console.error('Error saving settings:', err);
-      this.showToast('Unable to save changes. Please try again.', 'error');
+      this.showToast('Unable to save business settings. Previously saved settings remain active.', 'error');
     }
   }
 
