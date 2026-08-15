@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
+
 async function migrate() {
   console.log('======================================================');
   console.log('   STARTING ONE-TIME db.json TO POSTGRESQL MIGRATION  ');
