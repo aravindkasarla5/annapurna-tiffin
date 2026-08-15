@@ -879,7 +879,10 @@ app.patch('/api/notifications/read-all', authenticateToken, async (req, res) => 
   } else {
     await db.query("UPDATE notifications SET is_read = true WHERE target_role = 'OWNER';");
   }
-  // Catch-all SPA route to serve index.html for root and client routes
+  res.json({ success: true, message: "Notifications marked as read." });
+});
+
+// Catch-all SPA route to serve index.html for root and client routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
