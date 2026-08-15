@@ -868,7 +868,7 @@ class TiffinApp {
       if (btnLogout) btnLogout.classList.add('hidden');
 
       if (bannerGreeting) {
-        bannerGreeting.innerText = `Welcome to Annapurna Tiffin Center! 🍲`;
+        bannerGreeting.innerText = `Welcome to Sri Lakshmi Annapurna Tiffin Center! 🍲`;
       }
     }
   }
@@ -4381,7 +4381,7 @@ class TiffinApp {
 
   updateHeaderAndSettingsUI() {
     if (!this.settings) return;
-    const name = this.settings.hotel_name || 'Annapurna Tiffin Center';
+    const name = this.settings.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center';
     const phone = this.settings.phone || '';
     const addr = this.settings.address || '';
     const desc = this.settings.description || '';

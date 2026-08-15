@@ -126,7 +126,7 @@ async function initDatabase() {
       close_time VARCHAR(50) DEFAULT '10:30 PM',
       holidays VARCHAR(255) DEFAULT 'None (Open 7 Days)',
       upi_id VARCHAR(100) DEFAULT 'annapurna.tiffin@upi',
-      upi_name VARCHAR(100) DEFAULT 'Annapurna Tiffin Center',
+      upi_name VARCHAR(100) DEFAULT 'Sri Lakshmi Annapurna Tiffin Center',
       upi_qr_code VARCHAR(500) DEFAULT '/images/tiffin_logo.png',
       is_open BOOLEAN DEFAULT true,
       is_qr_pay_enabled BOOLEAN DEFAULT true,
@@ -296,6 +296,7 @@ async function initDatabase() {
     if (!ticketCounterRes.rows || ticketCounterRes.rows.length === 0) {
       await query(`INSERT INTO counters (name, current_value) VALUES ('ticket_counter', 1001);`);
     }
+    await query(`UPDATE settings SET hotel_name = 'Sri Lakshmi Annapurna Tiffin Center', upi_name = 'Sri Lakshmi Annapurna Tiffin Center' WHERE id = 1;`);
   } catch (cErr) {
     console.error('Error initializing counters:', cErr);
   }
