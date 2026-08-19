@@ -875,6 +875,8 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       return res.status(400).json({ success: false, message: "Ordered items are required." });
     }
 
+    const isReferralPayment = payment_method === 'REFERRAL' || payment_method === 'Referral Wallet' || payment_method === 'referral';
+
     if ((payment_method === 'UPI (QR Pay)' || payment_method === 'UPI') && settings.is_qr_pay_enabled === false) {
       return res.status(400).json({ success: false, message: "QR Pay is currently disabled by hotel owner." });
     }
@@ -907,76 +909,184 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       };
     });
 
-    // Handle Wallet Balance Redemption
-    let walletDeducted = 0;
-    const userRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
-    const currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
-
-    if (used_wallet_amount && Number(used_wallet_amount) > 0) {
-      walletDeducted = Math.min(currentWallet, Number(used_wallet_amount), grand_total);
-      if (walletDeducted > 0) {
-        const remainingBal = currentWallet - walletDeducted;
-        await db.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
-        await db.query(
-          'INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time) VALUES ($1, $2, $3, $4, $5, $6);',
-          ['wtx_' + Date.now(), req.user.id, walletDeducted, 'DEBIT', `Redeemed on Order #${orderNum}`, new Date().toLocaleString('en-IN')]
-        );
-      }
-    }
-
-    const netAmount = Math.max(0, grand_total - walletDeducted);
     const newOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    let createdOrder = null;
 
-    await db.query(
-      `INSERT INTO orders (
-        id, order_number, customer_id, customer_name, customer_mobile, 
-        order_type, delivery_address, notes, total_amount, used_wallet_amount, 
-        net_amount, payment_method, payment_status, order_status, items,
-        utr_number, payment_screenshot, screenshot_url
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);`,
-      [
-        newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
-        order_type || 'Takeaway', delivery_address || null, notes || null,
-        grand_total, walletDeducted, netAmount, payment_method || 'Cash',
-        payment_method === 'Cash' ? 'Pending' : 'Pending', 'Received', JSON.stringify(formattedItems),
-        cleanUtr, savedScreenshotUrl, savedScreenshotUrl
-      ]
-    );
+    // Execute Order Creation within an Atomic Database Transaction
+    await db.executeTransaction(async (tx) => {
+      // 1. Fetch latest wallet balance inside transaction
+      const userRes = await tx.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+      const currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
 
-    // Create Payment Record
-    const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-    await db.query(
-      `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, screenshot_url, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
-      [newPayId, orderNum, newOrderId, req.user.id, req.user.name, req.user.mobile, netAmount, payment_method || 'Cash', 'Pending', cleanUtr, savedScreenshotUrl, `Payment for Order #${orderNum}`]
-    );
+      let walletDeducted = 0;
+      let finalPayMethod = payment_method || 'Cash';
+      let finalPayStatus = 'Pending';
+      let netAmount = grand_total;
 
-    // Notify Owner
-    await db.query(
-      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-      ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Order Received', `Order #${orderNum} placed by ${req.user.name} (₹${netAmount}).`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
-    );
+      if (isReferralPayment) {
+        // Backend Validation: Verify customer has sufficient Referral Wallet balance
+        if (currentWallet < grand_total) {
+          const err = new Error("Insufficient referral wallet balance.");
+          err.isInsufficientWallet = true;
+          err.currentWallet = currentWallet;
+          err.requiredAmount = grand_total;
+          throw err;
+        }
 
-    // Process Referral Reward on Customer First Order
+        walletDeducted = grand_total;
+        const remainingBal = currentWallet - grand_total;
+        finalPayMethod = 'REFERRAL';
+        finalPayStatus = 'REFERRAL';
+        netAmount = grand_total; // Record total amount paid by wallet
+
+        // Deduct exact order amount atomically from user's wallet
+        await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
+
+        // Insert Wallet Transaction Record
+        await tx.query(
+          `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+          [
+            'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            req.user.id,
+            grand_total,
+            'DEBIT',
+            `Order Payment #${orderNum}`,
+            new Date().toLocaleString('en-IN'),
+            orderNum,
+            currentWallet,
+            remainingBal,
+            'SUCCESS'
+          ]
+        );
+      } else {
+        // Partial wallet discount handling for Cash / UPI payment methods
+        if (used_wallet_amount && Number(used_wallet_amount) > 0) {
+          walletDeducted = Math.min(currentWallet, Number(used_wallet_amount), grand_total);
+          if (walletDeducted > 0) {
+            const remainingBal = currentWallet - walletDeducted;
+            await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
+            await tx.query(
+              `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+              [
+                'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                req.user.id,
+                walletDeducted,
+                'DEBIT',
+                `Redeemed on Order #${orderNum}`,
+                new Date().toLocaleString('en-IN'),
+                orderNum,
+                currentWallet,
+                remainingBal,
+                'SUCCESS'
+              ]
+            );
+          }
+        }
+        netAmount = Math.max(0, grand_total - walletDeducted);
+        finalPayStatus = 'Pending';
+      }
+
+      // Create Order Record
+      await tx.query(
+        `INSERT INTO orders (
+          id, order_number, customer_id, customer_name, customer_mobile, 
+          order_type, delivery_address, notes, total_amount, used_wallet_amount, 
+          net_amount, payment_method, payment_status, order_status, items,
+          utr_number, payment_screenshot, screenshot_url
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);`,
+        [
+          newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
+          order_type || 'Takeaway', delivery_address || null, notes || null,
+          grand_total, walletDeducted, netAmount, finalPayMethod,
+          finalPayStatus, 'Received', JSON.stringify(formattedItems),
+          cleanUtr, savedScreenshotUrl, savedScreenshotUrl
+        ]
+      );
+
+      // Create Payment Record
+      const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      await tx.query(
+        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, screenshot_url, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+        [newPayId, orderNum, newOrderId, req.user.id, req.user.name, req.user.mobile, isReferralPayment ? grand_total : netAmount, finalPayMethod, finalPayStatus, cleanUtr, savedScreenshotUrl, `Payment for Order #${orderNum}`]
+      );
+
+      // Notify Owner
+      const notifMsg = isReferralPayment
+        ? `Order #${orderNum} placed by ${req.user.name} using Referral Wallet (₹${grand_total}).`
+        : `Order #${orderNum} placed by ${req.user.name} (₹${netAmount}).`;
+
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Order Received', notifMsg, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+      );
+
+      // Fetch created order object
+      const createdRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
+      createdOrder = createdRes.rows[0];
+    });
+
+    // Process Referral Reward on Customer First Order (outside main order creation tx to avoid circular locks)
     await checkAndProcessReferralReward(req.user.id, orderNum);
 
-    const createdRes = await db.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
-    const createdOrder = createdRes.rows[0];
-    try { createdOrder.items = JSON.parse(createdOrder.items); } catch(e) {}
-    createdOrder.payment_screenshot = createdOrder.payment_screenshot || createdOrder.screenshot_url || '';
-    createdOrder.screenshot_url = createdOrder.screenshot_url || createdOrder.payment_screenshot || '';
+    if (createdOrder) {
+      try { createdOrder.items = JSON.parse(createdOrder.items); } catch(e) {}
+      createdOrder.payment_screenshot = createdOrder.payment_screenshot || createdOrder.screenshot_url || '';
+      createdOrder.screenshot_url = createdOrder.screenshot_url || createdOrder.payment_screenshot || '';
+    }
+
+    // Retrieve updated wallet balance for customer response
+    const updatedUserRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+    const updatedWalletBalance = Number(updatedUserRes.rows[0]?.wallet_balance || 0);
 
     res.json({
       success: true,
       data: createdOrder,
-      message: `Order #${orderNum} placed successfully!`
+      wallet_balance: updatedWalletBalance,
+      message: isReferralPayment 
+        ? `Order #${orderNum} paid successfully using Referral Wallet!` 
+        : `Order #${orderNum} placed successfully!`
     });
   } catch (err) {
+    if (err.isInsufficientWallet) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient referral wallet balance. Your referral wallet balance is ₹${err.currentWallet}, but this order requires ₹${err.requiredAmount}.`,
+        wallet_balance: err.currentWallet,
+        required_amount: err.requiredAmount
+      });
+    }
     console.error('Order Creation Error:', err);
-    res.status(500).json({ success: false, message: "Database server error creating order." });
+    res.status(500).json({ success: false, message: err.message || "Database server error creating order." });
   }
 });
+
+// GET Wallet Transactions History
+app.get('/api/wallet/transactions', authenticateToken, async (req, res) => {
+  try {
+    const txRes = await db.query(
+      'SELECT * FROM wallet_transactions WHERE user_id = $1 ORDER BY created_at DESC;',
+      [req.user.id]
+    );
+    const uRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+    const wallet_balance = Number(uRes.rows[0]?.wallet_balance || 0);
+
+    res.json({
+      success: true,
+      data: {
+        wallet_balance,
+        transactions: txRes.rows || []
+      }
+    });
+  } catch (err) {
+    console.error('Fetch Wallet Transactions Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch wallet transaction history." });
+  }
+});
+
 
 app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) => {
   try {

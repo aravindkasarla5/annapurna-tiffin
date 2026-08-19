@@ -336,6 +336,7 @@
             <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-wallet"></i> PAYMENT STATUS</label>
             <select id="custFilterPaymentStatus" class="form-select-custom" onchange="app.handleCustomerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
               <option value="ALL">All Payment Statuses</option>
+              <option value="REFERRAL">🟢 Referral Paid</option>
               <option value="Paid">Paid / Verified</option>
               <option value="Pending Verification">Pending Verification</option>
               <option value="Pending">Pending</option>
@@ -348,6 +349,7 @@
             <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-credit-card"></i> PAYMENT METHOD</label>
             <select id="custFilterPaymentMethod" class="form-select-custom" onchange="app.handleCustomerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
               <option value="ALL">All Methods</option>
+              <option value="REFERRAL">Referral Wallet</option>
               <option value="UPI">UPI (QR Pay / PhonePe)</option>
               <option value="Cash">Cash on Delivery</option>
             </select>
@@ -1289,6 +1291,7 @@
             <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-wallet"></i> PAYMENT STATUS</label>
             <select id="ownerFilterPaymentStatus" class="form-select-custom" onchange="app.handleOwnerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
               <option value="ALL">All Payment Statuses</option>
+              <option value="REFERRAL">🟢 Referral Paid</option>
               <option value="Paid">Paid / Verified</option>
               <option value="Pending Verification">Pending Verification</option>
               <option value="Pending">Pending</option>
@@ -1301,6 +1304,7 @@
             <label style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;"><i class="fa-solid fa-credit-card"></i> PAYMENT METHOD</label>
             <select id="ownerFilterPaymentMethod" class="form-select-custom" onchange="app.handleOwnerFilterChange()" style="width: 100%; padding: 7px 10px; font-size: 0.82rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
               <option value="ALL">All Methods</option>
+              <option value="REFERRAL">Referral Wallet</option>
               <option value="QRPay">QR Pay (UPI)</option>
               <option value="PhonePe">PhonePe</option>
               <option value="Cash">Cash on Delivery</option>
@@ -2172,17 +2176,17 @@
               placeholder="e.g. Less spicy, extra coconut chutney..."></textarea>
           </div>
 
-          <div class="form-group" id="checkoutWalletBox" style="background: rgba(255, 179, 0, 0.12); border: 1px solid var(--accent-gold); padding: 0.85rem; border-radius: var(--radius-md);">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-              <div>
-                <span style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
+          <div class="form-group referral-payment-card" id="checkoutWalletBox">
+            <div class="referral-payment-card-inner">
+              <div class="referral-wallet-info">
+                <span class="referral-wallet-title">
                   <i class="fa-solid fa-wallet"></i> Referral Wallet Balance
                 </span>
-                <span style="font-size: 0.75rem; color: var(--text-muted);" id="checkoutWalletAvailableText">Available: ₹0</span>
+                <span class="referral-wallet-bal-text" id="checkoutWalletAvailableText">Available: ₹0</span>
               </div>
-              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; font-weight: 700; color: #FFF; cursor: pointer;">
-                <input type="checkbox" id="chkUseWallet" onchange="app.toggleCheckoutWalletDiscount()" style="width: 16px; height: 16px; accent-color: var(--accent-gold);">
-                Redeem ₹<span id="checkoutWalletDiscountVal">0</span>
+              <label class="referral-checkbox-label" for="chkUseWallet">
+                <input type="checkbox" id="chkUseWallet" class="referral-payment-checkbox" onchange="app.toggleCheckoutWalletDiscount()">
+                <span>Pay / Redeem ₹<span id="checkoutWalletDiscountVal">0</span></span>
               </label>
             </div>
           </div>
@@ -2198,6 +2202,10 @@
               <div class="payment-option" id="optPayUPI" onclick="app.selectPaymentMethod('UPI')">
                 <i class="fa-solid fa-qrcode" style="font-size: 1.4rem; display: block; margin-bottom: 4px;"></i>
                 Online / UPI
+              </div>
+              <div class="payment-option referral-payment-option" id="optPayReferral" onclick="app.selectPaymentMethod('REFERRAL')">
+                <i class="fa-solid fa-wallet" style="font-size: 1.4rem; display: block; margin-bottom: 4px; color: var(--accent-gold);"></i>
+                Referral Wallet
               </div>
             </div>
           </div>
@@ -2328,6 +2336,66 @@
                 <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">Copy the
                   12-digit UTR/Ref number from GPay/PhonePe/Paytm transaction details.</span>
               </div>
+            </div>
+          </div>
+
+          <!-- Dedicated Referral Wallet Payment Gateway Box -->
+          <div id="referralWalletBox" class="hidden"
+            style="background: rgba(10, 10, 14, 0.6); padding: 1.2rem; border-radius: var(--radius-lg); border: 1px solid #00E676; margin-top: 1rem;">
+            
+            <!-- Header with Referral Wallet Balance -->
+            <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 1rem;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-wallet" style="font-size: 1.4rem; color: #00E676;"></i>
+                <div>
+                  <strong style="font-size: 0.95rem; display: block; color: #FFF;">Referral Wallet</strong>
+                  <span style="font-size: 0.76rem; color: var(--text-muted);">Pay using your earned referral balance</span>
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">Available Balance</span>
+                <strong style="font-size: 1.1rem; color: #00E676;" id="refWalletDisplayBal">₹0</strong>
+              </div>
+            </div>
+
+            <!-- State 1: Sufficient Balance -->
+            <div id="refWalletSufficientState" class="hidden" style="background: rgba(0,200,83,0.1); border: 1px solid #00E676; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 0.5rem;">
+              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px;">
+                <span style="color: #DDD;">Order Total:</span>
+                <strong style="color: #FFF;" id="refWalletOrderTotalVal">₹0</strong>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px;">
+                <span style="color: #DDD;">Referral Wallet Balance:</span>
+                <strong style="color: #00E676;" id="refWalletCurrentBalVal">₹0</strong>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.15);">
+                <span style="color: #DDD;">Remaining Balance After Payment:</span>
+                <strong style="color: var(--accent-gold);" id="refWalletRemainingBalVal">₹0</strong>
+              </div>
+              <div style="margin-top: 0.75rem; background: rgba(0,230,118,0.15); color: #00E676; padding: 6px 10px; border-radius: 6px; font-size: 0.78rem; text-align: center; font-weight: 700;">
+                <i class="fa-solid fa-circle-check"></i> Sufficient referral wallet balance available.
+              </div>
+            </div>
+
+            <!-- State 2: Insufficient Balance -->
+            <div id="refWalletInsufficientState" class="hidden" style="background: rgba(255,152,0,0.1); border: 1px dashed #FF9800; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 0.5rem; text-align: center;">
+              <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.8rem; color: #FF9800; margin-bottom: 6px; display: block;"></i>
+              <strong style="font-size: 0.92rem; color: #FFF; display: block; margin-bottom: 4px;">⚠ Insufficient referral wallet balance.</strong>
+              <p style="font-size: 0.82rem; color: #FFE0B2; margin-bottom: 8px;" id="refWalletInsufficientMsg">
+                Your referral wallet balance is ₹50, but this order requires ₹100.
+              </p>
+              <span style="font-size: 0.78rem; color: var(--text-muted); display: block;">
+                Please choose another payment method above.
+              </span>
+            </div>
+
+            <!-- State 3: Zero Balance -->
+            <div id="refWalletZeroState" class="hidden" style="background: rgba(229,57,53,0.1); border: 1px dashed #E53935; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 0.5rem; text-align: center;">
+              <i class="fa-solid fa-hand-holding-dollar" style="font-size: 1.8rem; color: #FF5252; margin-bottom: 6px; display: block;"></i>
+              <strong style="font-size: 0.92rem; color: #FFF; display: block; margin-bottom: 4px;">Referral Wallet Empty</strong>
+              <p style="font-size: 0.82rem; color: #FF8A80; margin-bottom: 8px;">
+                Your referral wallet balance is ₹0. Please use another payment method.
+              </p>
             </div>
           </div>
 

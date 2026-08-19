@@ -2154,6 +2154,7 @@ class TiffinApp {
 
     this.handleCheckoutOrderTypeChange();
     this.updateCartUI();
+    this.selectPaymentMethod(this.selectedPaymentMethod || 'Cash');
     this.toggleCheckoutModal(true);
   }
 
@@ -2183,14 +2184,96 @@ class TiffinApp {
     backdrop.classList.toggle('open', open);
   }
 
-  selectPaymentMethod(method) {
+  async selectPaymentMethod(method) {
     this.selectedPaymentMethod = method;
     document.getElementById('optPayCash')?.classList.toggle('selected', method === 'Cash');
     document.getElementById('optPayUPI')?.classList.toggle('selected', method === 'UPI');
+    document.getElementById('optPayReferral')?.classList.toggle('selected', method === 'REFERRAL');
+
     document.getElementById('upiQrBox')?.classList.toggle('hidden', method !== 'UPI');
+    document.getElementById('referralWalletBox')?.classList.toggle('hidden', method !== 'REFERRAL');
 
     if (method === 'UPI') {
       this.updateOnlinePaymentOptionsVisibility();
+    } else if (method === 'REFERRAL') {
+      await this.updateReferralWalletCheckoutUI();
+    } else {
+      const btnSubmit = document.getElementById('btnCheckoutSubmit');
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        const grandTotal = this.calculateCartTotals ? this.calculateCartTotals().grandTotal : 0;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotal}</span>)</span>`;
+      }
+    }
+  }
+
+  async updateReferralWalletCheckoutUI() {
+    let latestBalance = 0;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/referrals/stats`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        latestBalance = Number(json.data.wallet_balance || 0);
+        if (this.currentUser) this.currentUser.wallet_balance = latestBalance;
+        if (this.referralStats) this.referralStats.wallet_balance = latestBalance;
+      }
+    } catch (err) {
+      console.error('Error fetching latest wallet balance for checkout:', err);
+      latestBalance = Number(this.currentUser?.wallet_balance || 0);
+    }
+
+    const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
+    const orderTotal = cartTotals.grandTotal || 0;
+
+    const elDisplayBal = document.getElementById('refWalletDisplayBal');
+    const elCurrentBalVal = document.getElementById('refWalletCurrentBalVal');
+    const elOrderTotalVal = document.getElementById('refWalletOrderTotalVal');
+    const elRemainingBalVal = document.getElementById('refWalletRemainingBalVal');
+    const elInsufficientMsg = document.getElementById('refWalletInsufficientMsg');
+
+    const stateSufficient = document.getElementById('refWalletSufficientState');
+    const stateInsufficient = document.getElementById('refWalletInsufficientState');
+    const stateZero = document.getElementById('refWalletZeroState');
+    const btnSubmit = document.getElementById('btnCheckoutSubmit');
+
+    if (elDisplayBal) elDisplayBal.innerText = `₹${latestBalance}`;
+    if (elCurrentBalVal) elCurrentBalVal.innerText = `₹${latestBalance}`;
+    if (elOrderTotalVal) elOrderTotalVal.innerText = `₹${orderTotal}`;
+
+    if (latestBalance === 0) {
+      if (stateSufficient) stateSufficient.classList.add('hidden');
+      if (stateInsufficient) stateInsufficient.classList.add('hidden');
+      if (stateZero) stateZero.classList.remove('hidden');
+
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-ban"></i> <span>Pay with Referral Wallet (₹0 Balance)</span>`;
+      }
+    } else if (latestBalance < orderTotal) {
+      if (stateSufficient) stateSufficient.classList.add('hidden');
+      if (stateZero) stateZero.classList.add('hidden');
+      if (stateInsufficient) stateInsufficient.classList.remove('hidden');
+
+      if (elInsufficientMsg) {
+        elInsufficientMsg.innerHTML = `Your referral wallet balance is ₹${latestBalance}, but this order requires ₹${orderTotal}.`;
+      }
+
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <span>Insufficient Wallet Balance</span>`;
+      }
+    } else {
+      const remainingBal = latestBalance - orderTotal;
+      if (elRemainingBalVal) elRemainingBalVal.innerText = `₹${remainingBal}`;
+
+      if (stateZero) stateZero.classList.add('hidden');
+      if (stateInsufficient) stateInsufficient.classList.add('hidden');
+      if (stateSufficient) stateSufficient.classList.remove('hidden');
+
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-gift"></i> <span>Pay ₹${orderTotal} with Referral Wallet</span>`;
+      }
     }
   }
 
@@ -2621,9 +2704,29 @@ class TiffinApp {
       }
     }
 
-    const payMethodName = this.selectedPaymentMethod === 'UPI'
-      ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
-      : 'Cash';
+    if (this.selectedPaymentMethod === 'REFERRAL') {
+      const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
+      const orderTotal = cartTotals.grandTotal || 0;
+      try {
+        const balRes = await this.fetchWithAuth(`${API_BASE}/referrals/stats`);
+        const balJson = await balRes.json();
+        if (balJson.success && balJson.data) {
+          const latestBal = Number(balJson.data.wallet_balance || 0);
+          if (this.currentUser) this.currentUser.wallet_balance = latestBal;
+          if (latestBal < orderTotal) {
+            this.showToast(`Insufficient referral wallet balance. Your referral wallet balance is ₹${latestBal}, but this order requires ₹${orderTotal}.`, 'error');
+            await this.updateReferralWalletCheckoutUI();
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+
+    const payMethodName = this.selectedPaymentMethod === 'REFERRAL'
+      ? 'REFERRAL'
+      : (this.selectedPaymentMethod === 'UPI'
+        ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
+        : 'Cash');
 
     const payload = {
       customer_name: name,
@@ -2634,7 +2737,7 @@ class TiffinApp {
       payment_method: payMethodName,
       payment_screenshot: this.tempPaymentScreenshot || '',
       utr_number: utrNumber || '',
-      used_wallet_amount: this.appliedWalletDiscount || 0,
+      used_wallet_amount: this.selectedPaymentMethod === 'REFERRAL' ? (this.calculateCartTotals().grandTotal || 0) : (this.appliedWalletDiscount || 0),
       items: this.cart
     };
 
@@ -2654,6 +2757,10 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success) {
+        if (json.wallet_balance !== undefined) {
+          if (this.currentUser) this.currentUser.wallet_balance = json.wallet_balance;
+          if (this.referralStats) this.referralStats.wallet_balance = json.wallet_balance;
+        }
         this.cart = [];
         this.tempPaymentScreenshot = null;
         this.updateCartUI();
@@ -2665,6 +2772,7 @@ class TiffinApp {
 
         await this.fetchOrders();
         await this.fetchNotifications();
+        await this.fetchReferralStats();
       } else {
         this.showToast(json.message || 'Error placing order.', 'error');
       }
@@ -2676,7 +2784,11 @@ class TiffinApp {
       if (btnSubmit) {
         btnSubmit.disabled = false;
         const grandTotal = this.calculateCartTotals ? this.calculateCartTotals().grandTotal : 0;
-        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotal}</span>)</span>`;
+        if (this.selectedPaymentMethod === 'REFERRAL') {
+          await this.updateReferralWalletCheckoutUI();
+        } else {
+          btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotal}</span>)</span>`;
+        }
       }
     }
   }
@@ -3059,7 +3171,9 @@ class TiffinApp {
     if (payStatusFilter && payStatusFilter !== 'ALL') {
       const payStat = (order.payment_status || '').toLowerCase();
       const reqPayStat = payStatusFilter.toLowerCase();
-      if (reqPayStat === 'paid') {
+      if (reqPayStat === 'referral') {
+        if (!payStat.includes('referral') && (order.payment_method || '').toLowerCase() !== 'referral') return false;
+      } else if (reqPayStat === 'paid') {
         if (!['paid', 'verified'].includes(payStat)) return false;
       } else if (reqPayStat === 'pending verification') {
         if (!['pending verification', 'pending_verification'].includes(payStat)) return false;
@@ -3072,7 +3186,9 @@ class TiffinApp {
     if (payMethodFilter && payMethodFilter !== 'ALL') {
       const payMethod = (order.payment_method || '').toLowerCase();
       const reqMethod = payMethodFilter.toLowerCase();
-      if (reqMethod === 'upi') {
+      if (reqMethod === 'referral') {
+        if (!payMethod.includes('referral') && (order.payment_status || '').toLowerCase() !== 'referral') return false;
+      } else if (reqMethod === 'upi') {
         if (!payMethod.includes('upi') && !payMethod.includes('qr') && !payMethod.includes('phonepe') && !payMethod.includes('online')) return false;
       } else if (reqMethod === 'qrpay') {
         if (!payMethod.includes('qr')) return false;
@@ -3244,6 +3360,7 @@ class TiffinApp {
     const progressPct = Math.round((stepIdx / 3) * 100);
 
     const typeIcon = order.order_type === 'Takeaway' ? 'fa-box' : order.order_type === 'Delivery' ? 'fa-motorcycle' : 'fa-utensils';
+    const isReferralPay = (order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL';
     const isPaid = order.payment_status.includes('Paid') || order.payment_status.includes('Verified');
     const isPendingPayment = order.payment_status.includes('Pending') || order.payment_status.includes('Verification');
 
@@ -3287,8 +3404,8 @@ class TiffinApp {
           <div class="co-top-right">
             <div class="co-payment-status-block">
               <span class="co-pay-title-label"><i class="fa-solid fa-credit-card" style="color: var(--accent-gold);"></i> Payment Status:</span>
-              <span class="co-row-pay-pill ${isPaid ? 'paid' : 'pending'}">
-                <i class="fa-solid ${isPaid ? 'fa-circle-check' : 'fa-hourglass-half'}"></i> ${order.payment_status} (${order.payment_method})
+              <span class="co-row-pay-pill ${isReferralPay ? 'referral' : (isPaid ? 'paid' : 'pending')}">
+                <i class="fa-solid ${isReferralPay ? 'fa-circle' : (isPaid ? 'fa-circle-check' : 'fa-hourglass-half')}" style="${isReferralPay ? 'color: #00E676;' : ''}"></i> ${isReferralPay ? '🟢 REFERRAL' : `${order.payment_status} (${order.payment_method})`}
               </span>
             </div>
             <div class="co-total-amount-block">
@@ -3486,6 +3603,7 @@ class TiffinApp {
     const progressPct = Math.round((stepIdx / 3) * 100);
 
     const typeIcon = order.order_type === 'Takeaway' ? 'fa-box' : order.order_type === 'Delivery' ? 'fa-motorcycle' : 'fa-utensils';
+    const isReferralPay = (order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL';
     const isPaid = order.payment_status === 'Paid' || order.payment_status === 'Cash Received' || order.payment_status.includes('Verified');
 
     return `
@@ -3527,8 +3645,8 @@ class TiffinApp {
           <div class="co-top-right">
             <div class="co-payment-status-block">
               <span class="co-pay-title-label"><i class="fa-solid fa-credit-card" style="color: var(--accent-gold);"></i> Payment Status:</span>
-              <span class="co-row-pay-pill ${isPaid ? 'paid' : 'pending'}">
-                <i class="fa-solid ${isPaid ? 'fa-circle-check' : 'fa-hourglass-half'}"></i> ${order.payment_status} (${order.payment_method})
+              <span class="co-row-pay-pill ${isReferralPay ? 'referral' : (isPaid ? 'paid' : 'pending')}">
+                <i class="fa-solid ${isReferralPay ? 'fa-circle' : (isPaid ? 'fa-circle-check' : 'fa-hourglass-half')}" style="${isReferralPay ? 'color: #00E676;' : ''}"></i> ${isReferralPay ? '🟢 REFERRAL' : `${order.payment_status} (${order.payment_method})`}
               </span>
             </div>
             <div class="co-total-amount-block">
@@ -3710,9 +3828,23 @@ class TiffinApp {
           <span class="od-value">${order.order_type}</span>
         </div>
         <div class="od-info-item">
-          <span class="od-label">Payment</span>
-          <span class="od-value">${order.payment_method} — ${order.payment_status}</span>
+          <span class="od-label">Payment Method</span>
+          <span class="od-value">${order.payment_method}</span>
         </div>
+        <div class="od-info-item">
+          <span class="od-label">Payment Status</span>
+          <span class="od-value">
+            ${((order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL')
+              ? '<span class="badge-status REFERRAL">🟢 REFERRAL</span>'
+              : `${order.payment_status}`}
+          </span>
+        </div>
+        ${((order.payment_method || '').toUpperCase() === 'REFERRAL' || Number(order.used_wallet_amount || 0) > 0) ? `
+          <div class="od-info-item">
+            <span class="od-label">Referral Wallet Used</span>
+            <span class="od-value" style="color: #00E676; font-weight: 800;">₹${order.used_wallet_amount ?? order.total_amount ?? 0}</span>
+          </div>
+        ` : ''}
         <div class="od-info-item" style="grid-column: 1 / -1; background: rgba(217, 83, 30, 0.08); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(217, 83, 30, 0.3);">
           <span class="od-label" style="color: var(--primary);"><i class="fa-solid fa-location-dot"></i> Delivery / Location Address</span>
           <span class="od-value" style="color: #FFF; font-weight: 700; font-size: 0.9rem;">${order.delivery_address || (order.order_type === 'Delivery' ? 'Home Delivery Address' : 'Counter Pickup')}</span>

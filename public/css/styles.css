@@ -1422,7 +1422,7 @@ textarea.form-control {
 /* Payment Methods Selector */
 .payment-selector {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 0.75rem;
   margin-top: 0.5rem;
 }
@@ -1442,6 +1442,126 @@ textarea.form-control {
   background: var(--primary-light);
   color: var(--primary);
   font-weight: 700;
+}
+
+/* Scoped Referral Wallet Payment UI & Checkbox Styles */
+.referral-payment-card {
+  background: rgba(255, 179, 0, 0.12);
+  border: 1.5px solid var(--accent-gold);
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 1.25rem;
+}
+
+.referral-payment-card-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.referral-wallet-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+
+.referral-wallet-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: var(--accent-gold);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.referral-wallet-bal-text {
+  font-size: 0.78rem;
+  color: #DDD;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.referral-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #FFF;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px dashed var(--accent-gold);
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  user-select: none;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.referral-checkbox-label:hover {
+  background: rgba(255, 179, 0, 0.18);
+  border-style: solid;
+}
+
+.referral-payment-checkbox {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px;
+  min-height: 20px;
+  cursor: pointer;
+  accent-color: var(--accent-gold);
+  border: 2px solid var(--accent-gold);
+  border-radius: 4px;
+  outline: none;
+  flex-shrink: 0;
+  margin: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.referral-payment-checkbox:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+}
+
+.referral-payment-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+  .referral-payment-card-inner {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .referral-checkbox-label {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    gap: 8px;
+  }
+  .referral-payment-checkbox {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px;
+    min-height: 18px;
+  }
 }
 
 /* Online Payment Sub-Tabs (QR Pay / PhonePe) */
@@ -1590,6 +1710,22 @@ textarea.form-control {
 .badge-status.Ready { background: rgba(56, 142, 60, 0.2); color: var(--status-ready); }
 .badge-status.Completed { background: rgba(76, 175, 80, 0.2); color: var(--status-completed); }
 .badge-status.Rejected { background: rgba(229, 57, 53, 0.2); color: var(--status-rejected); }
+.badge-status.REFERRAL,
+.status-badge.REFERRAL { 
+  background: rgba(0, 200, 83, 0.2); 
+  color: #00E676; 
+  border: 1px solid #00E676; 
+  font-weight: 800; 
+  box-shadow: 0 0 10px rgba(0, 230, 118, 0.25); 
+}
+
+.co-row-pay-pill.referral {
+  background: rgba(0, 200, 83, 0.18);
+  color: #00E676;
+  border: 1px solid #00E676;
+  font-weight: 800;
+  box-shadow: 0 0 8px rgba(0, 230, 118, 0.2);
+}
 
 .hidden { display: none !important; }
 
