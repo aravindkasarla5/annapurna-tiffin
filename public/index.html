@@ -2548,7 +2548,7 @@
         </form>
 
         <!-- REGISTRATION FORM -->
-        <form id="authRegisterForm" class="auth-form hidden" onsubmit="app.handleRegisterSubmit(event)">
+        <form id="authRegisterForm" class="auth-form hidden" onsubmit="app.handleRegisterSubmit(event)" novalidate>
           <div class="auth-form-header">
             <h3 style="color: #FFF; font-family: 'Outfit', sans-serif; font-size: 1.35rem; font-weight: 800; margin-bottom: 0.2rem; display: flex; align-items: center; gap: 8px;">
               <i class="fa-solid fa-user-plus" style="color: var(--accent-gold);"></i> CREATE ACCOUNT
@@ -2557,34 +2557,34 @@
           </div>
           <div class="input-icon-group">
             <i class="fa-solid fa-user input-icon"></i>
-            <input type="text" class="icon-input" id="regName" placeholder="Full Name (e.g. Suresh Gowda)" required>
+            <input type="text" class="icon-input" id="regName" placeholder="Full Name (e.g. Suresh Gowda)" autocomplete="name" required>
           </div>
 
           <div class="input-icon-group">
             <i class="fa-solid fa-mobile-screen input-icon"></i>
-            <input type="tel" class="icon-input" id="regMobile" placeholder="10-digit mobile number" required>
+            <input type="tel" class="icon-input" id="regMobile" placeholder="10-digit mobile number" autocomplete="tel" required>
           </div>
 
           <div class="input-icon-group password-group">
             <i class="fa-solid fa-lock input-icon"></i>
-            <input type="password" class="icon-input" id="regPassword" placeholder="Create password" required>
+            <input type="password" class="icon-input" id="regPassword" placeholder="Create password" autocomplete="new-password" required>
             <i class="fa-solid fa-eye toggle-password-icon" id="toggleRegPassword" onclick="app.togglePasswordVisibility('regPassword', 'toggleRegPassword')" title="Toggle password visibility"></i>
           </div>
 
           <div class="input-icon-group">
             <i class="fa-solid fa-envelope input-icon"></i>
-            <input type="email" class="icon-input" id="regEmail" placeholder="Email Address (Optional)">
+            <input type="email" class="icon-input" id="regEmail" placeholder="Email Address (Optional)" autocomplete="email">
           </div>
 
           <div class="input-icon-group">
             <i class="fa-solid fa-location-dot input-icon"></i>
-            <input type="text" class="icon-input" id="regAddress" placeholder="Delivery Address / Location">
+            <input type="text" class="icon-input" id="regAddress" placeholder="Delivery Address / Location" autocomplete="street-address">
           </div>
 
           <!-- Referral Code Input Field (For Customer Registration) -->
           <div class="input-icon-group" id="grpRegReferralCode">
             <i class="fa-solid fa-gift input-icon" style="color: var(--accent-gold);"></i>
-            <input type="text" class="icon-input" id="regReferralCode" placeholder="Referral Code (Got a code? Get ₹30 OFF)" style="font-family: monospace; font-weight: 700; text-transform: uppercase;">
+            <input type="text" class="icon-input" id="regReferralCode" placeholder="Referral Code (Got a code? Get ₹30 OFF)" style="font-family: monospace; font-weight: 700; text-transform: uppercase;" autocomplete="off">
           </div>
 
           <button type="submit" class="auth-submit-btn register-btn" id="btnRegisterSubmit">

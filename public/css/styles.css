@@ -1864,6 +1864,8 @@ textarea.form-control {
   display: flex;
   width: 90%;
   max-width: 780px;
+  max-height: 90vh;
+  max-height: 90dvh;
   overflow: hidden;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
   border: 1.5px solid var(--border-color);
@@ -1898,11 +1900,13 @@ textarea.form-control {
   .auth-card-wrapper {
     flex-direction: column;
     max-width: 440px;
+    max-height: 92vh;
+    max-height: 92dvh;
   }
   .auth-card-sidebar {
     width: 100%;
-    padding: 1.5rem;
-    min-height: 160px;
+    padding: 1rem 1.25rem;
+    min-height: 100px;
   }
 }
 
@@ -1960,6 +1964,10 @@ textarea.form-control {
   position: relative;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(90vh - 20px);
+  max-height: calc(90dvh - 20px);
 }
 
 .auth-close-btn {
@@ -2177,7 +2185,8 @@ textarea.form-control {
 /* Submit Buttons */
 .auth-submit-btn {
   width: 100%;
-  padding: 13px;
+  min-height: 48px;
+  padding: 12px 16px;
   border: none;
   border-radius: var(--radius-full);
   color: #FFF;
@@ -2191,6 +2200,11 @@ textarea.form-control {
   justify-content: center;
   gap: 10px;
   margin-top: 0.5rem;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  position: relative;
+  z-index: 5;
 }
 
 .auth-submit-btn.login-btn {
@@ -2211,6 +2225,15 @@ textarea.form-control {
 .auth-submit-btn.register-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(234, 162, 33, 0.65);
+}
+
+.auth-submit-btn:disabled,
+.auth-submit-btn.disabled {
+  opacity: 0.75 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 /* =========================================================================
@@ -5924,9 +5947,14 @@ body.guest-mode #btnMobileMenuToggle {
 
   #authRegisterForm .auth-submit-btn,
   #authRegisterForm .register-btn {
-    padding: 9px 12px !important;
+    padding: 10px 14px !important;
+    min-height: 44px !important;
     font-size: 0.84rem !important;
     margin-top: 0.35rem !important;
+    touch-action: manipulation !important;
+    cursor: pointer !important;
+    position: relative !important;
+    z-index: 10 !important;
   }
 }
 
@@ -6018,8 +6046,11 @@ body.guest-mode #btnMobileMenuToggle {
 
   #authRegisterForm .auth-submit-btn,
   #authRegisterForm .register-btn {
-    padding: 8px 10px !important;
+    padding: 9px 12px !important;
+    min-height: 44px !important;
     font-size: 0.8rem !important;
+    touch-action: manipulation !important;
+    cursor: pointer !important;
   }
 }
 
@@ -6091,8 +6122,11 @@ body.guest-mode #btnMobileMenuToggle {
 
   #authRegisterForm .auth-submit-btn,
   #authRegisterForm .register-btn {
-    padding: 7px 8px !important;
-    font-size: 0.76rem !important;
+    padding: 8px 10px !important;
+    min-height: 42px !important;
+    font-size: 0.78rem !important;
+    touch-action: manipulation !important;
+    cursor: pointer !important;
   }
 }
 

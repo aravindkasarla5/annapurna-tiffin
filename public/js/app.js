@@ -695,16 +695,74 @@ class TiffinApp {
   }
 
   async handleRegisterSubmit(e) {
-    e.preventDefault();
-    const name = document.getElementById('regName').value;
-    const mobile = document.getElementById('regMobile').value;
-    const password = document.getElementById('regPassword').value;
-    const email = document.getElementById('regEmail').value;
-    const address = document.getElementById('regAddress').value;
-    const referral_code = document.getElementById('regReferralCode')?.value.trim();
+    if (e && e.preventDefault) e.preventDefault();
+
+    const submitBtn = document.getElementById('btnRegisterSubmit');
+    if (submitBtn && submitBtn.disabled) {
+      return; // Prevent accidental duplicate submissions
+    }
+
+    const nameInput = document.getElementById('regName');
+    const mobileInput = document.getElementById('regMobile');
+    const passwordInput = document.getElementById('regPassword');
+    const emailInput = document.getElementById('regEmail');
+    const addressInput = document.getElementById('regAddress');
+    const refCodeInput = document.getElementById('regReferralCode');
+
+    const name = nameInput?.value.trim() || '';
+    const rawMobile = mobileInput?.value.trim() || '';
+    const password = passwordInput?.value.trim() || '';
+    const email = emailInput?.value.trim() || '';
+    const address = addressInput?.value.trim() || '';
+    const referral_code = refCodeInput?.value.trim() || '';
+
+    // Step 1: Frontend Form Validation with clear feedback
+    if (!name) {
+      this.showToast('Please enter your name.', 'error');
+      if (nameInput) nameInput.focus();
+      return;
+    }
+
+    const cleanMobile = rawMobile.replace(/\D/g, '');
+    if (!cleanMobile) {
+      this.showToast('Please enter your mobile number.', 'error');
+      if (mobileInput) mobileInput.focus();
+      return;
+    }
+
+    if (cleanMobile.length < 10) {
+      this.showToast('Please enter a valid 10-digit mobile number.', 'error');
+      if (mobileInput) mobileInput.focus();
+      return;
+    }
+
+    if (!password) {
+      this.showToast('Please enter a password.', 'error');
+      if (passwordInput) passwordInput.focus();
+      return;
+    }
+
+    if (password.length < 4) {
+      this.showToast('Password must be at least 4 characters long.', 'error');
+      if (passwordInput) passwordInput.focus();
+      return;
+    }
+
+    // Step 2: Immediate Visual Feedback & Single Submission Guard
+    const originalBtnHTML = submitBtn ? submitBtn.innerHTML : '<span>Create New Account</span> <i class="fa-solid fa-user-plus"></i>';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.classList.add('disabled');
+      submitBtn.innerHTML = '<span>Creating Account...</span> <i class="fa-solid fa-circle-notch fa-spin"></i>';
+    }
 
     const payload = {
-      name, mobile, password, email, address, referral_code
+      name,
+      mobile: cleanMobile,
+      password,
+      email,
+      address,
+      referral_code
     };
 
     try {
@@ -737,7 +795,7 @@ class TiffinApp {
         this.referralStats = null;
 
         const custName = this.getFormattedCustomerName();
-        const welcomeMsg = custName ? `Welcome back, ${custName}! 👋` : 'Welcome back! 👋';
+        const welcomeMsg = custName ? `Account created successfully! Welcome, ${custName} 👋` : 'Account created successfully! 👋';
 
         this.showToast(welcomeMsg, 'success');
         this.toggleAuthModal(false);
@@ -748,11 +806,21 @@ class TiffinApp {
         this.renderNavigation();
         this.renderCurrentView();
       } else {
-        this.showToast(json.message || 'Registration failed', 'error');
+        this.showToast(json.message || 'Unable to create account. Please try again.', 'error');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('disabled');
+          submitBtn.innerHTML = originalBtnHTML;
+        }
       }
     } catch (err) {
       console.error('Error registering:', err);
-      this.showToast('Server communication error.', 'error');
+      this.showToast('Unable to create account. Please try again.', 'error');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('disabled');
+        submitBtn.innerHTML = originalBtnHTML;
+      }
     }
   }
 
