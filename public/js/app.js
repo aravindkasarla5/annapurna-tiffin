@@ -675,7 +675,7 @@ class TiffinApp {
         const custName = this.getFormattedCustomerName();
         const welcomeMsg = this.currentRole === 'OWNER'
           ? 'Welcome back, Owner! 👋'
-          : (custName ? `Welcome back, ${custName}! 👋` : 'Welcome back! 👋');
+          : (custName ? `Welcome back, ${custName} 👋` : 'Welcome back 👋');
 
         this.showToast(welcomeMsg, 'success');
         this.toggleAuthModal(false);
@@ -1020,7 +1020,7 @@ class TiffinApp {
         }
       } else {
         const custName = this.getFormattedCustomerName();
-        const greetingStr = custName ? `Welcome back, ${custName}! 👋` : `Welcome back! 👋`;
+        const greetingStr = custName ? `Welcome back, ${custName} 👋` : `Welcome back 👋`;
         if (bannerGreeting) {
           bannerGreeting.innerText = greetingStr;
         }
@@ -5208,7 +5208,9 @@ class TiffinApp {
     // Hero Home Section Banner
     const elBannerGreeting = document.getElementById('bannerGreeting');
     const elBannerDesc = document.getElementById('bannerDesc');
-    if (elBannerGreeting) elBannerGreeting.innerText = `Welcome to ${name}! 🍲`;
+    if (elBannerGreeting && (!this.currentUser || this.currentRole !== 'CUSTOMER')) {
+      elBannerGreeting.innerText = `Welcome to ${name}! 🍲`;
+    }
     if (elBannerDesc && desc) elBannerDesc.innerText = desc;
 
     // Hero Home Section Details
