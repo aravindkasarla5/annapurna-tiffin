@@ -2782,8 +2782,8 @@ class TiffinApp {
       this.isSubmittingOrder = false;
       if (btnSubmit) {
         btnSubmit.disabled = false;
-        const grandTotalNow = this.calculateCartTotals ? this.calculateCartTotals().grandTotal : 0;
-        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotalNow}</span>)</span>`;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹0</span>)</span>`;
+        this.updateCartUI();
       }
     }
   }
