@@ -1718,7 +1718,7 @@
                   <!-- Interactive QR Upload Card -->
                   <div class="owner-qr-upload-card">
                     <div class="qr-preview-frame">
-                      <img id="setQrPreviewImg" src="/images/upi_qr_scanner.png" alt="Shop Owner QR Code">
+                      <img id="setQrPreviewImg" src="/images/tiffin_logo.png" alt="Shop Owner QR Code">
                       <span class="qr-active-chip"><i class="fa-solid fa-circle-check"></i> Live</span>
                     </div>
 
@@ -2701,17 +2701,22 @@
   <!-- Lightbox Modal for Payment Screenshots & QR Scanner Zoom -->
   <div class="modal-backdrop" id="lightboxModalBackdrop" onclick="app.closeLightbox()">
     <div class="modal-card"
-      style="max-width: 520px; width: 92%; text-align: center; background: rgba(14, 9, 7, 0.96); border: 1.5px solid var(--accent-gold); backdrop-filter: blur(12px);"
+      style="max-width: 540px; width: 94%; text-align: center; background: rgba(14, 9, 7, 0.96); border: 1.5px solid var(--accent-gold); backdrop-filter: blur(12px);"
       onclick="event.stopPropagation()">
       <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding: 0.85rem 1.25rem;">
-        <h3 style="color: var(--accent-gold); font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+        <h3 style="color: var(--accent-gold); font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
           <i class="fa-solid fa-expand" id="lightboxIcon"></i> <span id="lightboxTitle">Image Preview</span>
         </h3>
-        <button class="icon-btn" onclick="app.closeLightbox()" style="width: 32px; height: 32px;" title="Close (X)">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button class="icon-btn" onclick="app.toggleLightboxZoom()" style="width: 32px; height: 32px; color: var(--accent-gold);" title="Toggle Zoom / Magnify">
+            <i class="fa-solid fa-magnifying-glass-plus"></i>
+          </button>
+          <button class="icon-btn" onclick="app.closeLightbox()" style="width: 32px; height: 32px;" title="Close (X)">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
       </div>
-      <div style="padding: 1.25rem; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 220px; max-height: 70vh; overflow: auto; position: relative;">
+      <div style="padding: 1.25rem; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 220px; max-height: 72vh; overflow: auto; position: relative;">
         <!-- Loading Spinner -->
         <div id="lightboxLoader" class="hidden" style="padding: 2rem 1rem; color: var(--accent-gold); text-align: center;">
           <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2.5rem; margin-bottom: 12px;"></i>
@@ -2721,11 +2726,12 @@
         <div id="lightboxError" class="hidden" style="padding: 2rem 1rem; color: #FF5252; text-align: center;">
           <i class="fa-solid fa-triangle-exclamation" style="font-size: 2.5rem; margin-bottom: 10px;"></i>
           <p style="font-size: 0.95rem; font-weight: 700; color: #FF5252;" id="lightboxErrorMsg">Unable to load image</p>
-          <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">The image file could not be loaded or reached on the server.</p>
+          <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">The image file reference could not be loaded.</p>
         </div>
         <!-- Main Image Viewer -->
         <img id="lightboxImg" src="" alt="Enlarged View"
-          style="max-width: 100%; max-height: 62vh; border-radius: 10px; border: 2px solid var(--border-color); object-fit: contain; box-shadow: 0 8px 24px rgba(0,0,0,0.6);"
+          style="max-width: 100%; max-height: 62vh; border-radius: 10px; border: 2px solid var(--border-color); object-fit: contain; box-shadow: 0 8px 24px rgba(0,0,0,0.6); transition: transform 0.25 ease; cursor: zoom-in;"
+          onclick="app.toggleLightboxZoom()"
           onload="app.onLightboxImgLoad()" onerror="app.onLightboxImgError()">
       </div>
     </div>

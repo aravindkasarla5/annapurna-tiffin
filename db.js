@@ -6,6 +6,10 @@ let pool = null;
 let sqliteDb = null;
 let usePg = false;
 
+// Guards against the auto-seed migration recursing into itself (migrate_to_postgres
+// calls initDatabase, which would otherwise re-trigger the seed before data exists).
+let autoSeedInProgress = false;
+
 const dbUrl = (process.env.DATABASE_URL || '').trim();
 
 if (dbUrl) {
@@ -55,8 +59,8 @@ async function query(text, params = []) {
     try {
       return await pool.query(text, params);
     } catch (err) {
-      console.error('[PostgreSQL Query Notice]:', err.message);
-      return { rows: [], rowCount: 0 };
+      console.error('[PostgreSQL Query Error]:', err.message);
+      throw err;
     }
   }
 
@@ -67,7 +71,10 @@ async function query(text, params = []) {
 
       if (isSelect) {
         sqliteDb.all(cleanSql, params, (err, rows) => {
-          if (err) return resolve({ rows: [], rowCount: 0 });
+          if (err) {
+            console.error('[SQLite Query Error]:', err.message);
+            return reject(err);
+          }
           const parsedRows = rows ? rows.map(r => {
             const rowObj = { ...r };
             for (let key in rowObj) {
@@ -81,7 +88,10 @@ async function query(text, params = []) {
         });
       } else {
         sqliteDb.run(cleanSql, params, function(err) {
-          if (err) return resolve({ rows: [], rowCount: 0, insertId: 0 });
+          if (err) {
+            console.error('[SQLite Query Error]:', err.message);
+            return reject(err);
+          }
           resolve({ rows: [], rowCount: this.changes || 0, insertId: this.lastID });
         });
       }
@@ -300,13 +310,27 @@ async function initDatabase() {
     if (!ticketCounterRes.rows || ticketCounterRes.rows.length === 0) {
       await query(`INSERT INTO counters (name, current_value) VALUES ('ticket_counter', 1001);`);
     }
-    await query(`ALTER TABLE settings ALTER COLUMN upi_qr_code TYPE TEXT;`);
-    await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
-    await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
-    await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);
-    await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
-    await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
-    await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
+    // PostgreSQL/SQLite schema column migration adjustments
+    if (usePg) {
+      try {
+        await query(`ALTER TABLE settings ALTER COLUMN upi_qr_code TYPE TEXT;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);
+        await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
+        await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
+        await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
+      } catch (aErr) {
+        console.warn('PostgreSQL DDL Notice:', aErr.message);
+      }
+    } else {
+      const safeAlter = async (sql) => { try { await query(sql); } catch(e) {} };
+      await safeAlter(`ALTER TABLE orders ADD COLUMN utr_number TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN payment_screenshot TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN screenshot_url TEXT;`);
+      await safeAlter(`ALTER TABLE payments ADD COLUMN order_id TEXT;`);
+      await safeAlter(`ALTER TABLE payments ADD COLUMN utr_number TEXT;`);
+    }
     await query(`UPDATE settings SET hotel_name = 'Sri Lakshmi Annapurna Tiffin Center', upi_name = 'Sri Lakshmi Annapurna Tiffin Center' WHERE id = 1;`);
   } catch (cErr) {
     console.error('Error initializing counters:', cErr);
@@ -318,11 +342,18 @@ async function initDatabase() {
   try {
     const tiffinCountRes = await query(`SELECT COUNT(*) FROM tiffins;`);
     const count = Number(tiffinCountRes.rows[0]?.count || 0);
-    if (count === 0) {
+    if (count === 0 && !autoSeedInProgress) {
       console.log('Database empty on startup — running automated seed migration from seed_data.json...');
-      const migrateModule = require('./migrate_to_postgres');
-      if (typeof migrateModule === 'function') {
-        await migrateModule();
+      autoSeedInProgress = true;
+      try {
+        const migrateModule = require('./migrate_to_postgres');
+        if (typeof migrateModule === 'function') {
+          await migrateModule();
+        }
+      } catch (seedErr) {
+        console.error('Auto-seed migration error:', seedErr.message);
+      } finally {
+        autoSeedInProgress = false;
       }
     }
   } catch (seedErr) {
@@ -332,14 +363,27 @@ async function initDatabase() {
 
 // Atomic Sequence Counter Helper for Globally Unique Order IDs
 async function getNextCounter(counterName) {
-  const selectRes = await query(`SELECT current_value FROM counters WHERE name = $1;`, [counterName]);
-  let val = 1001;
-  if (selectRes.rows && selectRes.rows.length > 0) {
-    val = Number(selectRes.rows[0].current_value);
+  try {
+    await query(`INSERT INTO counters (name, current_value) VALUES ($1, 1001) ON CONFLICT (name) DO NOTHING;`, [counterName]);
+    if (usePg) {
+      const updateRes = await query(
+        `UPDATE counters SET current_value = current_value + 1 WHERE name = $1 RETURNING current_value;`,
+        [counterName]
+      );
+      if (updateRes.rows && updateRes.rows.length > 0) {
+        return Number(updateRes.rows[0].current_value);
+      }
+    } else {
+      await query(`UPDATE counters SET current_value = current_value + 1 WHERE name = $1;`, [counterName]);
+      const selectRes = await query(`SELECT current_value FROM counters WHERE name = $1;`, [counterName]);
+      if (selectRes.rows && selectRes.rows.length > 0) {
+        return Number(selectRes.rows[0].current_value);
+      }
+    }
+  } catch (err) {
+    console.error(`Error in getNextCounter for ${counterName}:`, err.message);
   }
-  const nextVal = val + 1;
-  await query(`UPDATE counters SET current_value = $1 WHERE name = $2;`, [nextVal, counterName]);
-  return val;
+  return Math.floor(100000 + Math.random() * 900000);
 }
 
 module.exports = {

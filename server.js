@@ -28,28 +28,14 @@ async function saveBase64Image(base64Str, subfolder = 'screenshots') {
     return trimmed;
   }
 
-  // Check if base64 data URL
-  const matches = trimmed.match(/^data:image\/([a-zA-Z0-9+\-+.]+);base64,(.+)$/);
-  if (!matches) {
-    if (trimmed.length < 500 && !trimmed.includes('\n')) return trimmed;
-    throw new Error('Invalid image encoding format.');
+  // Preserve base64 Data URLs directly to guarantee permanent storage in PostgreSQL
+  // across Render restarts and redeployments (never dependent on ephemeral container disk)
+  if (trimmed.startsWith('data:image/')) {
+    return trimmed;
   }
 
-  const extRaw = matches[1].toLowerCase();
-  const ext = extRaw === 'jpeg' ? 'jpg' : (['png', 'jpg', 'webp', 'gif', 'svg'].includes(extRaw) ? extRaw : 'png');
-  const base64Data = matches[2];
-  const buffer = Buffer.from(base64Data, 'base64');
-
-  const uploadDir = path.join(__dirname, 'public', 'uploads', subfolder);
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-
-  const filename = `${subfolder}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
-  const filePath = path.join(uploadDir, filename);
-
-  await fs.promises.writeFile(filePath, buffer);
-  return `/uploads/${subfolder}/${filename}`;
+  if (trimmed.length < 500 && !trimmed.includes('\n')) return trimmed;
+  return trimmed;
 }
 
 // Standardize Phone Normalization
@@ -219,6 +205,7 @@ async function findUserByIdentifier(rawIdentifier) {
   const res = await db.query(
     `SELECT * FROM users 
      WHERE mobile = $1 
+        OR REPLACE(REPLACE(REPLACE(mobile, '+', ''), ' ', ''), '-', '') LIKE '%' || $1 || '%'
         OR id = $2 
         OR LOWER(email) = LOWER($3) 
         OR LOWER(name) = LOWER($3)
@@ -232,7 +219,7 @@ async function findUserByIdentifier(rawIdentifier) {
   const allUsersRes = await db.query('SELECT * FROM users;');
   const fallback = allUsersRes.rows.find(u => {
     const uNorm = normalizePhone(u.mobile);
-    return uNorm && uNorm === normPhone;
+    return uNorm && normPhone && uNorm === normPhone;
   });
 
   return fallback || null;
@@ -581,7 +568,18 @@ app.get('/api/settings', async (req, res) => {
     if (typeof s.referral === 'string') {
       try { s.referral = JSON.parse(s.referral); } catch (e) {}
     }
-    res.json({ success: true, settings: s, data: s });
+
+    // Conditional caching so the 2-second live polling does not re-download the
+    // base64 QR scanner image every poll — it revalidates and only transfers the
+    // full payload when the settings (e.g. a new scanner) actually changed.
+    const body = JSON.stringify({ success: true, settings: s, data: s });
+    const etag = '"' + String(s.upi_qr_updated_at || '') + '-' + crypto.createHash('md5').update(body).digest('hex').slice(0, 10) + '"';
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+    res.set('ETag', etag);
+    res.set('Cache-Control', 'no-cache');
+    res.send(body);
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to fetch settings." });
   }
@@ -607,17 +605,30 @@ const handleSaveSettings = async (req, res) => {
     const newHolidays = holidays !== undefined ? holidays : s.holidays;
     const newUpiId = upi_id !== undefined ? upi_id : s.upi_id;
     const newUpiName = upi_name !== undefined ? upi_name : (s.upi_name || newHotelName);
-    let rawQrCode = upi_qr_code !== undefined ? upi_qr_code : s.upi_qr_code;
-    if (rawQrCode && rawQrCode.startsWith('data:image/')) {
-      try {
-        rawQrCode = await saveBase64Image(rawQrCode, 'qr');
-      } catch (uploadErr) {
-        console.error('QR scanner image save error:', uploadErr);
-        return res.status(400).json({ success: false, message: "QR scanner image upload failed." });
+
+    // QR scanner image is stored directly as a base64 data URL inside PostgreSQL
+    // (never as an ephemeral file path). This guarantees the scanner remains visible
+    // to the owner and customers even after server restarts / redeploys, and the old
+    // scanner keeps displaying until the owner uploads a replacement.
+    let rawQrCode = s.upi_qr_code || '';
+    if (req.body.remove_qr === true) {
+      rawQrCode = '';
+    } else if (upi_qr_code && typeof upi_qr_code === 'string' && upi_qr_code.trim().length > 0) {
+      const trimmedQr = upi_qr_code.trim();
+      if (trimmedQr.startsWith('data:image/')) {
+        const b64Marker = trimmedQr.indexOf('base64,');
+        if (b64Marker !== -1) {
+          const b64Length = trimmedQr.length - (b64Marker + 7);
+          if (b64Length >= 50) {
+            rawQrCode = trimmedQr;
+          }
+        }
+      } else {
+        rawQrCode = trimmedQr;
       }
     }
     const newUpiQrCode = rawQrCode;
-    const qrChanged = newUpiQrCode !== s.upi_qr_code;
+    const qrChanged = newUpiQrCode !== (s.upi_qr_code || '');
     const newQrUpdatedAt = qrChanged ? Date.now() : (s.upi_qr_updated_at || Date.now());
 
     const newIsOpen = is_open !== undefined ? Boolean(is_open) : (s.is_open !== false);
@@ -896,6 +907,9 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Order Received', `Order #${orderNum} placed by ${req.user.name} (₹${netAmount}).`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
     );
 
+    // Process Referral Reward on Customer First Order
+    await checkAndProcessReferralReward(req.user.id, orderNum);
+
     const createdRes = await db.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
     const createdOrder = createdRes.rows[0];
     try { createdOrder.items = JSON.parse(createdOrder.items); } catch(e) {}
@@ -939,15 +953,18 @@ app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) =>
     }
 
     const cleanUtr = utr_number !== undefined && utr_number !== null ? utr_number.trim() : (order.utr_number || null);
+    const permanentScreenshot = (payment_screenshot && typeof payment_screenshot === 'string' && payment_screenshot.startsWith('data:image/')) 
+      ? payment_screenshot 
+      : (savedScreenshotUrl || order.payment_screenshot || order.screenshot_url || null);
 
     await db.query(
-      `UPDATE orders SET utr_number = $1, payment_screenshot = $2, screenshot_url = $2 WHERE id = $3;`,
-      [cleanUtr, savedScreenshotUrl, order.id]
+      `UPDATE orders SET utr_number = $1, payment_screenshot = $2, screenshot_url = $3 WHERE id = $4;`,
+      [cleanUtr, permanentScreenshot, savedScreenshotUrl || permanentScreenshot, order.id]
     );
 
     await db.query(
       `UPDATE payments SET utr_number = $1, screenshot_url = $2 WHERE order_number = $3 OR order_id = $4;`,
-      [cleanUtr, savedScreenshotUrl, order.order_number, order.id]
+      [cleanUtr, permanentScreenshot || savedScreenshotUrl, order.order_number, order.id]
     );
 
     const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
@@ -1122,8 +1139,126 @@ app.get('/api/stats', authenticateToken, requireRole('OWNER'), async (req, res) 
 });
 
 // =========================================================================
-// SUPPORT TICKETS API
+// REFERRAL & EARN SYSTEM API
 // =========================================================================
+
+async function checkAndProcessReferralReward(customerId, orderNum) {
+  try {
+    const refRes = await db.query("SELECT * FROM referrals WHERE referred_id = $1 AND status = 'Pending' LIMIT 1;", [customerId]);
+    if (!refRes.rows || refRes.rows.length === 0) return;
+    const refRecord = refRes.rows[0];
+
+    // Check if this is customer's first order
+    const orderCountRes = await db.query("SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND order_number != $2 AND order_status != 'Cancelled';", [customerId, orderNum]);
+    const previousOrdersCount = Number(orderCountRes.rows[0]?.count || 0);
+
+    if (previousOrdersCount === 0) {
+      const rewardAmt = Number(refRecord.reward_amount || 30);
+
+      // Update referral to Completed
+      await db.query("UPDATE referrals SET status = 'Completed', order_number = $1 WHERE id = $2;", [orderNum, refRecord.id]);
+
+      // Credit Referrer Wallet
+      if (refRecord.referrer_id) {
+        await db.query("UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2;", [rewardAmt, refRecord.referrer_id]);
+
+        // Record Wallet Transaction
+        await db.query(
+          "INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time) VALUES ($1, $2, $3, $4, $5, $6);",
+          ['wtx_' + Date.now(), refRecord.referrer_id, rewardAmt, 'CREDIT', `Referral reward for ${refRecord.referred_name || 'friend'}'s first order (#${orderNum})`, new Date().toLocaleString('en-IN')]
+        );
+
+        // Send Notification to Referrer
+        await db.query(
+          "INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
+          ['notif_' + Date.now(), 'CUSTOMER', refRecord.referrer_id, 'Referral Reward Earned! 🎉', `You earned ₹${rewardAmt} because ${refRecord.referred_name || 'your friend'} placed their first order!`, 'REFERRAL', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Process Referral Reward Error:', err);
+  }
+}
+
+app.get('/api/referrals/stats', authenticateToken, async (req, res) => {
+  try {
+    const userRes = await db.query('SELECT referral_code, wallet_balance, show_on_leaderboard FROM users WHERE id = $1;', [req.user.id]);
+    const user = userRes.rows[0] || req.user;
+
+    const historyRes = await db.query('SELECT * FROM referrals WHERE referrer_id = $1 ORDER BY created_at DESC;', [req.user.id]);
+    const history = historyRes.rows || [];
+
+    const completed = history.filter(r => r.status === 'Completed');
+    const pending = history.filter(r => r.status === 'Pending');
+    const totalRewards = completed.reduce((sum, r) => sum + Number(r.reward_amount || 30), 0);
+
+    res.json({
+      success: true,
+      data: {
+        referral_code: user.referral_code || 'TIFFIN10',
+        wallet_balance: Number(user.wallet_balance || 0),
+        total_referrals: history.length,
+        completed_referrals: completed.length,
+        pending_referrals: pending.length,
+        total_rewards_earned: totalRewards,
+        history: history,
+        show_on_leaderboard: user.show_on_leaderboard !== false
+      }
+    });
+  } catch (err) {
+    console.error('Fetch Referral Stats Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch referral stats." });
+  }
+});
+
+app.get('/api/referrals/leaderboard', async (req, res) => {
+  try {
+    const lbRes = await db.query(`
+      SELECT u.id, u.name, u.referral_code, 
+             COUNT(r.id) FILTER (WHERE r.status = 'Completed') AS completed_count,
+             COALESCE(SUM(r.reward_amount) FILTER (WHERE r.status = 'Completed'), 0) AS total_earned
+      FROM users u
+      LEFT JOIN referrals r ON u.id = r.referrer_id
+      WHERE u.role = 'CUSTOMER' AND u.show_on_leaderboard = true
+      GROUP BY u.id, u.name, u.referral_code
+      HAVING COUNT(r.id) FILTER (WHERE r.status = 'Completed') > 0
+      ORDER BY completed_count DESC, total_earned DESC
+      LIMIT 10;
+    `);
+
+    res.json({ success: true, data: lbRes.rows || [] });
+  } catch (err) {
+    console.error('Fetch Leaderboard Error:', err);
+    res.json({ success: true, data: [] });
+  }
+});
+
+app.post('/api/referrals/privacy', authenticateToken, async (req, res) => {
+  try {
+    const { show_on_leaderboard } = req.body;
+    const newState = Boolean(show_on_leaderboard);
+    await db.query('UPDATE users SET show_on_leaderboard = $1 WHERE id = $2;', [newState, req.user.id]);
+    res.json({ success: true, message: `Leaderboard privacy updated.` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to update privacy settings." });
+  }
+});
+
+// =========================================================================
+// SUPPORT TICKETS & MESSAGES API
+// =========================================================================
+
+app.get('/api/support/faqs', async (req, res) => {
+  res.json({
+    success: true,
+    data: [
+      { id: 1, question: "What are your opening hours?", answer: "We are open 7 days a week from 06:30 AM to 10:30 PM." },
+      { id: 2, question: "How does QR Pay payment work?", answer: "Scan our official UPI QR code at checkout, make the payment via any UPI app (GPay/PhonePe/Paytm), enter the UTR / Transaction ID and upload the payment screenshot." },
+      { id: 3, question: "How does the Referral & Earn program work?", answer: "Share your referral code with friends. When they register and place their first order, you receive ₹30 added to your wallet!" },
+      { id: 4, question: "Can I cancel my order?", answer: "Orders can be cancelled before the hotel begins preparing your tiffins. Contact support or call helpline +91 9392874900 for assistance." }
+    ]
+  });
+});
 
 app.get('/api/support/tickets', authenticateToken, async (req, res) => {
   try {
@@ -1134,8 +1269,16 @@ app.get('/api/support/tickets', authenticateToken, async (req, res) => {
       params = [req.user.id];
     }
     const tRes = await db.query(queryStr, params);
-    res.json({ success: true, data: tRes.rows || [] });
+    const tickets = tRes.rows || [];
+
+    for (let t of tickets) {
+      const mRes = await db.query('SELECT * FROM support_messages WHERE ticket_id = $1 ORDER BY created_at ASC;', [t.id]);
+      t.messages = mRes.rows || [];
+    }
+
+    res.json({ success: true, data: tickets });
   } catch (err) {
+    console.error('Fetch Support Tickets Error:', err);
     res.status(500).json({ success: false, message: "Error fetching support tickets." });
   }
 });
@@ -1147,7 +1290,7 @@ app.post('/api/support/tickets', authenticateToken, async (req, res) => {
       return res.status(400).json({ success: false, message: "Ticket message is required." });
     }
     const ticketId = 'tkt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-    const ticketNum = 1000 + Math.floor(Math.random() * 9000);
+    const ticketNum = await db.getNextCounter('ticket_counter');
 
     await db.query(
       `INSERT INTO support_tickets (id, ticket_number, customer_id, customer_name, customer_mobile, order_number, category, subject, status)
@@ -1155,10 +1298,84 @@ app.post('/api/support/tickets', authenticateToken, async (req, res) => {
       [ticketId, ticketNum, req.user.id, req.user.name, req.user.mobile, order_number || null, category || 'General', subject || 'Support Request', 'Open']
     );
 
+    // Initial message in support_messages
+    await db.query(
+      `INSERT INTO support_messages (id, ticket_id, sender_role, sender_name, message, date_time)
+       VALUES ($1, $2, $3, $4, $5, $6);`,
+      ['msg_' + Date.now(), ticketId, req.user.role, req.user.name, message.trim(), new Date().toLocaleString('en-IN')]
+    );
+
+    // Notify Owner
+    await db.query(
+      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+      ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Support Ticket', `Ticket #${ticketNum} created by ${req.user.name}: "${subject}"`, 'SUPPORT', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+    );
+
     const createdRes = await db.query('SELECT * FROM support_tickets WHERE id = $1;', [ticketId]);
-    res.json({ success: true, data: createdRes.rows[0], message: "Support ticket created successfully." });
+    res.json({ success: true, data: createdRes.rows[0], message: `Support ticket #${ticketNum} created successfully.` });
   } catch (err) {
+    console.error('Create Ticket Error:', err);
     res.status(500).json({ success: false, message: "Error creating support ticket." });
+  }
+});
+
+app.get('/api/support/tickets/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const mRes = await db.query('SELECT * FROM support_messages WHERE ticket_id = $1 OR ticket_id = (SELECT id FROM support_tickets WHERE ticket_number::text = $1 LIMIT 1) ORDER BY created_at ASC;', [id]);
+    res.json({ success: true, data: mRes.rows || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error fetching ticket messages." });
+  }
+});
+
+app.post('/api/support/tickets/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: "Message content cannot be empty." });
+    }
+
+    const tRes = await db.query('SELECT * FROM support_tickets WHERE id = $1 OR ticket_number::text = $1;', [id]);
+    if (!tRes.rows || tRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Ticket not found." });
+    }
+    const ticket = tRes.rows[0];
+
+    const msgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const senderRole = req.user.role;
+    const senderName = req.user.name;
+
+    await db.query(
+      `INSERT INTO support_messages (id, ticket_id, sender_role, sender_name, message, date_time)
+       VALUES ($1, $2, $3, $4, $5, $6);`,
+      [msgId, ticket.id, senderRole, senderName, message.trim(), new Date().toLocaleString('en-IN')]
+    );
+
+    await db.query('UPDATE support_tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = $1;', [ticket.id]);
+
+    // Send Notification to recipient
+    if (senderRole === 'OWNER' && ticket.customer_id) {
+      await db.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        ['notif_' + Date.now(), 'CUSTOMER', ticket.customer_id, 'Support Ticket Response', `Hotel Owner replied to ticket #${ticket.ticket_number}: "${message.slice(0, 50)}..."`, 'SUPPORT', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+      );
+    } else if (senderRole === 'CUSTOMER') {
+      await db.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        ['notif_' + Date.now(), 'OWNER', ticket.customer_id, 'New Support Ticket Reply', `${ticket.customer_name} replied to ticket #${ticket.ticket_number}`, 'SUPPORT', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+      );
+    }
+
+    const updatedMsgs = await db.query('SELECT * FROM support_messages WHERE ticket_id = $1 ORDER BY created_at ASC;', [ticket.id]);
+    res.json({ success: true, data: updatedMsgs.rows, message: "Message sent successfully." });
+  } catch (err) {
+    console.error('Send Ticket Message Error:', err);
+    res.status(500).json({ success: false, message: "Failed to send message." });
   }
 });
 
@@ -1171,6 +1388,130 @@ app.patch('/api/support/tickets/:id/status', authenticateToken, requireRole('OWN
     res.json({ success: true, data: updated.rows[0], message: `Ticket status updated to ${status}.` });
   } catch (err) {
     res.status(500).json({ success: false, message: "Error updating ticket status." });
+  }
+});
+
+app.delete('/api/support/tickets/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM support_tickets WHERE id = $1 OR ticket_number::text = $1;', [id]);
+    res.json({ success: true, message: "Support ticket deleted permanently." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to delete support ticket." });
+  }
+});
+
+// =========================================================================
+// CUSTOMER HISTORY DELETION & REVIEWS API
+// =========================================================================
+
+app.delete('/api/customer/orders/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM orders WHERE (id = $1 OR order_number = $1) AND customer_id = $2;', [id, req.user.id]);
+    res.json({ success: true, message: "Order removed from history." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to remove order." });
+  }
+});
+
+app.delete('/api/customer/orders', authenticateToken, async (req, res) => {
+  try {
+    await db.query("DELETE FROM orders WHERE customer_id = $1 AND order_status IN ('Delivered', 'Cancelled', 'Rejected');", [req.user.id]);
+    res.json({ success: true, message: "Order history cleared." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to clear order history." });
+  }
+});
+
+app.delete('/api/customer/payments/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM payments WHERE id = $1 AND customer_id = $2;', [id, req.user.id]);
+    res.json({ success: true, message: "Payment log deleted." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to delete payment." });
+  }
+});
+
+app.delete('/api/customer/payments', authenticateToken, async (req, res) => {
+  try {
+    await db.query('DELETE FROM payments WHERE customer_id = $1;', [req.user.id]);
+    res.json({ success: true, message: "Payment history cleared." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to clear payment history." });
+  }
+});
+
+app.get('/api/reviews/stats', async (req, res) => {
+  try {
+    const rRes = await db.query('SELECT rating FROM reviews WHERE is_visible = true;');
+    const rows = rRes.rows || [];
+    const total = rows.length;
+    const avg = total > 0 ? (rows.reduce((s, r) => s + Number(r.rating || 5), 0) / total).toFixed(1) : "5.0";
+    res.json({ success: true, data: { average_rating: Number(avg), total_reviews: total } });
+  } catch (err) {
+    res.json({ success: true, data: { average_rating: 5.0, total_reviews: 0 } });
+  }
+});
+
+app.get('/api/reviews', optionalAuth, async (req, res) => {
+  try {
+    let queryStr = 'SELECT * FROM reviews WHERE is_visible = true ORDER BY created_at DESC;';
+    if (req.user && req.user.role === 'OWNER') {
+      queryStr = 'SELECT * FROM reviews ORDER BY created_at DESC;';
+    }
+    const rRes = await db.query(queryStr);
+    res.json({ success: true, data: rRes.rows || [] });
+  } catch (err) {
+    res.json({ success: true, data: [] });
+  }
+});
+
+app.post('/api/reviews', authenticateToken, async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+    const revId = 'rev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    await db.query(
+      `INSERT INTO reviews (id, customer_id, customer_name, rating, comment, is_visible, date_time)
+       VALUES ($1, $2, $3, $4, $5, true, $6);`,
+      [revId, req.user.id, req.user.name, Number(rating || 5), comment || '', new Date().toLocaleDateString('en-IN')]
+    );
+    res.json({ success: true, message: "Thank you for your feedback!" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to submit review." });
+  }
+});
+
+app.patch('/api/reviews/:id/visibility', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_visible } = req.body;
+    await db.query('UPDATE reviews SET is_visible = $1 WHERE id = $2;', [Boolean(is_visible), id]);
+    res.json({ success: true, message: "Review visibility updated." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to update review visibility." });
+  }
+});
+
+app.post('/api/reviews/:id/reply', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reply } = req.body;
+    await db.query('UPDATE reviews SET owner_reply = $1, reply_date_time = $2 WHERE id = $3;', [reply || '', new Date().toLocaleString('en-IN'), id]);
+    res.json({ success: true, message: "Owner reply published." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to post reply." });
+  }
+});
+
+app.delete('/api/reviews/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM reviews WHERE id = $1;', [id]);
+    res.json({ success: true, message: "Review deleted." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to delete review." });
   }
 });
 
@@ -1279,7 +1620,13 @@ app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
 });
 
 // Catch-all SPA route to serve index.html for root and client routes
+// Missing images/assets return a real 404 (instead of the HTML shell) so broken
+// image links never render as blank/broken QR scanner images.
 app.get('*', (req, res) => {
+  const acceptsHtml = (req.headers.accept || '').includes('text/html');
+  if (!acceptsHtml) {
+    return res.status(404).json({ success: false, message: 'Not found.' });
+  }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

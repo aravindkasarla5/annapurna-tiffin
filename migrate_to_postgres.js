@@ -51,16 +51,7 @@ async function migrate() {
             referred_by, referred_by_code, wallet_balance, loyalty_points, 
             cart, favorites, show_on_leaderboard, sound_enabled, created_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-          ON CONFLICT (id) DO UPDATE SET 
-            name = EXCLUDED.name,
-            mobile = EXCLUDED.mobile,
-            password = EXCLUDED.password,
-            email = EXCLUDED.email,
-            address = EXCLUDED.address,
-            wallet_balance = EXCLUDED.wallet_balance,
-            loyalty_points = EXCLUDED.loyalty_points,
-            cart = EXCLUDED.cart,
-            favorites = EXCLUDED.favorites;`,
+          ON CONFLICT (id) DO NOTHING;`,
           [
             u.id,
             u.name || 'User',
@@ -99,22 +90,7 @@ async function migrate() {
           holidays, upi_id, upi_name, upi_qr_code, is_open, is_qr_pay_enabled, 
           is_phonepe_enabled, description, referral, upi_qr_updated_at
         ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-        ON CONFLICT (id) DO UPDATE SET
-          hotel_name = EXCLUDED.hotel_name,
-          hotel_logo = EXCLUDED.hotel_logo,
-          phone = EXCLUDED.phone,
-          address = EXCLUDED.address,
-          open_time = EXCLUDED.open_time,
-          close_time = EXCLUDED.close_time,
-          holidays = EXCLUDED.holidays,
-          upi_id = EXCLUDED.upi_id,
-          upi_name = EXCLUDED.upi_name,
-          upi_qr_code = EXCLUDED.upi_qr_code,
-          is_open = EXCLUDED.is_open,
-          is_qr_pay_enabled = EXCLUDED.is_qr_pay_enabled,
-          is_phonepe_enabled = EXCLUDED.is_phonepe_enabled,
-          description = EXCLUDED.description,
-          referral = EXCLUDED.referral;`,
+        ON CONFLICT (id) DO NOTHING;`,
         [
           s.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center',
           s.hotel_logo || '/images/tiffin_logo.png',
@@ -183,12 +159,7 @@ async function migrate() {
             net_amount, payment_method, payment_status, order_status, items, 
             cancellation_reason, utr_number, payment_screenshot, screenshot_url, created_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-          ON CONFLICT (id) DO UPDATE SET
-            order_status = EXCLUDED.order_status,
-            payment_status = EXCLUDED.payment_status,
-            utr_number = EXCLUDED.utr_number,
-            payment_screenshot = EXCLUDED.payment_screenshot,
-            screenshot_url = EXCLUDED.screenshot_url;`,
+          ON CONFLICT (id) DO NOTHING;`,
           [
             o.id,
             o.order_number,
@@ -228,7 +199,7 @@ async function migrate() {
             id, order_number, customer_id, customer_name, customer_mobile, 
             amount, payment_method, payment_status, utr_number, screenshot_url, notes, created_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          ON CONFLICT (id) DO UPDATE SET payment_status = EXCLUDED.payment_status;`,
+          ON CONFLICT (id) DO NOTHING;`,
           [
             p.id,
             p.order_number,
@@ -437,10 +408,20 @@ async function migrate() {
   }
 
   // 12. Set Sequence Counters for Order & Ticket IDs
+  // Only update counters if seed value is GREATER than what is already in DB — 
+  // never lower counters as that would generate duplicate Order/Ticket numbers.
   const maxOrderNum = Number(dbData.order_counter || 1045);
   const maxTicketNum = Number(dbData.ticket_counter || 1005);
-  await db.query(`UPDATE counters SET current_value = $1 WHERE name = 'order_counter';`, [maxOrderNum]);
-  await db.query(`UPDATE counters SET current_value = $1 WHERE name = 'ticket_counter';`, [maxTicketNum]);
+  const existingOrderCounter = await db.query("SELECT current_value FROM counters WHERE name = 'order_counter';");
+  const existingTicketCounter = await db.query("SELECT current_value FROM counters WHERE name = 'ticket_counter';");
+  const currentOrderVal = Number(existingOrderCounter.rows[0]?.current_value || 0);
+  const currentTicketVal = Number(existingTicketCounter.rows[0]?.current_value || 0);
+  if (maxOrderNum > currentOrderVal) {
+    await db.query(`UPDATE counters SET current_value = $1 WHERE name = 'order_counter';`, [maxOrderNum]);
+  }
+  if (maxTicketNum > currentTicketVal) {
+    await db.query(`UPDATE counters SET current_value = $1 WHERE name = 'ticket_counter';`, [maxTicketNum]);
+  }
 
   console.log('\n======================================================');
   console.log('   MIGRATION COMPLETED SUCCESSFULLY!');

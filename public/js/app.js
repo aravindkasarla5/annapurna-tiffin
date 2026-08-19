@@ -190,7 +190,11 @@ class TiffinApp {
 
   async fetchSettings(silent = false) {
     try {
-      const res = await fetch(`${API_BASE}/settings`);
+      const res = await fetch(`${API_BASE}/settings`, { cache: 'no-cache' });
+      if (res.status === 304) {
+        // Settings unchanged since last poll (ETag revalidation) — cached copy is valid.
+        return;
+      }
       const json = await res.json();
       if (json.success && json.success !== false) {
         const incoming = json.settings || json.data || {};
@@ -2088,8 +2092,15 @@ class TiffinApp {
     // Dynamically load shopkeeper's uploaded QR code scanner image & UPI ID
     if (this.settings) {
       const qrImg = document.getElementById('checkoutQrScannerImg');
-      if (qrImg && this.settings.upi_qr_code) {
-        qrImg.src = this.settings.upi_qr_code;
+      if (qrImg) {
+        const qrSrc = this.getQrDisplayUrl();
+        if (qrSrc) {
+          if (qrImg.getAttribute('data-raw-src') !== qrSrc) {
+            qrImg.src = qrSrc;
+            qrImg.setAttribute('data-raw-src', qrSrc);
+          }
+          qrImg.style.display = 'block';
+        }
       }
       const upiDisplay = document.getElementById('checkoutUpiIdDisplay');
       if (upiDisplay && this.settings.upi_id) {
@@ -2404,6 +2415,7 @@ class TiffinApp {
 
   removeOwnerQrScanner() {
     this.tempOwnerQrCode = '';
+    this.isQrRemovedFlag = true;
     if (this.settings) {
       this.settings.upi_qr_code = '';
     }
@@ -2426,6 +2438,29 @@ class TiffinApp {
     });
   }
 
+  zoomCheckoutQrCode() {
+    const qrSrc = this.getQrDisplayUrl();
+    if (!qrSrc) {
+      this.showToast('QR Scanner is not available.', 'warning');
+      return;
+    }
+    this.viewFullScreenshot(qrSrc, 'Official Shop Owner UPI QR Code Scanner');
+  }
+
+  toggleLightboxZoom() {
+    const img = document.getElementById('lightboxImg');
+    if (!img) return;
+    const isZoomed = img.classList.contains('zoomed-in');
+    img.classList.toggle('zoomed-in', !isZoomed);
+    if (!isZoomed) {
+      img.style.transform = 'scale(1.6)';
+      img.style.cursor = 'zoom-out';
+    } else {
+      img.style.transform = 'scale(1.0)';
+      img.style.cursor = 'zoom-in';
+    }
+  }
+
   viewFullScreenshot(src, title = 'Customer Payment Proof') {
     const backdrop = document.getElementById('lightboxModalBackdrop');
     const img = document.getElementById('lightboxImg');
@@ -2437,6 +2472,12 @@ class TiffinApp {
     if (!src) {
       this.showToast('Image URL is not available.', 'warning');
       return;
+    }
+
+    if (img) {
+      img.classList.remove('zoomed-in');
+      img.style.transform = 'scale(1.0)';
+      img.style.cursor = 'zoom-in';
     }
 
     if (titleEl) titleEl.innerText = title;
@@ -2482,6 +2523,8 @@ class TiffinApp {
     if (loader) loader.classList.add('hidden');
     if (errorBox) errorBox.classList.add('hidden');
     if (img) {
+      img.classList.remove('zoomed-in');
+      img.style.transform = 'scale(1.0)';
       img.src = '';
       img.style.display = 'none';
     }
@@ -2552,6 +2595,12 @@ class TiffinApp {
     };
 
     this.isSubmittingOrder = true;
+    const btnSubmit = document.getElementById('btnCheckoutSubmit');
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Placing Order...`;
+    }
+
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/orders`, {
         method: 'POST',
@@ -2577,9 +2626,14 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Error submitting order:', err);
-      this.showToast('Server communication error.', 'error');
+      this.showToast('Server communication error placing order.', 'error');
     } finally {
       this.isSubmittingOrder = false;
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        const grandTotal = this.calculateCartTotals ? this.calculateCartTotals().grandTotal : 0;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotal}</span>)</span>`;
+      }
     }
   }
 
@@ -4519,6 +4573,7 @@ class TiffinApp {
       upi_id: (upiIdInput !== undefined && upiIdInput !== null) ? upiIdInput : (this.settings?.upi_id || ''),
       description: (descInput !== undefined && descInput !== null) ? descInput : (this.settings?.description || ''),
       upi_qr_code: qrVal,
+      remove_qr: Boolean(this.isQrRemovedFlag),
       is_open: isHotelOpen,
       is_qr_pay_enabled: isQrEnabled,
       is_phonepe_enabled: isPhonePeEnabled,
@@ -4542,6 +4597,7 @@ class TiffinApp {
         // Update local state from PostgreSQL response — never use stale local values
         this.settings = json.settings || json.data;
         this.tempOwnerQrCode = null;
+        this.isQrRemovedFlag = false;
         this.updateHeaderAndSettingsUI();
         this.populateSettingsForm();
         this.showToast('🟢 Settings saved & published successfully!', 'success');
@@ -4554,6 +4610,17 @@ class TiffinApp {
       // Do NOT clear fields or overwrite previous saved values on network error
       this.showToast('Failed to save settings. Please try again.', 'error');
     }
+  }
+
+  // Returns the QR scanner URL ready for <img> display with cache-busting.
+  // Base64 data URLs are returned as-is (no cache issue); file URLs get a ?t= suffix
+  // using upi_qr_updated_at so a replaced scanner is always fetched fresh.
+  getQrDisplayUrl() {
+    const qrCode = this.settings?.upi_qr_code || '';
+    if (!qrCode) return '';
+    if (qrCode.startsWith('data:')) return qrCode;
+    const updatedAt = this.settings?.upi_qr_updated_at || Date.now();
+    return qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`;
   }
 
   updateHeaderAndSettingsUI() {
@@ -4606,8 +4673,7 @@ class TiffinApp {
     const elCheckoutUpi = document.getElementById('checkoutUpiIdDisplay');
     if (elCheckoutUpi) elCheckoutUpi.innerText = upi;
 
-    const updatedAt = this.settings?.upi_qr_updated_at || Date.now();
-    const cacheBustQr = qrCode ? (qrCode.startsWith('data:') ? qrCode : (qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`)) : '';
+    const cacheBustQr = this.getQrDisplayUrl();
 
     const checkoutQr = document.getElementById('checkoutQrScannerImg');
     const checkoutQrWrapper = document.getElementById('checkoutQrWrapper');
@@ -4621,9 +4687,17 @@ class TiffinApp {
         checkoutQr.style.display = 'block';
         if (checkoutQrWrapper) checkoutQrWrapper.style.display = 'block';
         if (checkoutQrUnavail) checkoutQrUnavail.classList.add('hidden');
+        // If the saved scanner points to a file that no longer exists (e.g. after a
+        // server restart on ephemeral storage), fall back to the "unavailable" notice.
+        checkoutQr.onerror = () => {
+          checkoutQr.style.display = 'none';
+          if (checkoutQrWrapper) checkoutQrWrapper.style.display = 'none';
+          if (checkoutQrUnavail) checkoutQrUnavail.classList.remove('hidden');
+        };
       } else {
         checkoutQr.src = '';
         checkoutQr.removeAttribute('data-raw-src');
+        checkoutQr.onerror = null;
         checkoutQr.style.display = 'none';
         if (checkoutQrWrapper) checkoutQrWrapper.style.display = 'none';
         if (checkoutQrUnavail) checkoutQrUnavail.classList.remove('hidden');
@@ -4639,9 +4713,11 @@ class TiffinApp {
           setQr.setAttribute('data-raw-src', displayQr);
         }
         setQr.style.display = 'block';
+        setQr.onerror = () => { setQr.style.display = 'none'; };
       } else {
         setQr.src = '';
         setQr.removeAttribute('data-raw-src');
+        setQr.onerror = null;
         setQr.style.display = 'none';
       }
     }
@@ -4680,20 +4756,14 @@ class TiffinApp {
 
   zoomCheckoutQrCode() {
     const checkoutImg = document.getElementById('checkoutQrScannerImg');
-    let qrCode = this.settings?.upi_qr_code || checkoutImg?.getAttribute('data-raw-src') || checkoutImg?.src || '';
+    const qrCode = this.getQrDisplayUrl() || checkoutImg?.getAttribute('data-raw-src') || checkoutImg?.src || '';
 
     if (!qrCode) {
       this.showToast('Online payment scanner is currently unavailable.', 'info');
       return;
     }
 
-    let cacheBustQr = qrCode;
-    if (!qrCode.startsWith('data:')) {
-      const updatedAt = this.settings?.upi_qr_updated_at || Date.now();
-      cacheBustQr = qrCode.includes('?') ? `${qrCode}&t=${updatedAt}` : `${qrCode}?t=${updatedAt}`;
-    }
-
-    this.viewFullScreenshot(cacheBustQr, 'Owner UPI QR Code Scanner');
+    this.viewFullScreenshot(qrCode, 'Owner UPI QR Code Scanner');
   }
 
   // =========================================================================
