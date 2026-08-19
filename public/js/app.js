@@ -46,6 +46,9 @@ class TiffinApp {
     this.isFirstNotificationFetch = true;
     this.audioCtx = null;
 
+    // Track active/processing operations for order buttons
+    this.processingOrders = new Set();
+
     // Order Search & Filter State
     this.custOrderSearch = '';
     this.custOrderStatus = 'ALL';
@@ -2658,22 +2661,48 @@ class TiffinApp {
     }
   }
 
-  async verifyOrderPayment(orderId, newStatus) {
+  async verifyOrderPayment(orderId, newStatus, targetBtn = null) {
+    const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    const key = `pay_${order.id}`;
+    if (this.processingOrders.has(key)) return;
+    this.processingOrders.add(key);
+
+    if (targetBtn && targetBtn.innerHTML) {
+      targetBtn.disabled = true;
+      targetBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
+    }
+
+    const prevPayStatus = order.payment_status;
+    order.payment_status = newStatus;
+    this.renderSingleOrderCard(order.id);
+
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/payment-verify`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${order.id}/payment-verify`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payment_status: newStatus })
       });
       const json = await res.json();
       if (json.success) {
-        this.showToast(json.message, 'success');
-        await this.fetchOrders();
+        if (json.data) {
+          Object.assign(order, json.data);
+        }
+        this.showToast(json.message || 'Payment status updated', 'success');
+        this.renderSingleOrderCard(order.id);
       } else {
-        this.showToast(json.message || 'Failed to update payment status', 'error');
+        order.payment_status = prevPayStatus;
+        this.renderSingleOrderCard(order.id);
+        this.showToast(json.message || 'Unable to update payment status. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error verifying payment:', err);
+      order.payment_status = prevPayStatus;
+      this.renderSingleOrderCard(order.id);
+      this.showToast('Unable to update payment status. Please try again.', 'error');
+    } finally {
+      this.processingOrders.delete(key);
     }
   }
 
@@ -3360,7 +3389,7 @@ class TiffinApp {
     const isPendingPayment = order.payment_status.includes('Pending') || order.payment_status.includes('Verification');
 
     return `
-      <div class="co-row-card owner-mode ${isRejected ? 'is-rejected' : ''}">
+      <div class="co-row-card owner-mode ${isRejected ? 'is-rejected' : ''}" data-order-card-id="${order.id}">
         ${isRejected ? `
           <!-- OWNER REJECTED BANNER WITH REASON & QUICK ACTIONS -->
           <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
@@ -3372,10 +3401,10 @@ class TiffinApp {
               </div>
             </div>
             <div style="display: flex; gap: 8px;">
-              <button type="button" class="btn-sm-status" onclick="app.restoreRejectedOrder('${order.id}')" style="background: rgba(76, 175, 80, 0.25); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+              <button type="button" class="btn-sm-status" onclick="app.restoreRejectedOrder('${order.id}', this)" style="background: rgba(76, 175, 80, 0.25); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
                 <i class="fa-solid fa-rotate-left"></i> Restore / Accept Order
               </button>
-              <button type="button" class="btn-sm-status" onclick="app.deleteOrder('${order.id}')" style="background: rgba(229,57,53,0.25); color: #FF5252; border: 1px solid rgba(229,57,53,0.5); padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Permanently delete from database history">
+              <button type="button" class="btn-sm-status" onclick="app.deleteOrder('${order.id}', this)" style="background: rgba(229,57,53,0.25); color: #FF5252; border: 1px solid rgba(229,57,53,0.5); padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Permanently delete from database history">
                 <i class="fa-solid fa-trash-can"></i> Delete Permanently
               </button>
             </div>
@@ -3390,7 +3419,7 @@ class TiffinApp {
             <span class="co-row-status-badge" style="border-color: ${statusColor}; color: ${statusColor};">
               <i class="fa-solid ${statusIcon}"></i> ${statusLabel}
             </span>
-            <button type="button" class="btn-sm-status" onclick="app.deleteOrder('${order.id}')" style="background: rgba(229,57,53,0.16); color: #FF5252; border: 1px solid rgba(229,57,53,0.4); padding: 3px 9px; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Delete order record permanently">
+            <button type="button" class="btn-sm-status" onclick="app.deleteOrder('${order.id}', this)" style="background: rgba(229,57,53,0.16); color: #FF5252; border: 1px solid rgba(229,57,53,0.4); padding: 3px 9px; border-radius: 6px; font-weight: 700; font-size: 0.74rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Delete order record permanently">
               <i class="fa-solid fa-trash-can"></i> Delete
             </button>
             <span class="co-row-date"><i class="fa-regular fa-clock"></i> ${dateFormatted}</span>
@@ -3480,16 +3509,16 @@ class TiffinApp {
             <div class="co-actions-title"><i class="fa-solid fa-fire-burner" style="color: var(--accent-gold);"></i> Kitchen Operations</div>
             <div class="co-row-actions owner-actions" style="display: flex; flex-direction: column; gap: 8px;">
               ${isRejected ? `
-                <button type="button" class="co-row-btn-action accept" onclick="app.restoreRejectedOrder('${order.id}')" style="background: linear-gradient(135deg, #388E3C, #2E7D32);">
+                <button type="button" class="co-row-btn-action accept" onclick="app.restoreRejectedOrder('${order.id}', this)" style="background: linear-gradient(135deg, #388E3C, #2E7D32);">
                   <i class="fa-solid fa-rotate-left"></i> Restore & Accept Order
                 </button>
-                <button type="button" class="co-row-btn-action reject" onclick="app.deleteOrder('${order.id}')" style="background: rgba(229,57,53,0.2); border: 1px solid #E53935; color: #FF5252;">
+                <button type="button" class="co-row-btn-action reject" onclick="app.deleteOrder('${order.id}', this)" style="background: rgba(229,57,53,0.2); border: 1px solid #E53935; color: #FF5252;">
                   <i class="fa-solid fa-trash-can"></i> Delete Permanently
                 </button>
               ` : ''}
 
               ${isReceived ? `
-                <button class="co-row-btn-action accept" onclick="app.updateOrderStatus('${order.id}', 'Preparing')">
+                <button class="co-row-btn-action accept" onclick="app.updateOrderStatus('${order.id}', 'Preparing', this)">
                   <i class="fa-solid fa-fire-burner"></i> Accept & Start Preparing
                 </button>
                 <button class="co-row-btn-action reject" onclick="app.openRejectOrderModal('${order.id}')">
@@ -3498,23 +3527,23 @@ class TiffinApp {
               ` : ''}
 
               ${isPreparing ? `
-                <button class="co-row-btn-action ready" onclick="app.updateOrderStatus('${order.id}', 'Ready')">
+                <button class="co-row-btn-action ready" onclick="app.updateOrderStatus('${order.id}', 'Ready', this)">
                   <i class="fa-solid fa-bell-concierge"></i> Mark Ready for Serving
                 </button>
               ` : ''}
 
               ${isReady ? `
-                <button class="co-row-btn-action complete" onclick="app.updateOrderStatus('${order.id}', 'Completed')">
+                <button class="co-row-btn-action complete" onclick="app.updateOrderStatus('${order.id}', 'Completed', this)">
                   <i class="fa-solid fa-circle-check"></i> Mark Order Completed
                 </button>
               ` : ''}
 
               ${isPendingPayment && !isRejected ? `
                 <div style="display: flex; gap: 6px; margin-top: 4px;">
-                  <button type="button" class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Paid (UPI Verified)')" style="background: rgba(76,175,80,0.2); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; cursor: pointer; flex: 1; text-align: center;">
+                  <button type="button" class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Paid (UPI Verified)', this)" style="background: rgba(76,175,80,0.2); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; cursor: pointer; flex: 1; text-align: center;">
                     <i class="fa-solid fa-check"></i> Verify Paid
                   </button>
-                  <button type="button" class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Payment Failed')" style="background: rgba(229,57,53,0.2); color: #E53935; border: 1px solid #E53935; padding: 6px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; cursor: pointer; flex: 1; text-align: center;">
+                  <button type="button" class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Payment Failed', this)" style="background: rgba(229,57,53,0.2); color: #E53935; border: 1px solid #E53935; padding: 6px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; cursor: pointer; flex: 1; text-align: center;">
                     <i class="fa-solid fa-xmark"></i> Reject Pay
                   </button>
                 </div>
@@ -3995,7 +4024,7 @@ class TiffinApp {
     const isReady = order.order_status === 'Ready';
 
     return `
-      <div class="order-card">
+      <div class="order-card" ${isOwnerView ? `data-order-card-id="${order.id}"` : ''}>
         <div class="order-card-header">
           <div>
             <span class="order-num-badge">#${order.order_number}</span>
@@ -4054,10 +4083,10 @@ class TiffinApp {
 
         ${isOwnerView && (order.payment_status.includes('Pending') || order.payment_status.includes('Verification')) ? `
           <div style="display: flex; gap: 6px; margin-top: 8px;">
-            <button class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Paid (UPI Verified)')" style="background: rgba(76,175,80,0.2); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; flex: 1;">
+            <button class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Paid (UPI Verified)', this)" style="background: rgba(76,175,80,0.2); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; flex: 1;">
               <i class="fa-solid fa-circle-check"></i> Verify & Mark Paid
             </button>
-            <button class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Payment Failed')" style="background: rgba(229,57,53,0.2); color: #E53935; border: 1px solid #E53935; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; flex: 1;">
+            <button class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Payment Failed', this)" style="background: rgba(229,57,53,0.2); color: #E53935; border: 1px solid #E53935; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; flex: 1;">
               <i class="fa-solid fa-circle-xmark"></i> Reject Payment
             </button>
           </div>
@@ -4095,22 +4124,22 @@ class TiffinApp {
         ${isOwnerView ? `
           <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
             ${isPending ? `
-              <button class="btn-primary-block" onclick="app.updateOrderStatus('${order.id}', 'Preparing')" style="flex: 2; padding: 8px; font-size: 0.82rem;">
+              <button class="btn-primary-block" onclick="app.updateOrderStatus('${order.id}', 'Preparing', this)" style="flex: 2; padding: 8px; font-size: 0.82rem;">
                 <i class="fa-solid fa-check"></i> Accept & Prepare
               </button>
-              <button class="role-btn" onclick="app.updateOrderStatus('${order.id}', 'Rejected')" style="flex: 1; justify-content: center; border: 1px solid var(--color-unavailable); color: var(--color-unavailable);">
+              <button class="role-btn" onclick="app.updateOrderStatus('${order.id}', 'Rejected', this)" style="flex: 1; justify-content: center; border: 1px solid var(--color-unavailable); color: var(--color-unavailable);">
                 Reject
               </button>
             ` : ''}
 
             ${isPreparing ? `
-              <button class="btn-primary-block" onclick="app.updateOrderStatus('${order.id}', 'Ready')" style="flex: 1; padding: 8px; font-size: 0.82rem; background: linear-gradient(135deg, #0288D1, #0277BD);">
+              <button class="btn-primary-block" onclick="app.updateOrderStatus('${order.id}', 'Ready', this)" style="flex: 1; padding: 8px; font-size: 0.82rem; background: linear-gradient(135deg, #0288D1, #0277BD);">
                 <i class="fa-solid fa-bell"></i> Mark Ready for Serving
               </button>
             ` : ''}
 
             ${isReady ? `
-              <button class="btn-primary-block" onclick="app.updateOrderStatus('${order.id}', 'Completed')" style="flex: 1; padding: 8px; font-size: 0.82rem; background: linear-gradient(135deg, #388E3C, #2E7D32);">
+              <button class="btn-primary-block" onclick="app.updateOrderStatus('${order.id}', 'Completed', this)" style="flex: 1; padding: 8px; font-size: 0.82rem; background: linear-gradient(135deg, #388E3C, #2E7D32);">
                 <i class="fa-solid fa-circle-check"></i> Mark Order Completed
               </button>
             ` : ''}
@@ -4134,24 +4163,98 @@ class TiffinApp {
     `;
   }
 
-  async updateOrderStatus(orderId, newStatus) {
+  renderSingleOrderCard(orderId) {
+    const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    const cardElements = document.querySelectorAll(`[data-order-card-id="${order.id}"]`);
+    if (!cardElements || cardElements.length === 0) {
+      this.renderOrders();
+      return;
+    }
+
+    let isVisibleInCurrentFilter = true;
+    if (this.ownerOrderFilter === 'ACTIVE') {
+      isVisibleInCurrentFilter = ['Received', 'Preparing', 'Ready'].includes(order.order_status);
+    } else if (this.ownerOrderFilter === 'COMPLETED') {
+      isVisibleInCurrentFilter = order.order_status === 'Completed';
+    } else if (this.ownerOrderFilter === 'REJECTED') {
+      isVisibleInCurrentFilter = ['Rejected', 'Cancelled'].includes(order.order_status);
+    }
+    isVisibleInCurrentFilter = isVisibleInCurrentFilter && this.filterSingleOrder(order, true);
+
+    const newCardHTML = this.createOwnerOrderCardHTML(order);
+
+    cardElements.forEach(card => {
+      if (!isVisibleInCurrentFilter) {
+        card.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+        card.style.opacity = '0';
+        card.style.transform = 'scale(0.95)';
+        setTimeout(() => {
+          card.remove();
+          const dashContainer = document.getElementById('ownerDashboardOrdersList');
+          const listContainer = document.getElementById('ownerOrdersList');
+          if ((dashContainer && !dashContainer.querySelector('[data-order-card-id]')) ||
+              (listContainer && !listContainer.querySelector('[data-order-card-id]'))) {
+            this.renderOrders();
+          }
+        }, 200);
+      } else {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = newCardHTML;
+        const newCardNode = tempDiv.firstElementChild;
+        if (newCardNode) {
+          card.parentNode.replaceChild(newCardNode, card);
+        }
+      }
+    });
+
+    this.renderSalesAnalytics();
+  }
+
+  async updateOrderStatus(orderId, newStatus, targetBtn = null) {
+    const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    const key = `status_${order.id}`;
+    if (this.processingOrders.has(key)) return;
+    this.processingOrders.add(key);
+
+    if (targetBtn && targetBtn.innerHTML) {
+      targetBtn.disabled = true;
+      targetBtn.setAttribute('data-orig-html', targetBtn.innerHTML);
+      targetBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
+    }
+
+    const prevStatus = order.order_status;
+    order.order_status = newStatus;
+    this.renderSingleOrderCard(order.id);
+
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/status`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${order.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_status: newStatus })
       });
       const json = await res.json();
       if (json.success) {
-        this.showToast(json.message, 'success');
-        await this.fetchOrders();
-        await this.fetchStats();
+        if (json.data) {
+          Object.assign(order, json.data);
+        }
+        this.showToast(json.message || `Order status updated to ${newStatus}`, 'success');
+        this.renderSingleOrderCard(order.id);
       } else {
-        this.showToast(json.message || 'Failed to update order status', 'error');
+        order.order_status = prevStatus;
+        this.renderSingleOrderCard(order.id);
+        this.showToast(json.message || 'Unable to update order. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error updating order status:', err);
-      this.showToast('Failed to update order status.', 'error');
+      order.order_status = prevStatus;
+      this.renderSingleOrderCard(order.id);
+      this.showToast('Unable to update order. Please try again.', 'error');
+    } finally {
+      this.processingOrders.delete(key);
     }
   }
 
@@ -4186,51 +4289,107 @@ class TiffinApp {
     const reason = document.getElementById('rejectOrderReasonInput')?.value || 'Rejected by Hotel Manager';
 
     if (!orderId) return;
+    const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    const key = `status_${order.id}`;
+    if (this.processingOrders.has(key)) return;
+    this.processingOrders.add(key);
+
+    const submitBtn = document.querySelector('#rejectOrderForm button[type="submit"]');
+    let origSubmitHTML = '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      origSubmitHTML = submitBtn.innerHTML;
+      submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Rejecting...`;
+    }
+
+    const prevStatus = order.order_status;
+    const prevReason = order.rejection_reason;
+
+    this.closeRejectOrderModal();
+    order.order_status = 'Rejected';
+    order.rejection_reason = reason;
+    this.renderSingleOrderCard(order.id);
 
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/status`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${order.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_status: 'Rejected', rejection_reason: reason })
       });
       const json = await res.json();
       if (json.success) {
+        if (json.data) {
+          Object.assign(order, json.data);
+        }
         this.showToast(json.message || `Order marked as Rejected. Moved to Rejected Orders.`, 'info');
-        this.closeRejectOrderModal();
-        await this.fetchOrders();
-        await this.fetchStats();
+        this.renderSingleOrderCard(order.id);
       } else {
-        this.showToast(json.message || 'Failed to reject order', 'error');
+        order.order_status = prevStatus;
+        order.rejection_reason = prevReason;
+        this.renderSingleOrderCard(order.id);
+        this.showToast(json.message || 'Unable to reject order. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error rejecting order:', err);
-      this.showToast('Failed to reject order.', 'error');
+      order.order_status = prevStatus;
+      order.rejection_reason = prevReason;
+      this.renderSingleOrderCard(order.id);
+      this.showToast('Unable to reject order. Please try again.', 'error');
+    } finally {
+      this.processingOrders.delete(key);
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origSubmitHTML || 'Confirm Rejection';
+      }
     }
   }
 
-  async restoreRejectedOrder(orderId) {
+  async restoreRejectedOrder(orderId, targetBtn = null) {
     const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
     if (!order) return;
 
     if (!confirm(`Restore Order #${order.order_number} back to active kitchen queue?`)) return;
 
+    const key = `status_${order.id}`;
+    if (this.processingOrders.has(key)) return;
+    this.processingOrders.add(key);
+
+    if (targetBtn && targetBtn.innerHTML) {
+      targetBtn.disabled = true;
+      targetBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Restoring...`;
+    }
+
+    const prevStatus = order.order_status;
+    order.order_status = 'Received';
+    this.renderSingleOrderCard(order.id);
+
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/status`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${order.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_status: 'Received' })
       });
       const json = await res.json();
       if (json.success) {
+        if (json.data) {
+          Object.assign(order, json.data);
+        }
         this.showToast(`Order #${order.order_number} restored to Received status!`, 'success');
-        await this.fetchOrders();
-        await this.fetchStats();
+        this.renderSingleOrderCard(order.id);
       } else {
-        this.showToast(json.message || 'Failed to restore order', 'error');
+        order.order_status = prevStatus;
+        this.renderSingleOrderCard(order.id);
+        this.showToast(json.message || 'Unable to restore order. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error restoring order:', err);
-      this.showToast('Failed to restore order.', 'error');
+      order.order_status = prevStatus;
+      this.renderSingleOrderCard(order.id);
+      this.showToast('Unable to restore order. Please try again.', 'error');
+    } finally {
+      this.processingOrders.delete(key);
     }
   }
 
@@ -4362,23 +4521,60 @@ class TiffinApp {
     }
   }
 
-  async deleteOrder(orderId) {
+  async deleteOrder(orderId, targetBtn = null) {
     const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
     if (!order) return;
 
     if (!confirm(`Are you sure you want to delete Order #${order.order_number}? This action cannot be undone.`)) return;
 
+    const key = `delete_${order.id}`;
+    if (this.processingOrders.has(key)) return;
+    this.processingOrders.add(key);
+
+    if (targetBtn && targetBtn.innerHTML) {
+      targetBtn.disabled = true;
+      targetBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Deleting...`;
+    }
+
+    const cardElements = document.querySelectorAll(`[data-order-card-id="${order.id}"]`);
+
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/orders/${order.id}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) {
-        this.showToast(json.message, 'success');
-        await this.fetchOrders();
+        this.showToast(json.message || 'Order deleted successfully.', 'success');
+        this.orders = this.orders.filter(o => o.id !== order.id);
+        cardElements.forEach(card => {
+          card.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+          card.style.opacity = '0';
+          card.style.transform = 'scale(0.95)';
+          setTimeout(() => card.remove(), 200);
+        });
+        setTimeout(() => {
+          const dashContainer = document.getElementById('ownerDashboardOrdersList');
+          const listContainer = document.getElementById('ownerOrdersList');
+          if ((dashContainer && !dashContainer.querySelector('[data-order-card-id]')) ||
+              (listContainer && !listContainer.querySelector('[data-order-card-id]'))) {
+            this.renderOrders();
+          } else {
+            this.renderSalesAnalytics();
+          }
+        }, 250);
       } else {
-        this.showToast(json.message || 'Failed to delete order', 'error');
+        if (targetBtn) {
+          targetBtn.disabled = false;
+          targetBtn.innerHTML = targetBtn.getAttribute('data-orig-html') || targetBtn.innerHTML;
+        }
+        this.showToast(json.message || 'Unable to delete order. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error deleting order:', err);
+      if (targetBtn) {
+        targetBtn.disabled = false;
+      }
+      this.showToast('Unable to delete order. Please try again.', 'error');
+    } finally {
+      this.processingOrders.delete(key);
     }
   }
 
