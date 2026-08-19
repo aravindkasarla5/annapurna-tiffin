@@ -586,7 +586,12 @@ class TiffinApp {
           localStorage.setItem('tiffin_customer_last_activity', Date.now().toString());
         }
 
-        this.showToast(json.message, 'success');
+        const custName = this.getFormattedCustomerName();
+        const welcomeMsg = this.currentRole === 'OWNER'
+          ? 'Welcome back, Owner! 👋'
+          : (custName ? `Welcome back, ${custName}! 👋` : 'Welcome back! 👋');
+
+        this.showToast(welcomeMsg, 'success');
         this.toggleAuthModal(false);
         this.updateUserAuthBadgeUI();
 
@@ -645,7 +650,10 @@ class TiffinApp {
         this.favorites = [];
         this.referralStats = null;
 
-        this.showToast(json.message, 'success');
+        const custName = this.getFormattedCustomerName();
+        const welcomeMsg = custName ? `Welcome back, ${custName}! 👋` : 'Welcome back! 👋';
+
+        this.showToast(welcomeMsg, 'success');
         this.toggleAuthModal(false);
         this.updateUserAuthBadgeUI();
 
@@ -858,6 +866,15 @@ class TiffinApp {
     this.updateCartUI();
   }
 
+  getFormattedCustomerName() {
+    if (!this.currentUser) return '';
+    const rawName = this.currentUser.name || this.currentUser.full_name || this.currentUser.username || '';
+    if (!rawName) return '';
+    const cleaned = String(rawName).trim();
+    if (!cleaned || cleaned.toLowerCase() === 'undefined' || cleaned.toLowerCase() === 'null') return '';
+    return cleaned;
+  }
+
   updateUserAuthBadgeUI() {
     const guestAuth = document.getElementById('guestAuthWrapper');
     const btnLogin = document.getElementById('btnLoginHeader');
@@ -868,6 +885,7 @@ class TiffinApp {
     const btnProfile = document.getElementById('btnHeaderProfile');
     const lblProfile = document.getElementById('headerProfileLabel');
     const bannerGreeting = document.getElementById('bannerGreeting');
+    const ownerGreetingText = document.getElementById('ownerGreetingText');
 
     if (this.currentUser) {
       if (guestAuth) guestAuth.classList.add('hidden');
@@ -892,10 +910,11 @@ class TiffinApp {
         const elFullName = document.getElementById('headerProfileFullName');
         const elInitial = document.getElementById('headerProfileInitial');
         const elRoleTag = document.getElementById('headerProfileRoleTag');
-        const fullName = this.currentUser.name || 'Customer';
+        const custName = this.getFormattedCustomerName();
+        const displayName = this.currentUser.role === 'OWNER' ? 'Owner' : (custName || 'Customer');
 
-        if (elFullName) elFullName.innerText = fullName;
-        if (elInitial) elInitial.innerText = fullName.charAt(0).toUpperCase();
+        if (elFullName) elFullName.innerText = displayName;
+        if (elInitial) elInitial.innerText = displayName.charAt(0).toUpperCase();
         if (elRoleTag) {
           elRoleTag.innerText = this.currentUser.role === 'OWNER' ? '👑 Hotel Owner' : '⭐ Foodie Member';
         }
@@ -904,8 +923,20 @@ class TiffinApp {
       // 4. Logout Button (Visible ONLY when logged in)
       if (btnLogout) btnLogout.classList.remove('hidden');
 
-      if (bannerGreeting) {
-        bannerGreeting.innerText = `Welcome back, ${this.currentUser.name}! 🍲`;
+      // 5. Role-Based Welcome Greetings
+      if (this.currentRole === 'OWNER') {
+        if (ownerGreetingText) {
+          ownerGreetingText.innerText = 'Welcome back, Owner! 👋';
+        }
+        if (bannerGreeting) {
+          bannerGreeting.innerText = 'Welcome back, Owner! 👋';
+        }
+      } else {
+        const custName = this.getFormattedCustomerName();
+        const greetingStr = custName ? `Welcome back, ${custName}! 👋` : `Welcome back! 👋`;
+        if (bannerGreeting) {
+          bannerGreeting.innerText = greetingStr;
+        }
       }
     } else {
       if (guestAuth) guestAuth.classList.remove('hidden');
@@ -1668,6 +1699,7 @@ class TiffinApp {
   }
 
   renderCurrentView() {
+    this.updateUserAuthBadgeUI();
     // Hide all view sections
     document.querySelectorAll('.view-section').forEach(sec => sec.classList.add('hidden'));
 
