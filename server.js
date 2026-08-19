@@ -76,10 +76,11 @@ async function generateToken(userId, role = 'CUSTOMER') {
   const userRes = await db.query('SELECT role FROM users WHERE id = $1;', [userId]);
   const userRole = userRes.rows.length > 0 ? userRes.rows[0].role : role;
   const token = 'tok_' + userId + '_' + Date.now() + '_' + crypto.randomBytes(8).toString('hex');
+  const now = Date.now();
   
   await db.query(
-    'INSERT INTO tokens (token, user_id, role, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (token) DO UPDATE SET role = EXCLUDED.role;',
-    [token, userId, userRole, Date.now()]
+    'INSERT INTO tokens (token, user_id, role, created_at, last_activity) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (token) DO UPDATE SET role = EXCLUDED.role, last_activity = EXCLUDED.last_activity;',
+    [token, userId, userRole, now, now]
   );
   return token;
 }
@@ -109,11 +110,12 @@ async function authenticateToken(req, res, next) {
       const usersRes = await db.query('SELECT id, role FROM users;');
       const matchingUser = usersRes.rows.find(u => token.startsWith('tok_' + u.id + '_'));
       if (matchingUser) {
+        const now = Date.now();
         await db.query(
-          'INSERT INTO tokens (token, user_id, role, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (token) DO NOTHING;',
-          [token, matchingUser.id, matchingUser.role, Date.now()]
+          'INSERT INTO tokens (token, user_id, role, created_at, last_activity) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (token) DO NOTHING;',
+          [token, matchingUser.id, matchingUser.role, now, now]
         );
-        tokenEntry = { token, user_id: matchingUser.id, role: matchingUser.role };
+        tokenEntry = { token, user_id: matchingUser.id, role: matchingUser.role, last_activity: now, created_at: now };
       }
     }
 
@@ -132,6 +134,28 @@ async function authenticateToken(req, res, next) {
     if (user.role === 'CUSTOMER' && (user.status || '').toLowerCase() === 'blocked') {
       await db.query('DELETE FROM tokens WHERE token = $1;', [token]);
       return res.status(403).json({ success: false, message: "Your account has been blocked by the owner. Please contact support." });
+    }
+
+    // Customer-Only 20-minute inactivity check
+    if (user.role === 'CUSTOMER') {
+      const now = Date.now();
+      const lastActivity = Number(tokenEntry.last_activity || tokenEntry.created_at || now);
+      const inactivityTimeoutMs = 20 * 60 * 1000; // 20 minutes
+
+      if (now - lastActivity > inactivityTimeoutMs) {
+        await db.query('DELETE FROM tokens WHERE token = $1;', [token]);
+        return res.status(401).json({
+          success: false,
+          code: 'SESSION_EXPIRED',
+          message: "You have been logged out due to 20 minutes of inactivity."
+        });
+      }
+
+      // Update last_activity if request is NOT background polling
+      const isBackgroundPoll = req.headers['x-background-poll'] === 'true';
+      if (!isBackgroundPoll) {
+        await db.query('UPDATE tokens SET last_activity = $1 WHERE token = $2;', [now, token]);
+      }
     }
 
     req.user = user;
@@ -503,6 +527,15 @@ app.post('/api/auth/logout', authenticateToken, async (req, res) => {
     await db.query('DELETE FROM tokens WHERE token = $1;', [req.token]);
   }
   res.json({ success: true, message: "Logged out successfully." });
+});
+
+// AUTH 6. Update Activity Timestamp (For explicit session extension)
+app.post('/api/auth/activity', authenticateToken, async (req, res) => {
+  const now = Date.now();
+  if (req.token && req.user && req.user.role === 'CUSTOMER') {
+    await db.query('UPDATE tokens SET last_activity = $1 WHERE token = $2;', [now, req.token]);
+  }
+  res.json({ success: true, timestamp: now });
 });
 
 // =========================================================================

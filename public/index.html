@@ -2915,6 +2915,21 @@
         <button class="btn-auth-primary" id="btnConfirmModalExecute" onclick="app.executeCustomerConfirmAction()" style="flex: 1; max-width: 180px; background: #E53935; border-color: #E53935;">Confirm</button>
       </div>
     </div>
+  <!-- Customer Inactivity Warning Modal -->
+  <div class="modal-backdrop hidden" id="inactivityWarningModalBackdrop" style="z-index: 10000;">
+    <div class="modal-card" style="max-width: 440px; width: 92%; text-align: center; padding: 1.75rem;" onclick="event.stopPropagation()">
+      <div style="font-size: 3rem; margin-bottom: 0.75rem; color: #FFA000;">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+      </div>
+      <h3 style="color: #FFF; font-size: 1.25rem; margin-bottom: 0.5rem;" id="inactivityWarningTitle">You have been inactive for a while.</h3>
+      <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 1.5rem;" id="inactivityWarningMessage">
+        You will be automatically logged out in <span id="inactivityCountdownSeconds" style="color: var(--accent-gold); font-weight: 700;">60</span> seconds due to inactivity.
+      </p>
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+        <button class="btn-auth-primary" id="btnStayLoggedIn" onclick="app.extendCustomerSession()" style="flex: 1; min-width: 140px; background: var(--accent-gold); color: #000; font-weight: 600;">Stay Logged In</button>
+        <button class="btn-secondary-outline" id="btnLogoutNow" onclick="app.triggerInactivityLogout('Logged out immediately by user.')" style="flex: 1; min-width: 130px; border-color: rgba(255,255,255,0.3); color: #EEE;">Logout Now</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast Container -->

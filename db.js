@@ -280,7 +280,8 @@ async function initDatabase() {
       token VARCHAR(255) PRIMARY KEY,
       user_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
       role VARCHAR(50) NOT NULL,
-      created_at BIGINT NOT NULL
+      created_at BIGINT NOT NULL,
+      last_activity BIGINT
     );`,
 
     `CREATE TABLE IF NOT EXISTS password_resets (
@@ -328,6 +329,7 @@ async function initDatabase() {
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by VARCHAR(100);`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS last_activity BIGINT;`);
       } catch (aErr) {
         console.warn('PostgreSQL DDL Notice:', aErr.message);
       }
@@ -342,6 +344,7 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE users ADD COLUMN blocked_at TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN blocked_by TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN deleted_at TEXT;`);
+      await safeAlter(`ALTER TABLE tokens ADD COLUMN last_activity INTEGER;`);
     }
     await query(`UPDATE settings SET hotel_name = 'Sri Lakshmi Annapurna Tiffin Center', upi_name = 'Sri Lakshmi Annapurna Tiffin Center' WHERE id = 1;`);
   } catch (cErr) {

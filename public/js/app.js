@@ -58,6 +58,14 @@ class TiffinApp {
     this.ownerFilterPaymentStatus = 'ALL';
     this.ownerFilterPaymentMethod = 'ALL';
     this.ownerFilterDatePreset = 'ALL';
+
+    // Customer Inactivity Auto-Logout State (20-Minute Timeout, CUSTOMER Only)
+    this.customerInactivityDurationMs = 20 * 60 * 1000; // 20 minutes = 1,200,000 ms
+    this.customerWarningDurationMs = 19 * 60 * 1000;    // 19 minutes = 1,140,000 ms
+    this.lastCustomerActivityTimestamp = Date.now();
+    this.inactivityCheckInterval = null;
+    this.lastBroadcastActivityTime = 0;
+    this.isWarningModalShowing = false;
   }
 
   async fetchWithAuth(url, options = {}) {
@@ -72,7 +80,17 @@ class TiffinApp {
     try {
       const res = await fetch(url, { ...options, headers });
       if (res.status === 401 && this.currentUser) {
-        console.warn('401 Unauthorized returned for:', url, '- preserving user session state');
+        if (this.currentUser.role === 'CUSTOMER') {
+          const clone = res.clone();
+          try {
+            const body = await clone.json();
+            if (body.code === 'SESSION_EXPIRED' || (body.message && body.message.toLowerCase().includes('inactivity'))) {
+              this.triggerInactivityLogout("You have been logged out due to 20 minutes of inactivity.");
+            }
+          } catch (e) {}
+        } else {
+          console.warn('401 Unauthorized returned for:', url, '- preserving user session state');
+        }
       }
       return res;
     } catch (err) {
@@ -133,6 +151,9 @@ class TiffinApp {
 
     // Start 2-second live polling engine for real-time status and availability sync
     this.startPolling();
+
+    // Initialize 20-minute customer inactivity auto-logout engine
+    this.initCustomerInactivityEngine();
 
     // Bind Web Audio Context unlocking on user gesture
     ['mousedown', 'click', 'keydown', 'touchstart'].forEach(evt => {
@@ -236,7 +257,7 @@ class TiffinApp {
     }
     this.isLoadingOrders = true;
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/orders`);
+      const res = await this.fetchWithAuth(`${API_BASE}/orders`, { isBackgroundPoll: silent });
       const json = await res.json();
       if (json.success) {
         this.orders = Array.isArray(json.data) ? json.data : [];
@@ -259,7 +280,7 @@ class TiffinApp {
     }
     this.isLoadingPayments = true;
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/payments`);
+      const res = await this.fetchWithAuth(`${API_BASE}/payments`, { isBackgroundPoll: silent });
       const json = await res.json();
       if (json.success) {
         this.payments = Array.isArray(json.data) ? json.data : [];
@@ -404,7 +425,7 @@ class TiffinApp {
       return;
     }
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/notifications`);
+      const res = await this.fetchWithAuth(`${API_BASE}/notifications`, { isBackgroundPoll: silent });
       const json = await res.json();
       if (json.success) {
         const incoming = Array.isArray(json.data) ? json.data : [];
@@ -446,7 +467,7 @@ class TiffinApp {
     if (this.currentRole !== 'OWNER') return;
     this.isLoadingStats = true;
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/stats`);
+      const res = await this.fetchWithAuth(`${API_BASE}/stats`, { isBackgroundPoll: silent });
       const json = await res.json();
       if (json.success && json.data) {
         const s = json.data;
@@ -557,6 +578,11 @@ class TiffinApp {
         localStorage.setItem('tiffin_token', json.token);
         localStorage.setItem('tiffin_user', JSON.stringify(json.user));
 
+        if (this.currentRole === 'CUSTOMER') {
+          this.lastCustomerActivityTimestamp = Date.now();
+          localStorage.setItem('tiffin_customer_last_activity', Date.now().toString());
+        }
+
         this.showToast(json.message, 'success');
         this.toggleAuthModal(false);
         this.updateUserAuthBadgeUI();
@@ -602,6 +628,11 @@ class TiffinApp {
 
         localStorage.setItem('tiffin_token', json.token);
         localStorage.setItem('tiffin_user', JSON.stringify(json.user));
+
+        if (this.currentRole === 'CUSTOMER') {
+          this.lastCustomerActivityTimestamp = Date.now();
+          localStorage.setItem('tiffin_customer_last_activity', Date.now().toString());
+        }
 
         // Clear previous state for new customer
         this.cart = [];
@@ -810,8 +841,10 @@ class TiffinApp {
     this.knownNotificationIds.clear();
     this.isFirstNotificationFetch = true;
 
+    this.hideInactivityWarningModal();
     localStorage.removeItem('tiffin_token');
     localStorage.removeItem('tiffin_user');
+    localStorage.removeItem('tiffin_customer_last_activity');
     sessionStorage.clear();
 
     this.showToast('Logged out successfully.', 'info');
@@ -5321,7 +5354,7 @@ class TiffinApp {
         url += `&user_id=${this.currentUser.id}&mobile=${this.currentUser.mobile}`;
       }
 
-      const res = await this.fetchWithAuth(url);
+      const res = await this.fetchWithAuth(url, { isBackgroundPoll: silent });
       const json = await res.json();
       if (json.success) {
         this.supportTickets = Array.isArray(json.data) ? json.data : [];
@@ -6970,6 +7003,201 @@ class TiffinApp {
     } else {
       backdrop.classList.toggle('open');
     }
+  }
+
+  // =========================================================================
+  // CUSTOMER 20-MINUTE INACTIVITY AUTO-LOGOUT ENGINE
+  // =========================================================================
+
+  initCustomerInactivityEngine() {
+    if (!localStorage.getItem('tiffin_customer_last_activity')) {
+      localStorage.setItem('tiffin_customer_last_activity', Date.now().toString());
+    }
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, () => this.onCustomerGenuineActivity(), { passive: true });
+    });
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'tiffin_customer_last_activity' && e.newValue) {
+        const remoteTime = Number(e.newValue);
+        if (remoteTime > this.lastCustomerActivityTimestamp) {
+          this.lastCustomerActivityTimestamp = remoteTime;
+          if (this.isWarningModalShowing) {
+            this.hideInactivityWarningModal();
+          }
+        }
+      } else if (e.key === 'tiffin_customer_logout_signal' && e.newValue) {
+        if (this.currentUser && this.currentUser.role === 'CUSTOMER') {
+          this.executeInactivityLogoutCleanup("You have been logged out due to 20 minutes of inactivity.");
+        }
+      }
+    });
+
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.inactivityBroadcastChannel = new BroadcastChannel('tiffin_customer_inactivity');
+        this.inactivityBroadcastChannel.onmessage = (msg) => {
+          if (!msg || !msg.data) return;
+          if (msg.data.type === 'ACTIVITY') {
+            if (msg.data.timestamp > this.lastCustomerActivityTimestamp) {
+              this.lastCustomerActivityTimestamp = msg.data.timestamp;
+              if (this.isWarningModalShowing) {
+                this.hideInactivityWarningModal();
+              }
+            }
+          } else if (msg.data.type === 'LOGOUT') {
+            if (this.currentUser && this.currentUser.role === 'CUSTOMER') {
+              this.executeInactivityLogoutCleanup("You have been logged out due to 20 minutes of inactivity.");
+            }
+          }
+        };
+      } catch (e) {
+        console.warn('BroadcastChannel error:', e);
+      }
+    }
+
+    if (this.inactivityCheckInterval) clearInterval(this.inactivityCheckInterval);
+    this.inactivityCheckInterval = setInterval(() => this.checkCustomerInactivity(), 1000);
+  }
+
+  onCustomerGenuineActivity() {
+    if (!this.currentUser || this.currentUser.role !== 'CUSTOMER') return;
+
+    const now = Date.now();
+    if (now - this.lastCustomerActivityTimestamp < 1000) return;
+
+    this.lastCustomerActivityTimestamp = now;
+    localStorage.setItem('tiffin_customer_last_activity', now.toString());
+
+    if (this.isWarningModalShowing) {
+      this.hideInactivityWarningModal();
+    }
+
+    if (now - this.lastBroadcastActivityTime > 5000) {
+      this.lastBroadcastActivityTime = now;
+      if (this.inactivityBroadcastChannel) {
+        try {
+          this.inactivityBroadcastChannel.postMessage({ type: 'ACTIVITY', timestamp: now });
+        } catch (e) {}
+      }
+    }
+  }
+
+  checkCustomerInactivity() {
+    if (!this.currentUser || this.currentUser.role !== 'CUSTOMER') {
+      if (this.isWarningModalShowing) {
+        this.hideInactivityWarningModal();
+      }
+      return;
+    }
+
+    const storedLastActivity = Number(localStorage.getItem('tiffin_customer_last_activity') || 0);
+    const lastActive = Math.max(this.lastCustomerActivityTimestamp || 0, storedLastActivity || 0);
+    const elapsed = Date.now() - lastActive;
+
+    if (elapsed >= this.customerInactivityDurationMs) {
+      this.triggerInactivityLogout("You have been logged out due to 20 minutes of inactivity.");
+    } else if (elapsed >= this.customerWarningDurationMs) {
+      const remainingSeconds = Math.max(0, Math.ceil((this.customerInactivityDurationMs - elapsed) / 1000));
+      this.showInactivityWarningModal(remainingSeconds);
+    } else {
+      if (this.isWarningModalShowing) {
+        this.hideInactivityWarningModal();
+      }
+    }
+  }
+
+  showInactivityWarningModal(remainingSeconds) {
+    this.isWarningModalShowing = true;
+    const backdrop = document.getElementById('inactivityWarningModalBackdrop');
+    const elSec = document.getElementById('inactivityCountdownSeconds');
+    if (elSec) {
+      elSec.innerText = remainingSeconds.toString();
+    }
+    if (backdrop) {
+      backdrop.classList.remove('hidden');
+    }
+  }
+
+  hideInactivityWarningModal() {
+    this.isWarningModalShowing = false;
+    const backdrop = document.getElementById('inactivityWarningModalBackdrop');
+    if (backdrop) {
+      backdrop.classList.add('hidden');
+    }
+  }
+
+  extendCustomerSession() {
+    this.lastCustomerActivityTimestamp = Date.now();
+    localStorage.setItem('tiffin_customer_last_activity', Date.now().toString());
+    this.hideInactivityWarningModal();
+
+    if (this.inactivityBroadcastChannel) {
+      try {
+        this.inactivityBroadcastChannel.postMessage({ type: 'ACTIVITY', timestamp: Date.now() });
+      } catch (e) {}
+    }
+
+    this.fetchWithAuth(`${API_BASE}/auth/activity`, { method: 'POST' }).catch(() => {});
+  }
+
+  triggerInactivityLogout(reason = "You have been logged out due to 20 minutes of inactivity.") {
+    this.hideInactivityWarningModal();
+
+    localStorage.setItem('tiffin_customer_logout_signal', Date.now().toString());
+    if (this.inactivityBroadcastChannel) {
+      try {
+        this.inactivityBroadcastChannel.postMessage({ type: 'LOGOUT', timestamp: Date.now() });
+      } catch (e) {}
+    }
+
+    this.executeInactivityLogoutCleanup(reason);
+  }
+
+  executeInactivityLogoutCleanup(reason = "You have been logged out due to 20 minutes of inactivity.") {
+    if (this.authToken) {
+      fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'X-Auth-Token': this.authToken
+        }
+      }).catch(() => {});
+    }
+
+    this.currentUser = null;
+    this.authToken = null;
+    this.currentRole = 'CUSTOMER';
+    this.activeView = 'secCustomerHome';
+    this.cart = [];
+    this.favorites = [];
+    this.orders = [];
+    this.payments = [];
+    this.notifications = [];
+    this.supportTickets = [];
+    this.referralStats = null;
+    this.customerProfile = null;
+    this.isLoadingOrders = false;
+    this.isLoadingPayments = false;
+    this.isLoadingStats = false;
+    this.knownNotificationIds.clear();
+    this.isFirstNotificationFetch = true;
+
+    localStorage.removeItem('tiffin_token');
+    localStorage.removeItem('tiffin_user');
+    localStorage.removeItem('tiffin_customer_last_activity');
+    sessionStorage.clear();
+
+    this.showToast(reason, 'info');
+
+    this.updateUserAuthBadgeUI();
+    this.renderNavigation();
+    this.renderCurrentView();
+    this.updateCartUI();
+
+    this.openAuthModal('LOGIN', 'CUSTOMER');
   }
 }
 
