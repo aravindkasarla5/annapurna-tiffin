@@ -51,6 +51,7 @@ class TiffinApp {
 
     // Order Search & Filter State
     this.custOrderSearch = '';
+    this.custTabFilter = 'ALL'; // 'ALL', 'PENDING', 'COMPLETED'
     this.custOrderStatus = 'ALL';
     this.custPaymentStatus = 'ALL';
     this.custPaymentMethod = 'ALL';
@@ -339,7 +340,7 @@ class TiffinApp {
         osc.frequency.setValueAtTime(note.freq, note.start);
 
         gain.gain.setValueAtTime(0, note.start);
-        gain.gain.linearRampToValueAtTime(0.2, note.start + 0.015);
+        gain.gain.linearRampToValueAtTime(1.0, note.start + 0.015);
         gain.gain.exponentialRampToValueAtTime(0.001, note.start + note.duration);
 
         osc.connect(gain);
@@ -3051,6 +3052,15 @@ class TiffinApp {
   // SEARCH & FILTER ENGINE FOR CUSTOMER & OWNER ORDERS
   // =========================================================================
 
+  setCustomerTabFilter(filter) {
+    this.custTabFilter = filter;
+    ['ALL', 'PENDING', 'COMPLETED'].forEach(f => {
+      const btn = document.getElementById(`custTab${f.charAt(0) + f.slice(1).toLowerCase()}`);
+      if (btn) btn.classList.toggle('active', f === filter);
+    });
+    this.renderOrders();
+  }
+
   handleCustomerSearchInput(val) {
     this.custOrderSearch = (val || '').trim().toLowerCase();
     this.renderOrders();
@@ -3294,7 +3304,24 @@ class TiffinApp {
       const container = document.getElementById('customerOrdersList');
       if (!container) return;
 
-      if (this.isLoadingOrders && !this.orders.length) {
+      const allOrders = this.orders || [];
+      const pendingOrdersCount = allOrders.filter(o => ['Received', 'Pending', 'Preparing', 'Ready'].includes(o.order_status)).length;
+      const completedOrdersCount = allOrders.filter(o => ['Completed', 'Delivered'].includes(o.order_status)).length;
+
+      const cntAll = document.getElementById('custCountAll');
+      const cntPending = document.getElementById('custCountPending');
+      const cntCompleted = document.getElementById('custCountCompleted');
+
+      if (cntAll) cntAll.innerText = allOrders.length;
+      if (cntPending) cntPending.innerText = pendingOrdersCount;
+      if (cntCompleted) cntCompleted.innerText = completedOrdersCount;
+
+      ['ALL', 'PENDING', 'COMPLETED'].forEach(f => {
+        const btn = document.getElementById(`custTab${f.charAt(0) + f.slice(1).toLowerCase()}`);
+        if (btn) btn.classList.toggle('active', f === this.custTabFilter);
+      });
+
+      if (this.isLoadingOrders && !allOrders.length) {
         container.innerHTML = `
           <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
             <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--accent-gold); margin-bottom: 1rem;"></i>
@@ -3304,13 +3331,13 @@ class TiffinApp {
         return;
       }
 
-      if (!this.orders.length) {
+      if (!allOrders.length) {
         container.innerHTML = `
           <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
             <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 1rem auto;">
               <i class="fa-solid fa-receipt"></i>
             </div>
-            <h3 style="color: var(--text-main); font-size: 1.2rem; margin-bottom: 0.5rem;">No orders found</h3>
+            <h3 style="color: var(--text-main); font-size: 1.2rem; margin-bottom: 0.5rem;">You haven't placed any orders yet.</h3>
             <p style="font-size: 0.9rem; max-width: 400px; margin: 0 auto 1.25rem auto;">Explore our hot, fresh South Indian tiffins menu and place your order!</p>
             <button class="btn-primary-block" onclick="app.switchView('secCustomerHome')" style="max-width: 220px; margin: 0 auto;">
               <i class="fa-solid fa-utensils"></i> Browse Today's Menu
@@ -3319,8 +3346,43 @@ class TiffinApp {
         return;
       }
 
-      // Filter Customer Orders
-      const filteredCustomerOrders = this.orders.filter(o => this.filterSingleOrder(o, false));
+      // Filter by Tab (ALL / PENDING / COMPLETED)
+      let tabFilteredOrders = allOrders;
+      if (this.custTabFilter === 'PENDING') {
+        tabFilteredOrders = allOrders.filter(o => ['Received', 'Pending', 'Preparing', 'Ready'].includes(o.order_status));
+      } else if (this.custTabFilter === 'COMPLETED') {
+        tabFilteredOrders = allOrders.filter(o => ['Completed', 'Delivered'].includes(o.order_status));
+      }
+
+      // Tab Empty State handling when customer has orders overall, but 0 in selected tab
+      if (!tabFilteredOrders.length) {
+        let emptyTitle = "You haven't placed any orders yet.";
+        let emptySub = "Explore our hot, fresh South Indian tiffins menu and place your order!";
+
+        if (this.custTabFilter === 'PENDING') {
+          emptyTitle = "You don't have any pending orders.";
+          emptySub = "All your past orders have been completed or processed.";
+        } else if (this.custTabFilter === 'COMPLETED') {
+          emptyTitle = "You don't have any completed orders yet.";
+          emptySub = "Your completed order history will appear here once delivered.";
+        }
+
+        container.innerHTML = `
+          <div style="text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+            <div style="width: 65px; height: 65px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 1rem auto;">
+              <i class="fa-solid ${this.custTabFilter === 'PENDING' ? 'fa-hourglass-half' : this.custTabFilter === 'COMPLETED' ? 'fa-circle-check' : 'fa-receipt'}"></i>
+            </div>
+            <h3 style="color: var(--text-main); font-size: 1.15rem; margin-bottom: 0.4rem;">${emptyTitle}</h3>
+            <p style="font-size: 0.88rem; max-width: 400px; margin: 0 auto 1.25rem auto;">${emptySub}</p>
+            <button class="btn-primary-block" onclick="app.switchView('secCustomerHome')" style="max-width: 220px; margin: 0 auto;">
+              <i class="fa-solid fa-utensils"></i> Browse Today's Menu
+            </button>
+          </div>`;
+        return;
+      }
+
+      // Filter Customer Orders by Search / Dropdowns
+      const filteredCustomerOrders = tabFilteredOrders.filter(o => this.filterSingleOrder(o, false));
 
       if (!filteredCustomerOrders.length) {
         container.innerHTML = `
@@ -3334,7 +3396,12 @@ class TiffinApp {
         return;
       }
 
-      container.innerHTML = filteredCustomerOrders.map(order => {
+      // Sort Customer Orders: newest first (created_at / date_time DESC)
+      const sortedCustomerOrders = [...filteredCustomerOrders].sort((a, b) => {
+        return this.parseOrderDate(b).getTime() - this.parseOrderDate(a).getTime();
+      });
+
+      container.innerHTML = sortedCustomerOrders.map(order => {
         return this.createCustomerOrderCardHTML(order);
       }).join('');
     } else {

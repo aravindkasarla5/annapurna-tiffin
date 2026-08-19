@@ -299,11 +299,26 @@
 
     <!-- Customer Orders Section -->
     <section id="secCustomerOrders" class="view-section hidden">
-      <div class="section-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 1rem;">
-        <h2 class="section-title"><i class="fa-solid fa-receipt" style="color: var(--primary);"></i> My Orders</h2>
+      <div class="section-header" style="display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: space-between !important; gap: 10px !important; margin-bottom: 1rem; flex-wrap: nowrap !important;">
+        <h2 class="section-title" style="margin: 0; font-size: calc(1rem + 0.25vw); white-space: nowrap; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-receipt" style="color: var(--primary);"></i> My Orders
+        </h2>
         <button type="button" id="btnDeleteAllOrders" class="btn-primary-block" onclick="app.deleteAllCustomerOrders()"
-          style="width: auto; padding: 8px 18px; background: linear-gradient(135deg, #E53935, #C62828); font-size: 0.82rem; font-weight: 800; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 14px rgba(229, 57, 53, 0.35);">
+          style="width: auto; padding: 6px 12px; background: linear-gradient(135deg, #E53935, #C62828); font-size: 0.75rem; font-weight: 800; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 4px 14px rgba(229, 57, 53, 0.35); white-space: nowrap; flex-shrink: 0;">
           <i class="fa-solid fa-trash-can"></i> Delete All Orders
+        </button>
+      </div>
+
+      <!-- Customer Quick Tab Filter Chips: All Orders | Pending | Completed Side-by-Side -->
+      <div class="filter-chips" style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 6px !important; margin-bottom: 1.25rem; flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
+        <button type="button" class="tab-pill active" id="custTabAll" onclick="app.setCustomerTabFilter('ALL')" style="white-space: nowrap !important; flex-shrink: 0 !important; font-size: 0.78rem; padding: 6px 12px;">
+          <i class="fa-solid fa-list-check"></i> All Orders (<span id="custCountAll">0</span>)
+        </button>
+        <button type="button" class="tab-pill" id="custTabPending" onclick="app.setCustomerTabFilter('PENDING')" style="white-space: nowrap !important; flex-shrink: 0 !important; font-size: 0.78rem; padding: 6px 12px;">
+          <i class="fa-solid fa-hourglass-half"></i> Pending (<span id="custCountPending">0</span>)
+        </button>
+        <button type="button" class="tab-pill" id="custTabCompleted" onclick="app.setCustomerTabFilter('COMPLETED')" style="white-space: nowrap !important; flex-shrink: 0 !important; font-size: 0.78rem; padding: 6px 12px;">
+          <i class="fa-solid fa-circle-check"></i> Completed (<span id="custCountCompleted">0</span>)
         </button>
       </div>
 
