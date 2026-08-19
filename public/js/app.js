@@ -5290,6 +5290,19 @@ class TiffinApp {
   }
 
   async fetchSupportTickets(silent = false) {
+    if (this.currentRole === 'OWNER' && !silent && this.activeView === 'secOwnerSupport') {
+      const cardsContainer = document.getElementById('ownerTicketsCardsContainer');
+      if (cardsContainer && (!this.supportTickets || !this.supportTickets.length)) {
+        cardsContainer.innerHTML = `
+          <div style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1px dashed var(--border-color);">
+            <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 2rem; color: var(--accent-gold); margin-bottom: 0.75rem;"></i>
+            <h3 style="color: #FFF; font-size: 1.05rem; margin-bottom: 0.25rem;">Loading Support Inbox...</h3>
+            <p style="font-size: 0.82rem;">Fetching customer tickets from production database...</p>
+          </div>
+        `;
+      }
+    }
+
     try {
       const role = this.currentRole;
       let url = `${API_BASE}/support/tickets?role=${role}`;
@@ -5300,7 +5313,7 @@ class TiffinApp {
       const res = await this.fetchWithAuth(url);
       const json = await res.json();
       if (json.success) {
-        this.supportTickets = json.data;
+        this.supportTickets = Array.isArray(json.data) ? json.data : [];
         if (!silent || this.activeView === 'secCustomerSupport' || this.activeView === 'secOwnerSupport') {
           if (this.currentRole === 'OWNER') {
             this.renderOwnerTickets();
@@ -5314,9 +5327,41 @@ class TiffinApp {
             this.renderTicketThreadMessages(activeTkt);
           }
         }
+      } else {
+        if (this.currentRole === 'OWNER') {
+          this.renderOwnerTicketError('Unable to load support tickets. Please try again.');
+        }
       }
     } catch (err) {
       console.error('Error fetching support tickets:', err);
+      if (this.currentRole === 'OWNER') {
+        this.renderOwnerTicketError('Unable to load support tickets. Please try again.');
+      }
+    }
+  }
+
+  renderOwnerTicketError(message) {
+    const elTotal = document.getElementById('statTotalTickets');
+    const elOpen = document.getElementById('statOpenTickets');
+    const elProgress = document.getElementById('statInProgressTickets');
+    const elResolved = document.getElementById('statResolvedTickets');
+    if (elTotal && elTotal.innerText === 'Loading...') elTotal.innerText = '0';
+    if (elOpen && elOpen.innerText === 'Loading...') elOpen.innerText = '0';
+    if (elProgress && elProgress.innerText === 'Loading...') elProgress.innerText = '0';
+    if (elResolved && elResolved.innerText === 'Loading...') elResolved.innerText = '0';
+
+    const cardsContainer = document.getElementById('ownerTicketsCardsContainer');
+    if (cardsContainer) {
+      cardsContainer.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: #FF5252; background: rgba(255,82,82,0.08); border-radius: var(--radius-lg); border: 1px solid rgba(255,82,82,0.25);">
+          <i class="fa-solid fa-triangle-exclamation" style="font-size: 2.2rem; margin-bottom: 0.75rem;"></i>
+          <h3 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.25rem;">Unable to load support tickets</h3>
+          <p style="font-size: 0.82rem; color: var(--text-muted);">${message}</p>
+          <button class="btn-secondary-outline" onclick="app.fetchSupportTickets()" style="margin-top: 12px; font-size: 0.8rem; padding: 6px 14px;">
+            <i class="fa-solid fa-rotate"></i> Retry Fetching Tickets
+          </button>
+        </div>
+      `;
     }
   }
 
@@ -5729,7 +5774,7 @@ class TiffinApp {
               <div class="otc-avatar">${initials}</div>
               <div>
                 <h4 class="otc-cust-name">${t.customer_name}</h4>
-                <span class="otc-cust-phone"><i class="fa-solid fa-phone"></i> ${t.customer_mobile}</span>
+                <span class="otc-cust-phone"><i class="fa-solid fa-phone"></i> ${t.customer_mobile} • ID: ${t.customer_id || t.user_id || 'N/A'}</span>
               </div>
             </div>
 

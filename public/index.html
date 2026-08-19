@@ -1868,11 +1868,14 @@
             <input type="text" class="form-control search-input" id="ownerTktSearchInput"
               placeholder="Search ticket #, customer, order..." oninput="app.filterOwnerTickets()">
           </div>
-        </div>
+      <!-- Owner Tickets Vertical Cards View -->
+      <div class="owner-tickets-grid" id="ownerTicketsCardsContainer">
+        <!-- Rendered dynamically by JS -->
       </div>
+    </section>
 
-      <!-- Owner Side Customer Reviews & Ratings Management Section -->
-      <section id="secOwnerReviews" class="view-section hidden">
+    <!-- Owner Side Customer Reviews & Ratings Management Section -->
+    <section id="secOwnerReviews" class="view-section hidden">
         <div class="owner-support-header">
           <div class="owner-support-title-group">
             <h2 class="section-title"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews & Ratings Hub</h2>
@@ -2622,6 +2625,8 @@
           style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <span style="font-size: 0.78rem; color: var(--text-muted);">Change Ticket Status:</span>
           <div style="display: flex; gap: 6px;">
+            <button type="button" class="btn-sm-status" onclick="app.changeActiveTicketStatus('Open')"
+              style="background: rgba(234,162,33,0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">Reopen</button>
             <button type="button" class="btn-sm-status" onclick="app.changeActiveTicketStatus('In Progress')"
               style="background: rgba(2,136,209,0.2); color: #0288D1; border: 1px solid #0288D1; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer;">In
               Progress</button>
