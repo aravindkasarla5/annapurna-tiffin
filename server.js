@@ -295,47 +295,28 @@ app.post('/api/auth/register', async (req, res) => {
       created_at: new Date().toISOString()
     };
 
-    // Handle Referral Code if provided
+    // Handle Referral Code validation if provided
     const rawRefCode = (req.body.referral_code || '').toString().trim().toUpperCase().replace(/\s+/g, '');
+    let referrer = null;
     let refMessage = '';
 
     if (rawRefCode) {
       const refUserRes = await db.query('SELECT * FROM users WHERE UPPER(referral_code) = $1 AND role = $2;', [rawRefCode, 'CUSTOMER']);
-      const referrer = refUserRes.rows[0];
+      referrer = refUserRes.rows[0];
 
-      if (referrer) {
-        if (referrer.id === newUser.id || referrer.mobile === cleanMobile) {
-          return res.status(400).json({ success: false, message: "Self-referral is not allowed." });
-        }
-        newUser.referred_by = referrer.id;
-        newUser.referred_by_code = referrer.referral_code;
-
-        const settingsRes = await db.query('SELECT referral FROM settings WHERE id = 1;');
-        const settingsReferral = settingsRes.rows[0]?.referral || {};
-        const rewardVal = Number(settingsReferral.referrer_reward || 30);
-
-        await db.query(
-          `INSERT INTO referrals (id, referrer_id, referrer_mobile, referrer_name, referred_id, referred_mobile, referred_name, status, reward_amount, date_time)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
-          [
-            'ref_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-            referrer.id,
-            referrer.mobile,
-            referrer.name,
-            newUser.id,
-            newUser.mobile,
-            newUser.name,
-            'Pending',
-            rewardVal,
-            new Date().toLocaleString('en-IN')
-          ]
-        );
-        refMessage = ` ₹${rewardVal} first-order referral linked successfully!`;
-      } else {
+      if (!referrer) {
         return res.status(400).json({ success: false, message: "Invalid referral code. Please check and try again." });
       }
+
+      if (referrer.id === newUser.id || referrer.mobile === cleanMobile) {
+        return res.status(400).json({ success: false, message: "Self-referral is not allowed." });
+      }
+
+      newUser.referred_by = referrer.id;
+      newUser.referred_by_code = referrer.referral_code;
     }
 
+    // Insert user into PostgreSQL FIRST to satisfy Foreign Key constraints
     await db.query(
       `INSERT INTO users (
         id, name, mobile, password, role, email, address, referral_code, 
@@ -347,6 +328,31 @@ app.post('/api/auth/register', async (req, res) => {
         newUser.referred_by_code, 0, 0, '[]', '[]', true, true
       ]
     );
+
+    // Insert into referrals table after user row exists in PostgreSQL
+    if (referrer) {
+      const settingsRes = await db.query('SELECT referral FROM settings WHERE id = 1;');
+      const settingsReferral = settingsRes.rows[0]?.referral || {};
+      const rewardVal = Number(settingsReferral.referrer_reward || 30);
+
+      await db.query(
+        `INSERT INTO referrals (id, referrer_id, referrer_mobile, referrer_name, referred_id, referred_mobile, referred_name, status, reward_amount, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+        [
+          'ref_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          referrer.id,
+          referrer.mobile,
+          referrer.name,
+          newUser.id,
+          newUser.mobile,
+          newUser.name,
+          'Pending',
+          rewardVal,
+          new Date().toLocaleString('en-IN')
+        ]
+      );
+      refMessage = ` ₹${rewardVal} first-order referral linked successfully!`;
+    }
 
     const token = await generateToken(newUser.id);
     const userSafe = sanitizeUser(newUser);
