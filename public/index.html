@@ -309,7 +309,7 @@
         </button>
       </div>
 
-      <!-- Customer Quick Tab Filter Chips: All Orders | Pending | Completed Side-by-Side -->
+      <!-- Customer Quick Tab Filter Chips: All Orders | Pending | Completed | Rejected Side-by-Side -->
       <div class="filter-chips" style="display: flex !important; flex-direction: row !important; align-items: center !important; gap: 6px !important; margin-bottom: 1.25rem; flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; padding-bottom: 4px;">
         <button type="button" class="tab-pill active" id="custTabAll" onclick="app.setCustomerTabFilter('ALL')" style="white-space: nowrap !important; flex-shrink: 0 !important; font-size: 0.78rem; padding: 6px 12px;">
           <i class="fa-solid fa-list-check"></i> All Orders (<span id="custCountAll">0</span>)
@@ -319,6 +319,9 @@
         </button>
         <button type="button" class="tab-pill" id="custTabCompleted" onclick="app.setCustomerTabFilter('COMPLETED')" style="white-space: nowrap !important; flex-shrink: 0 !important; font-size: 0.78rem; padding: 6px 12px;">
           <i class="fa-solid fa-circle-check"></i> Completed (<span id="custCountCompleted">0</span>)
+        </button>
+        <button type="button" class="tab-pill" id="custTabRejected" onclick="app.setCustomerTabFilter('REJECTED')" style="white-space: nowrap !important; flex-shrink: 0 !important; font-size: 0.78rem; padding: 6px 12px;">
+          <i class="fa-solid fa-circle-xmark" style="color: #FF5252;"></i> Rejected (<span id="custCountRejected">0</span>)
         </button>
       </div>
 

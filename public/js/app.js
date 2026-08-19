@@ -3054,7 +3054,7 @@ class TiffinApp {
 
   setCustomerTabFilter(filter) {
     this.custTabFilter = filter;
-    ['ALL', 'PENDING', 'COMPLETED'].forEach(f => {
+    ['ALL', 'PENDING', 'COMPLETED', 'REJECTED'].forEach(f => {
       const btn = document.getElementById(`custTab${f.charAt(0) + f.slice(1).toLowerCase()}`);
       if (btn) btn.classList.toggle('active', f === filter);
     });
@@ -3307,16 +3307,19 @@ class TiffinApp {
       const allOrders = this.orders || [];
       const pendingOrdersCount = allOrders.filter(o => ['Received', 'Pending', 'Preparing', 'Ready'].includes(o.order_status)).length;
       const completedOrdersCount = allOrders.filter(o => ['Completed', 'Delivered'].includes(o.order_status)).length;
+      const rejectedOrdersCount = allOrders.filter(o => ['Rejected', 'Cancelled'].includes(o.order_status)).length;
 
       const cntAll = document.getElementById('custCountAll');
       const cntPending = document.getElementById('custCountPending');
       const cntCompleted = document.getElementById('custCountCompleted');
+      const cntRejected = document.getElementById('custCountRejected');
 
       if (cntAll) cntAll.innerText = allOrders.length;
       if (cntPending) cntPending.innerText = pendingOrdersCount;
       if (cntCompleted) cntCompleted.innerText = completedOrdersCount;
+      if (cntRejected) cntRejected.innerText = rejectedOrdersCount;
 
-      ['ALL', 'PENDING', 'COMPLETED'].forEach(f => {
+      ['ALL', 'PENDING', 'COMPLETED', 'REJECTED'].forEach(f => {
         const btn = document.getElementById(`custTab${f.charAt(0) + f.slice(1).toLowerCase()}`);
         if (btn) btn.classList.toggle('active', f === this.custTabFilter);
       });
@@ -3346,12 +3349,14 @@ class TiffinApp {
         return;
       }
 
-      // Filter by Tab (ALL / PENDING / COMPLETED)
+      // Filter by Tab (ALL / PENDING / COMPLETED / REJECTED)
       let tabFilteredOrders = allOrders;
       if (this.custTabFilter === 'PENDING') {
         tabFilteredOrders = allOrders.filter(o => ['Received', 'Pending', 'Preparing', 'Ready'].includes(o.order_status));
       } else if (this.custTabFilter === 'COMPLETED') {
         tabFilteredOrders = allOrders.filter(o => ['Completed', 'Delivered'].includes(o.order_status));
+      } else if (this.custTabFilter === 'REJECTED') {
+        tabFilteredOrders = allOrders.filter(o => ['Rejected', 'Cancelled'].includes(o.order_status));
       }
 
       // Tab Empty State handling when customer has orders overall, but 0 in selected tab
@@ -3365,12 +3370,15 @@ class TiffinApp {
         } else if (this.custTabFilter === 'COMPLETED') {
           emptyTitle = "You don't have any completed orders yet.";
           emptySub = "Your completed order history will appear here once delivered.";
+        } else if (this.custTabFilter === 'REJECTED') {
+          emptyTitle = "You don't have any rejected orders.";
+          emptySub = "Any cancelled or rejected orders will appear here.";
         }
 
         container.innerHTML = `
           <div style="text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
             <div style="width: 65px; height: 65px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 1rem auto;">
-              <i class="fa-solid ${this.custTabFilter === 'PENDING' ? 'fa-hourglass-half' : this.custTabFilter === 'COMPLETED' ? 'fa-circle-check' : 'fa-receipt'}"></i>
+              <i class="fa-solid ${this.custTabFilter === 'PENDING' ? 'fa-hourglass-half' : this.custTabFilter === 'COMPLETED' ? 'fa-circle-check' : this.custTabFilter === 'REJECTED' ? 'fa-circle-xmark' : 'fa-receipt'}"></i>
             </div>
             <h3 style="color: var(--text-main); font-size: 1.15rem; margin-bottom: 0.4rem;">${emptyTitle}</h3>
             <p style="font-size: 0.88rem; max-width: 400px; margin: 0 auto 1.25rem auto;">${emptySub}</p>
