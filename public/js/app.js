@@ -5959,7 +5959,7 @@ class TiffinApp {
   shareReferralWhatsApp() {
     const code = this.referralStats?.referral_code || document.getElementById('referralCodeDisplay')?.innerText || '---';
     const hotelName = this.settings.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center';
-    const siteUrl = window.location.origin.includes('localhost') ? 'https://annapurna-tiffin.onrender.com' : window.location.origin;
+    const siteUrl = window.location.origin.includes('localhost') ? 'https://annapurna-tiffin-1.onrender.com' : window.location.origin;
     const msg = `Hey! Order delicious, authentic South Indian tiffins from ${hotelName}! Use my Referral Code *${code}* during registration to get ₹30 OFF your first order! 🍲✨ Order here: ${siteUrl}`;
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, '_blank');

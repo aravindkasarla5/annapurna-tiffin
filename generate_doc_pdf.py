@@ -46,7 +46,7 @@ class NumberedCanvas(canvas.Canvas):
         # Footer (Bottom bar)
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.HexColor("#666666"))
-        self.drawString(54, 36, "https://annapurna-tiffin.onrender.com | Official Technical Documentation")
+        self.drawString(54, 36, "https://annapurna-tiffin-1.onrender.com | Official Technical Documentation")
         
         page_text = f"Page {self._pageNumber} of {page_count}"
         self.drawRightString(8.5 * 72 - 54, 36, page_text)
@@ -186,7 +186,7 @@ def build_pdf():
     meta_data = [
         [Paragraph("<b>Application Name:</b>", table_cell_style), Paragraph("Sri Lakshmi Annapurna Tiffin Center", table_cell_style),
          Paragraph("<b>Version:</b>", table_cell_style), Paragraph("v1.0.0 (Production)", table_cell_style)],
-        [Paragraph("<b>Live Website (Render):</b>", table_cell_style), Paragraph("<a href='https://annapurna-tiffin.onrender.com'>https://annapurna-tiffin.onrender.com</a>", table_cell_style),
+        [Paragraph("<b>Live Website (Render):</b>", table_cell_style), Paragraph("<a href='https://annapurna-tiffin-1.onrender.com'>https://annapurna-tiffin-1.onrender.com</a>", table_cell_style),
          Paragraph("<b>Local Dev Server:</b>", table_cell_style), Paragraph("http://localhost:3000", table_cell_style)],
         [Paragraph("<b>GitHub Repository:</b>", table_cell_style), Paragraph("<a href='https://github.com/aravindkasarla5/annapurna-tiffin'>aravindkasarla5/annapurna-tiffin</a>", table_cell_style),
          Paragraph("<b>Primary Stack:</b>", table_cell_style), Paragraph("Node.js, Express.js, SPA JS, Vanilla CSS", table_cell_style)]
@@ -327,7 +327,7 @@ def build_pdf():
     story.append(Paragraph("6. Deployment & Maintenance Summary", h1_style))
     story.append(Paragraph("• <b>Local Environment Execution:</b> Run <code>npm start</code> inside project folder. Server listens on port 3000.", bullet_style))
     story.append(Paragraph("• <b>Production Cloud Deployment:</b> Live on Render.com automatically connected to GitHub <code>main</code> branch.", bullet_style))
-    story.append(Paragraph("• <b>Live Website URL:</b> <a href='https://annapurna-tiffin.onrender.com'>https://annapurna-tiffin.onrender.com</a>", bullet_style))
+    story.append(Paragraph("• <b>Live Website URL:</b> <a href='https://annapurna-tiffin-1.onrender.com'>https://annapurna-tiffin-1.onrender.com</a>", bullet_style))
 
     story.append(Spacer(1, 15))
     story.append(HRFlowable(width="100%", thickness=1, color=PRIMARY, spaceBefore=5, spaceAfter=10))
