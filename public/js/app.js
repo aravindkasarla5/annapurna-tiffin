@@ -43,6 +43,7 @@ class TiffinApp {
     this.isLoadingPayments = false;
     this.isLoadingStats = false;
     this.knownNotificationIds = new Set();
+    this.activePopupNotifIds = new Set();
     this.isFirstNotificationFetch = true;
     this.audioCtx = null;
 
@@ -425,6 +426,7 @@ class TiffinApp {
     if (!this.currentUser) {
       this.notifications = [];
       this.knownNotificationIds.clear();
+      this.activePopupNotifIds.clear();
       this.isFirstNotificationFetch = true;
       return;
     }
@@ -434,7 +436,7 @@ class TiffinApp {
       if (json.success) {
         const incoming = Array.isArray(json.data) ? json.data : [];
 
-        // On first fetch / login load: populate known IDs without playing sound
+        // On first fetch / login load: populate known IDs without playing sound or showing popups
         if (this.isFirstNotificationFetch) {
           this.isFirstNotificationFetch = false;
           incoming.forEach((n, idx) => this.knownNotificationIds.add(this.getNotifKey(n, idx)));
@@ -455,9 +457,10 @@ class TiffinApp {
             this.playNotificationChime();
           }
 
-          // Show toast for newest notification
-          const newest = brandNewNotifs[0];
-          this.showToast(newest.message || 'New notification received!', 'info');
+          // Trigger visual popup toast for each brand new notification
+          brandNewNotifs.forEach(n => {
+            this.showNotificationPopup(n);
+          });
         }
 
         this.renderNotificationsUI();
@@ -465,6 +468,88 @@ class TiffinApp {
     } catch (err) {
       console.error('Error fetching notifications:', err);
     }
+  }
+
+  showNotificationPopup(n) {
+    if (!n) return;
+    const notifKey = this.getNotifKey(n);
+    if (this.activePopupNotifIds.has(notifKey)) return;
+    this.activePopupNotifIds.add(notifKey);
+
+    const stackContainer = document.getElementById('toastNotificationStackContainer');
+    if (!stackContainer) return;
+
+    // Limit maximum visible popups in stack to 3 (remove oldest if > 3)
+    const activeToasts = stackContainer.querySelectorAll('.popup-notif-toast');
+    if (activeToasts.length >= 3) {
+      const oldest = activeToasts[0];
+      if (oldest) oldest.remove();
+    }
+
+    const toastId = `popup_toast_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const type = (n.type || '').toUpperCase();
+    const msg = n.message || n.text || 'New notification received!';
+    const msgLower = msg.toLowerCase();
+
+    let titleText = '🔔 New Notification';
+    let iconClass = 'fa-bell';
+
+    if (type === 'PAYMENT' || msgLower.includes('payment') || msgLower.includes('upi') || msgLower.includes('cash')) {
+      titleText = '💳 Payment Received';
+      iconClass = 'fa-wallet';
+    } else if (msgLower.includes('status') || msgLower.includes('order')) {
+      titleText = '📦 Order Status Changed';
+      iconClass = 'fa-receipt';
+    } else if (type === 'SUPPORT' || msgLower.includes('ticket') || msgLower.includes('support')) {
+      titleText = '🎧 Support Update';
+      iconClass = 'fa-headset';
+    } else if (type === 'REVIEW' || msgLower.includes('rating') || msgLower.includes('star')) {
+      titleText = '⭐ Review Update';
+      iconClass = 'fa-star';
+    }
+
+    if (n.title) {
+      titleText = `🔔 ${n.title}`;
+    }
+
+    const timeStr = n.created_at ? new Date(n.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Just now';
+
+    const toastEl = document.createElement('div');
+    toastEl.id = toastId;
+    toastEl.className = 'popup-notif-toast';
+    toastEl.innerHTML = `
+      <div class="popup-notif-icon-box">
+        <i class="fa-solid ${iconClass}"></i>
+      </div>
+      <div class="popup-notif-content">
+        <div class="popup-notif-header">
+          <span class="popup-notif-title">${titleText}</span>
+          <button type="button" class="popup-notif-close-btn" title="Dismiss" onclick="app.dismissNotificationPopup('${toastId}')">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <p class="popup-notif-msg">${msg}</p>
+        <span class="popup-notif-time">${timeStr}</span>
+      </div>
+    `;
+
+    stackContainer.appendChild(toastEl);
+
+    // Auto dismiss after 5 seconds (5000 ms)
+    setTimeout(() => {
+      this.dismissNotificationPopup(toastId);
+    }, 5000);
+  }
+
+  dismissNotificationPopup(toastId) {
+    const el = document.getElementById(toastId);
+    if (!el) return;
+    el.classList.add('hiding');
+    setTimeout(() => {
+      if (el && el.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+    }, 300);
   }
 
   async fetchStats(silent = false) {
@@ -851,6 +936,7 @@ class TiffinApp {
     this.isLoadingPayments = false;
     this.isLoadingStats = false;
     this.knownNotificationIds.clear();
+    this.activePopupNotifIds.clear();
     this.isFirstNotificationFetch = true;
 
     this.hideInactivityWarningModal();

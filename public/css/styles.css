@@ -6482,3 +6482,143 @@ body.guest-mode #btnMobileMenuToggle {
   }
 }
 
+/* =========================================================================
+   POPUP TOAST NOTIFICATION STACK STYLES
+   ========================================================================= */
+
+.toast-notification-stack {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  width: min(380px, calc(100vw - 32px));
+  max-width: 100%;
+}
+
+@media (max-width: 600px) {
+  .toast-notification-stack {
+    top: 14px;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: calc(100vw - 24px);
+    max-width: 380px;
+  }
+}
+
+.popup-notif-toast {
+  pointer-events: auto;
+  background: rgba(18, 18, 26, 0.96);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid var(--accent-gold);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #FFFFFF;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 15px rgba(234, 162, 33, 0.25);
+  animation: slideInToast 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.popup-notif-toast.hiding {
+  opacity: 0;
+  transform: translateY(-12px) scale(0.95);
+}
+
+.popup-notif-icon-box {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 111, 0, 0.2), rgba(234, 162, 33, 0.3));
+  border: 1px solid var(--accent-gold);
+  color: var(--accent-gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.popup-notif-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.popup-notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.popup-notif-title {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--accent-gold);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popup-notif-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #BBB;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.popup-notif-close-btn:hover {
+  background: rgba(229, 57, 53, 0.8);
+  color: #FFF;
+  border-color: #E53935;
+}
+
+.popup-notif-msg {
+  font-size: 0.84rem;
+  color: #E2E2EC;
+  line-height: 1.4;
+  margin: 0;
+  word-wrap: break-word;
+  white-space: normal;
+}
+
+.popup-notif-time {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  display: block;
+}
+
+@keyframes slideInToast {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
