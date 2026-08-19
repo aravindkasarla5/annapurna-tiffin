@@ -123,6 +123,10 @@ async function initDatabase() {
       favorites JSONB DEFAULT '[]'::jsonb,
       show_on_leaderboard BOOLEAN DEFAULT true,
       sound_enabled BOOLEAN DEFAULT true,
+      status VARCHAR(50) DEFAULT 'active',
+      blocked_at TIMESTAMPTZ,
+      blocked_by VARCHAR(100),
+      deleted_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
 
@@ -320,6 +324,10 @@ async function initDatabase() {
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by VARCHAR(100);`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;`);
       } catch (aErr) {
         console.warn('PostgreSQL DDL Notice:', aErr.message);
       }
@@ -330,6 +338,10 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE orders ADD COLUMN screenshot_url TEXT;`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN utr_number TEXT;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active';`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN blocked_at TEXT;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN blocked_by TEXT;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN deleted_at TEXT;`);
     }
     await query(`UPDATE settings SET hotel_name = 'Sri Lakshmi Annapurna Tiffin Center', upi_name = 'Sri Lakshmi Annapurna Tiffin Center' WHERE id = 1;`);
   } catch (cErr) {

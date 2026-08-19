@@ -6316,3 +6316,33 @@ body.guest-mode #btnMobileMenuToggle {
     text-align: center;
   }
 }
+
+/* =========================================================================
+   OWNER CUSTOMER ACCOUNT MANAGEMENT RESPONSIVE STYLES
+   ========================================================================= */
+
+.desktop-cust-table-wrapper {
+  display: block;
+}
+
+.mobile-cust-grid {
+  display: none;
+}
+
+@media screen and (max-width: 991px) {
+  .desktop-cust-table-wrapper {
+    display: none !important;
+  }
+  .mobile-cust-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .mobile-cust-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+

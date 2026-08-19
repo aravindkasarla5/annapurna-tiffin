@@ -129,6 +129,11 @@ async function authenticateToken(req, res, next) {
       return res.status(401).json({ success: false, message: "User account not found." });
     }
 
+    if (user.role === 'CUSTOMER' && (user.status || '').toLowerCase() === 'blocked') {
+      await db.query('DELETE FROM tokens WHERE token = $1;', [token]);
+      return res.status(403).json({ success: false, message: "Your account has been blocked by the owner. Please contact support." });
+    }
+
     req.user = user;
     req.token = token;
     next();
@@ -387,6 +392,13 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!checkPasswordMatch(user.password, password)) {
       return res.status(401).json({ success: false, message: "Invalid username or password." });
+    }
+
+    if (user.role === 'CUSTOMER' && (user.status || '').toLowerCase() === 'blocked') {
+      return res.status(403).json({
+        success: false,
+        message: "Your account has been blocked by the owner. Please contact support."
+      });
     }
 
     const token = await generateToken(user.id);
@@ -1247,6 +1259,176 @@ app.post('/api/referrals/privacy', authenticateToken, async (req, res) => {
     res.json({ success: true, message: `Leaderboard privacy updated.` });
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to update privacy settings." });
+  }
+});
+
+// =========================================================================
+// OWNER-ONLY CUSTOMER ACCOUNT MANAGEMENT ENDPOINTS
+// =========================================================================
+
+// 1. Fetch All Customer Accounts with Statistics & Order Counts
+app.get('/api/owner/customers', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ success: false, message: "Unauthorized access. Owner privileges required." });
+    }
+
+    const { status, search, sort } = req.query;
+
+    let queryStr = `
+      SELECT u.id, u.name, u.email, u.mobile, u.address, u.referral_code, COALESCE(u.status, 'active') as status, 
+             u.blocked_at, u.blocked_by, u.created_at,
+             COUNT(o.id) as total_orders,
+             MAX(o.created_at) as last_order_date,
+             COALESCE(SUM(o.net_amount), 0) as total_spent
+      FROM users u
+      LEFT JOIN orders o ON o.customer_id = u.id
+      WHERE u.role = 'CUSTOMER' AND (u.status IS NULL OR u.status != 'deleted')
+    `;
+    let params = [];
+
+    if (status && status !== 'All') {
+      params.push(status.toLowerCase());
+      queryStr += ` AND LOWER(COALESCE(u.status, 'active')) = $${params.length}`;
+    }
+
+    if (search && search.trim()) {
+      params.push(`%${search.trim().toLowerCase()}%`);
+      queryStr += ` AND (LOWER(u.name) LIKE $${params.length} OR LOWER(COALESCE(u.email, '')) LIKE $${params.length} OR u.mobile LIKE $${params.length} OR LOWER(COALESCE(u.referral_code, '')) LIKE $${params.length})`;
+    }
+
+    queryStr += ` GROUP BY u.id, u.name, u.email, u.mobile, u.address, u.referral_code, u.status, u.blocked_at, u.blocked_by, u.created_at`;
+
+    if (sort === 'oldest') {
+      queryStr += ` ORDER BY u.created_at ASC;`;
+    } else {
+      queryStr += ` ORDER BY u.created_at DESC;`;
+    }
+
+    const cRes = await db.query(queryStr, params);
+    res.json({ success: true, data: cRes.rows || [] });
+  } catch (err) {
+    console.error('Fetch Owner Customers Error:', err);
+    res.status(500).json({ success: false, message: "Error fetching customer accounts." });
+  }
+});
+
+// 2. Fetch Single Customer Details, Profile & Recent Orders
+app.get('/api/owner/customers/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ success: false, message: "Unauthorized access. Owner privileges required." });
+    }
+
+    const { id } = req.params;
+    const uRes = await db.query('SELECT * FROM users WHERE id = $1 AND role = $2;', [id, 'CUSTOMER']);
+    if (!uRes.rows || !uRes.rows.length) {
+      return res.status(404).json({ success: false, message: "Customer account not found." });
+    }
+
+    const customer = sanitizeUser(uRes.rows[0]);
+    const ordersRes = await db.query('SELECT * FROM orders WHERE customer_id = $1 ORDER BY created_at DESC;', [id]);
+    const orders = ordersRes.rows || [];
+
+    const totalOrders = orders.length;
+    const completedOrders = orders.filter(o => o.order_status === 'Delivered' || o.order_status === 'Completed').length;
+    const pendingOrders = orders.filter(o => ['Received', 'Accepted', 'Preparing', 'Out for Delivery'].includes(o.order_status)).length;
+    const cancelledOrders = orders.filter(o => o.order_status === 'Cancelled' || o.order_status === 'Rejected').length;
+    const totalSpent = orders.reduce((sum, o) => sum + Number(o.net_amount || 0), 0);
+
+    res.json({
+      success: true,
+      data: {
+        customer,
+        stats: {
+          totalOrders,
+          completedOrders,
+          pendingOrders,
+          cancelledOrders,
+          totalSpent
+        },
+        recentOrders: orders.slice(0, 10)
+      }
+    });
+  } catch (err) {
+    console.error('Fetch Customer Details Error:', err);
+    res.status(500).json({ success: false, message: "Error fetching customer details." });
+  }
+});
+
+// 3. Update Customer Status (Block / Unblock)
+app.patch('/api/owner/customers/:id/status', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ success: false, message: "Unauthorized access. Owner privileges required." });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+    const newStatus = (status || '').toLowerCase().trim();
+
+    if (!['active', 'blocked'].includes(newStatus)) {
+      return res.status(400).json({ success: false, message: "Invalid status value. Allowed: active, blocked." });
+    }
+
+    const uRes = await db.query('SELECT id, name, role FROM users WHERE id = $1 AND role = $2;', [id, 'CUSTOMER']);
+    if (!uRes.rows || !uRes.rows.length) {
+      return res.status(404).json({ success: false, message: "Customer account not found." });
+    }
+
+    const blockedAt = newStatus === 'blocked' ? new Date().toISOString() : null;
+    const blockedBy = newStatus === 'blocked' ? req.user.name : null;
+
+    await db.query(
+      `UPDATE users SET status = $1, blocked_at = $2, blocked_by = $3 WHERE id = $4 AND role = 'CUSTOMER';`,
+      [newStatus, blockedAt, blockedBy, id]
+    );
+
+    // Invalidate sessions immediately if blocked
+    if (newStatus === 'blocked') {
+      await db.query('DELETE FROM tokens WHERE user_id = $1;', [id]);
+    }
+
+    res.json({
+      success: true,
+      message: newStatus === 'blocked' ? 'Customer blocked successfully.' : 'Customer unblocked successfully.'
+    });
+  } catch (err) {
+    console.error('Update Customer Status Error:', err);
+    res.status(500).json({ success: false, message: "Error updating customer account status." });
+  }
+});
+
+// 4. Delete Customer Account Safely (Preserve Order & Payment History)
+app.delete('/api/owner/customers/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ success: false, message: "Unauthorized access. Owner privileges required." });
+    }
+
+    const { id } = req.params;
+    const uRes = await db.query('SELECT id, name, role FROM users WHERE id = $1 AND role = $2;', [id, 'CUSTOMER']);
+    if (!uRes.rows || !uRes.rows.length) {
+      return res.status(404).json({ success: false, message: "Customer account not found." });
+    }
+
+    const custName = uRes.rows[0].name;
+
+    // Disassociate orders and payments customer_id reference to preserve order/financial history
+    await db.query('UPDATE orders SET customer_id = NULL WHERE customer_id = $1;', [id]);
+    await db.query('UPDATE payments SET customer_id = NULL WHERE customer_id = $1;', [id]);
+
+    // Delete active sessions and customer user record
+    await db.query('DELETE FROM tokens WHERE user_id = $1;', [id]);
+    await db.query('DELETE FROM users WHERE id = $1 AND role = $2;', [id, 'CUSTOMER']);
+
+    res.json({
+      success: true,
+      message: `Customer account deleted successfully.`
+    });
+  } catch (err) {
+    console.error('Delete Customer Account Error:', err);
+    res.status(500).json({ success: false, message: "Error deleting customer account." });
   }
 });
 

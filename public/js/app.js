@@ -1186,6 +1186,7 @@ class TiffinApp {
           <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
           <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
           <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders Management</a>
+          <a class="nav-item ${this.activeView === 'secOwnerCustomers' ? 'active' : ''}" onclick="app.switchView('secOwnerCustomers')"><i class="fa-solid fa-users-gear" style="color: var(--accent-gold);"></i> Customer Accounts</a>
           <a class="nav-item" onclick="app.toggleNotificationsTray()"><i class="fa-solid fa-bell" style="color: var(--accent-gold);"></i> Notifications ${unreadNotifCount > 0 ? `<span class="sidebar-badge-count" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px;">${unreadNotifCount}</span>` : ''}</a>
           <a class="nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews</a>
           <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
@@ -1526,6 +1527,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secOwnerCustomers' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerCustomers');">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-users-gear"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Customer Accounts</strong>
+              <span class="drawer-item-sub">View, block/unblock & details</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerReviews');">
             <div class="drawer-icon-box gold"><i class="fa-solid fa-star"></i></div>
             <div class="drawer-text-group">
@@ -1661,6 +1671,7 @@ class TiffinApp {
     }
     if (this.activeView === 'secOwnerTiffins') this.renderMenu();
     if (this.activeView === 'secOwnerOrders') this.renderOrders();
+    if (this.activeView === 'secOwnerCustomers') this.fetchOwnerCustomers();
     if (this.activeView === 'secOwnerReviews') this.fetchOwnerReviews();
     if (this.activeView === 'secOwnerPayments') {
       this.fetchPayments();
@@ -6579,6 +6590,371 @@ class TiffinApp {
     } catch (err) {
       console.error('Error deleting review:', err);
       this.showToast('Server communication error.', 'error');
+    }
+  }
+
+  // =========================================================================
+  // OWNER CUSTOMER ACCOUNT MANAGEMENT METHODS
+  // =========================================================================
+
+  async fetchOwnerCustomers(silent = false) {
+    if (this.currentRole !== 'OWNER') return;
+
+    if (!silent) {
+      const bodyEl = document.getElementById('ownerCustomersTableBody');
+      const cardsEl = document.getElementById('ownerCustomersCardsContainer');
+      if (bodyEl && (!this.ownerCustomers || !this.ownerCustomers.length)) {
+        bodyEl.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; color: var(--accent-gold); margin-bottom: 8px;"></i><br>Loading customer accounts...</td></tr>`;
+      }
+      if (cardsEl && (!this.ownerCustomers || !this.ownerCustomers.length)) {
+        cardsEl.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fa-solid fa-circle-notch fa-spin" style="font-size: 1.5rem; color: var(--accent-gold); margin-bottom: 8px;"></i><br>Loading customer accounts...</div>`;
+      }
+    }
+
+    try {
+      const statusFilter = this.ownerCustFilter || 'All';
+      const searchVal = (document.getElementById('ownerCustSearchInput')?.value || '').trim();
+      const sortVal = document.getElementById('ownerCustSortSelect')?.value || 'newest';
+
+      let url = `${API_BASE}/owner/customers?status=${encodeURIComponent(statusFilter)}&sort=${sortVal}`;
+      if (searchVal) url += `&search=${encodeURIComponent(searchVal)}`;
+
+      const res = await this.fetchWithAuth(url);
+      const json = await res.json();
+
+      if (json.success) {
+        this.ownerCustomers = Array.isArray(json.data) ? json.data : [];
+        this.renderOwnerCustomers();
+      } else {
+        this.showToast(json.message || 'Error fetching customer accounts', 'error');
+      }
+    } catch (err) {
+      console.error('Error fetching owner customers:', err);
+      this.showToast('Server communication error fetching customer accounts.', 'error');
+    }
+  }
+
+  filterOwnerCustomers(status = null) {
+    if (status) this.ownerCustFilter = status;
+
+    ['All', 'Active', 'Blocked'].forEach(s => {
+      const chip = document.getElementById(`chipCustFilter${s}`);
+      if (chip) {
+        chip.classList.toggle('active', (status || this.ownerCustFilter || 'All') === s);
+      }
+    });
+
+    this.fetchOwnerCustomers();
+  }
+
+  renderOwnerCustomers() {
+    const list = this.ownerCustomers || [];
+
+    // Calculate KPI Stats
+    const total = list.length;
+    const activeCount = list.filter(c => (c.status || 'active').toLowerCase() === 'active').length;
+    const blockedCount = list.filter(c => (c.status || '').toLowerCase() === 'blocked').length;
+
+    const elTotal = document.getElementById('ownerStatTotalCust');
+    const elActive = document.getElementById('ownerStatActiveCust');
+    const elBlocked = document.getElementById('ownerStatBlockedCust');
+
+    if (elTotal) elTotal.innerText = total;
+    if (elActive) elActive.innerText = activeCount;
+    if (elBlocked) elBlocked.innerText = blockedCount;
+
+    const bodyEl = document.getElementById('ownerCustomersTableBody');
+    const cardsEl = document.getElementById('ownerCustomersCardsContainer');
+
+    if (!list.length) {
+      const emptyHtml = `
+        <div class="owner-tkt-empty-card" style="grid-column: 1 / -1; text-align: center; padding: 3rem 1.5rem; background: var(--bg-surface-elevated); border: 1px dashed var(--border-color); border-radius: var(--radius-lg);">
+          <i class="fa-solid fa-users-slash" style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 0.75rem;"></i>
+          <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.25rem;">No Customer Accounts Found</h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem;">No customer records match the current filter or search criteria.</p>
+        </div>
+      `;
+      if (bodyEl) bodyEl.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">No customer accounts found matching criteria.</td></tr>`;
+      if (cardsEl) cardsEl.innerHTML = emptyHtml;
+      return;
+    }
+
+    // Render Desktop Table Rows
+    if (bodyEl) {
+      bodyEl.innerHTML = list.map(c => {
+        const isBlocked = (c.status || '').toLowerCase() === 'blocked';
+        const regDate = new Date(c.created_at || Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        const initials = (c.name || 'C').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+        return `
+          <tr style="border-bottom: 1px solid var(--border-color); transition: var(--transition);" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+            <td style="padding: 12px 16px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #FFF; font-weight: 800; font-size: 0.8rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">${initials}</div>
+                <div>
+                  <strong style="color: #FFF; font-size: 0.9rem; display: block;">${c.name}</strong>
+                  <span style="font-size: 0.74rem; color: var(--text-muted);">ID: ${c.id}</span>
+                </div>
+              </div>
+            </td>
+            <td style="padding: 12px 16px; font-size: 0.85rem;">
+              <div style="display: flex; flex-direction: column;">
+                <span style="color: #FFF; font-weight: 600;"><i class="fa-solid fa-phone" style="color: var(--accent-gold); font-size: 0.75rem;"></i> ${c.mobile}</span>
+                ${c.email ? `<span style="font-size: 0.76rem; color: var(--text-muted);">${c.email}</span>` : ''}
+              </div>
+            </td>
+            <td style="padding: 12px 16px; font-size: 0.82rem; color: var(--text-muted);">${regDate}</td>
+            <td style="padding: 12px 16px; font-size: 0.88rem; font-weight: 700; color: #FFF;">${c.total_orders || 0}</td>
+            <td style="padding: 12px 16px; font-size: 0.88rem; font-weight: 800; color: var(--accent-gold);">₹${Number(c.total_spent || 0).toLocaleString('en-IN')}</td>
+            <td style="padding: 12px 16px;">
+              <span class="status-badge ${isBlocked ? 'st-rejected' : 'st-active'}" style="background: ${isBlocked ? 'rgba(229,57,53,0.18)' : 'rgba(76,175,80,0.18)'}; color: ${isBlocked ? '#E53935' : '#4CAF50'}; border: 1px solid ${isBlocked ? '#E53935' : '#4CAF50'}; padding: 3px 9px; border-radius: 12px; font-size: 0.74rem; font-weight: 700;">
+                ${isBlocked ? 'Blocked' : 'Active'}
+              </span>
+            </td>
+            <td style="padding: 12px 16px; text-align: right;">
+              <div style="display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap;">
+                <button type="button" onclick="app.openCustomerDetailsModal('${c.id}')" style="background: rgba(234,162,33,0.15); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 4px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;" title="View Customer Details"><i class="fa-solid fa-eye"></i> View</button>
+                ${isBlocked ? 
+                  `<button type="button" onclick="app.promptUnblockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="background: rgba(76,175,80,0.15); color: #4CAF50; border: 1px solid #4CAF50; padding: 4px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;"><i class="fa-solid fa-user-check"></i> Unblock</button>` :
+                  `<button type="button" onclick="app.promptBlockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="background: rgba(229,57,53,0.15); color: #E53935; border: 1px solid #E53935; padding: 4px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;"><i class="fa-solid fa-user-slash"></i> Block</button>`
+                }
+                <button type="button" onclick="app.promptDeleteCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="background: rgba(158,158,176,0.15); color: #9E9EB0; border: 1px solid #9E9EB0; padding: 4px 8px; border-radius: 6px; font-size: 0.76rem; cursor: pointer;" title="Delete Customer Account"><i class="fa-solid fa-trash-can"></i></button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Render Mobile Cards View
+    if (cardsEl) {
+      cardsEl.innerHTML = list.map(c => {
+        const isBlocked = (c.status || '').toLowerCase() === 'blocked';
+        const regDate = new Date(c.created_at || Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        const initials = (c.name || 'C').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+        return `
+          <div class="owner-tkt-card ${isBlocked ? 'rejected' : 'resolved'}" onclick="app.openCustomerDetailsModal('${c.id}')" style="border-left: 4px solid ${isBlocked ? '#E53935' : '#4CAF50'};">
+            <div class="otc-top-bar">
+              <div class="otc-user-info">
+                <div class="otc-avatar">${initials}</div>
+                <div>
+                  <h4 class="otc-cust-name">${c.name}</h4>
+                  <span class="otc-cust-phone"><i class="fa-solid fa-phone"></i> ${c.mobile}</span>
+                </div>
+              </div>
+              <div class="otc-top-badges">
+                <span class="status-badge" style="background: ${isBlocked ? 'rgba(229,57,53,0.18)' : 'rgba(76,175,80,0.18)'}; color: ${isBlocked ? '#E53935' : '#4CAF50'}; border: 1px solid ${isBlocked ? '#E53935' : '#4CAF50'}; padding: 3px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 700;">${isBlocked ? 'Blocked' : 'Active'}</span>
+              </div>
+            </div>
+
+            <div class="otc-body" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem;">
+              <div><span style="color: var(--text-muted); display: block; font-size: 0.72rem;">TOTAL ORDERS</span><strong style="color: #FFF;">${c.total_orders || 0} Orders</strong></div>
+              <div><span style="color: var(--text-muted); display: block; font-size: 0.72rem;">TOTAL SPENT</span><strong style="color: var(--accent-gold);">₹${Number(c.total_spent || 0).toLocaleString('en-IN')}</strong></div>
+              <div style="grid-column: 1 / -1;"><span style="color: var(--text-muted); font-size: 0.72rem;">Joined: ${regDate} ${c.referral_code ? `• Code: ${c.referral_code}` : ''}</span></div>
+            </div>
+
+            <div class="otc-footer" style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;" onclick="event.stopPropagation()">
+              <button type="button" class="btn-secondary-outline" onclick="app.openCustomerDetailsModal('${c.id}')" style="padding: 6px 12px; font-size: 0.78rem; flex: 1;"><i class="fa-solid fa-eye"></i> Details</button>
+              ${isBlocked ? 
+                `<button type="button" class="btn-secondary-outline" onclick="app.promptUnblockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 0.78rem; color: #4CAF50; border-color: #4CAF50; flex: 1;"><i class="fa-solid fa-user-check"></i> Unblock</button>` :
+                `<button type="button" class="btn-secondary-outline" onclick="app.promptBlockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 0.78rem; color: #E53935; border-color: #E53935; flex: 1;"><i class="fa-solid fa-user-slash"></i> Block</button>`
+              }
+              <button type="button" class="btn-secondary-outline" onclick="app.promptDeleteCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-size: 0.78rem; color: #9E9EB0; border-color: #9E9EB0;" title="Delete Account"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  async openCustomerDetailsModal(customerId) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/customers/${customerId}`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) {
+        this.showToast(json.message || 'Unable to load customer details.', 'error');
+        return;
+      }
+
+      const { customer, stats, recentOrders } = json.data;
+      const isBlocked = (customer.status || '').toLowerCase() === 'blocked';
+      const initials = (customer.name || 'C').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+      document.getElementById('custModalHeaderName').innerText = `${customer.name} Profile`;
+      document.getElementById('custModalAvatar').innerText = initials;
+      document.getElementById('custModalName').innerText = customer.name;
+      document.getElementById('custModalMobile').innerText = customer.mobile || 'N/A';
+      document.getElementById('custModalEmail').innerText = customer.email || 'No email provided';
+      document.getElementById('custModalRefCode').innerText = customer.referral_code || 'None';
+      document.getElementById('custModalJoined').innerText = new Date(customer.created_at || Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+      const badgeEl = document.getElementById('custModalStatusBadge');
+      if (badgeEl) {
+        badgeEl.innerText = isBlocked ? 'Blocked' : 'Active';
+        badgeEl.className = `status-badge ${isBlocked ? 'st-rejected' : 'st-active'}`;
+        badgeEl.style.cssText = `background: ${isBlocked ? 'rgba(229,57,53,0.18)' : 'rgba(76,175,80,0.18)'}; color: ${isBlocked ? '#E53935' : '#4CAF50'}; border: 1px solid ${isBlocked ? '#E53935' : '#4CAF50'}; padding: 4px 12px; border-radius: 12px; font-weight: 700;`;
+      }
+
+      document.getElementById('custModalTotalSpent').innerText = `₹${Number(stats.totalSpent || 0).toLocaleString('en-IN')}`;
+      document.getElementById('custModalTotalOrders').innerText = stats.totalOrders || 0;
+      document.getElementById('custModalCompletedOrders').innerText = stats.completedOrders || 0;
+      document.getElementById('custModalCancelledOrders').innerText = stats.cancelledOrders || 0;
+
+      // Render Recent Orders List
+      const ordersContainer = document.getElementById('custModalRecentOrdersContainer');
+      if (ordersContainer) {
+        if (!recentOrders || !recentOrders.length) {
+          ordersContainer.innerHTML = `<p style="font-size: 0.82rem; color: var(--text-muted); text-align: center; padding: 1rem;">No order history found for this customer.</p>`;
+        } else {
+          ordersContainer.innerHTML = recentOrders.map(o => {
+            const orderDate = new Date(o.created_at || Date.now()).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return `
+              <div style="background: rgba(10, 10, 14, 0.5); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <div>
+                  <strong style="color: var(--accent-gold); font-size: 0.88rem;">#${o.order_number}</strong>
+                  <span style="font-size: 0.76rem; color: var(--text-muted); display: block;">${orderDate} • ${o.payment_method || 'Cash'}</span>
+                </div>
+                <div style="text-align: right;">
+                  <span style="color: #FFF; font-weight: 800; font-size: 0.9rem; display: block;">₹${o.net_amount}</span>
+                  <span style="font-size: 0.72rem; color: ${o.order_status === 'Delivered' || o.order_status === 'Completed' ? '#4CAF50' : (o.order_status === 'Cancelled' ? '#FF5252' : '#0288D1')}; font-weight: 700;">${o.order_status}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      // Action Buttons in Details Modal Footer
+      const actionsEl = document.getElementById('custModalActionButtons');
+      if (actionsEl) {
+        const safeName = customer.name.replace(/'/g, "\\'");
+        actionsEl.innerHTML = `
+          ${isBlocked ?
+            `<button type="button" class="btn-auth-primary" onclick="app.closeCustomerDetailsModal(); app.promptUnblockCustomer('${customer.id}', '${safeName}')" style="background: #4CAF50; border-color: #4CAF50; padding: 6px 14px; font-size: 0.8rem;"><i class="fa-solid fa-user-check"></i> Unblock Customer</button>` :
+            `<button type="button" class="btn-auth-primary" onclick="app.closeCustomerDetailsModal(); app.promptBlockCustomer('${customer.id}', '${safeName}')" style="background: #E53935; border-color: #E53935; padding: 6px 14px; font-size: 0.8rem;"><i class="fa-solid fa-user-slash"></i> Block Customer</button>`
+          }
+          <button type="button" class="btn-secondary-outline" onclick="app.closeCustomerDetailsModal(); app.promptDeleteCustomer('${customer.id}', '${safeName}')" style="color: #9E9EB0; border-color: #9E9EB0; padding: 6px 12px; font-size: 0.8rem;"><i class="fa-solid fa-trash-can"></i> Delete Account</button>
+        `;
+      }
+
+      const backdrop = document.getElementById('ownerCustomerDetailsModalBackdrop');
+      if (backdrop) backdrop.classList.add('open');
+    } catch (err) {
+      console.error('Error loading customer details modal:', err);
+      this.showToast('Server communication error loading customer details.', 'error');
+    }
+  }
+
+  closeCustomerDetailsModal() {
+    const backdrop = document.getElementById('ownerCustomerDetailsModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  promptBlockCustomer(customerId, customerName) {
+    this.pendingCustomerAction = {
+      type: 'BLOCK',
+      id: customerId,
+      name: customerName
+    };
+
+    document.getElementById('confirmModalIconBox').innerHTML = `<i class="fa-solid fa-user-slash" style="color: #E53935;"></i>`;
+    document.getElementById('confirmModalTitle').innerText = 'Block Customer Account?';
+    document.getElementById('confirmModalMessage').innerText = `Are you sure you want to block ${customerName}? They will no longer be able to log in or place orders.`;
+    
+    const btnExecute = document.getElementById('btnConfirmModalExecute');
+    if (btnExecute) {
+      btnExecute.innerText = 'Block Customer';
+      btnExecute.style.background = '#E53935';
+      btnExecute.style.borderColor = '#E53935';
+    }
+
+    const backdrop = document.getElementById('ownerCustomerConfirmModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  promptUnblockCustomer(customerId, customerName) {
+    this.pendingCustomerAction = {
+      type: 'UNBLOCK',
+      id: customerId,
+      name: customerName
+    };
+
+    document.getElementById('confirmModalIconBox').innerHTML = `<i class="fa-solid fa-user-check" style="color: #4CAF50;"></i>`;
+    document.getElementById('confirmModalTitle').innerText = 'Unblock Customer Account?';
+    document.getElementById('confirmModalMessage').innerText = `Are you sure you want to unblock ${customerName}? They will be allowed to log in and place orders again.`;
+    
+    const btnExecute = document.getElementById('btnConfirmModalExecute');
+    if (btnExecute) {
+      btnExecute.innerText = 'Unblock Customer';
+      btnExecute.style.background = '#4CAF50';
+      btnExecute.style.borderColor = '#4CAF50';
+    }
+
+    const backdrop = document.getElementById('ownerCustomerConfirmModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  promptDeleteCustomer(customerId, customerName) {
+    this.pendingCustomerAction = {
+      type: 'DELETE',
+      id: customerId,
+      name: customerName
+    };
+
+    document.getElementById('confirmModalIconBox').innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color: #E53935;"></i>`;
+    document.getElementById('confirmModalTitle').innerText = 'Delete Customer Account Permanently?';
+    document.getElementById('confirmModalMessage').innerText = `Are you sure you want to permanently delete ${customerName}'s account? This action cannot be undone. Historical order and payment records will be preserved.`;
+    
+    const btnExecute = document.getElementById('btnConfirmModalExecute');
+    if (btnExecute) {
+      btnExecute.innerText = 'Delete Permanently';
+      btnExecute.style.background = '#E53935';
+      btnExecute.style.borderColor = '#E53935';
+    }
+
+    const backdrop = document.getElementById('ownerCustomerConfirmModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  closeCustomerConfirmModal() {
+    this.pendingCustomerAction = null;
+    const backdrop = document.getElementById('ownerCustomerConfirmModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  async executeCustomerConfirmAction() {
+    if (!this.pendingCustomerAction) return;
+
+    const { type, id, name } = this.pendingCustomerAction;
+    this.closeCustomerConfirmModal();
+
+    try {
+      let res, json;
+      if (type === 'BLOCK' || type === 'UNBLOCK') {
+        const targetStatus = type === 'BLOCK' ? 'blocked' : 'active';
+        res = await this.fetchWithAuth(`${API_BASE}/owner/customers/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: targetStatus })
+        });
+      } else if (type === 'DELETE') {
+        res = await this.fetchWithAuth(`${API_BASE}/owner/customers/${id}`, {
+          method: 'DELETE'
+        });
+      }
+
+      json = await res.json();
+      if (json.success) {
+        this.showToast(json.message, 'success');
+        await this.fetchOwnerCustomers();
+      } else {
+        this.showToast(json.message || 'Action failed.', 'error');
+      }
+    } catch (err) {
+      console.error('Error executing customer action:', err);
+      this.showToast('Server error executing customer action.', 'error');
     }
   }
 
