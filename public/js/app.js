@@ -2152,9 +2152,22 @@ class TiffinApp {
       }
     }
 
+    const chkWallet = document.getElementById('chkUseWallet');
+    if (chkWallet) chkWallet.checked = false;
+    this.appliedWalletDiscount = 0;
+    const breakdownBox = document.getElementById('referralAppliedBreakdown');
+    if (breakdownBox) breakdownBox.classList.add('hidden');
+
     this.handleCheckoutOrderTypeChange();
     this.updateCartUI();
     this.selectPaymentMethod(this.selectedPaymentMethod || 'Cash');
+
+    this.fetchReferralStats().then(() => {
+      const walletBal = Number(this.referralStats?.wallet_balance || this.currentUser?.wallet_balance || 0);
+      const elText = document.getElementById('checkoutWalletAvailableText');
+      if (elText) elText.innerHTML = `Available Balance: <strong>₹${walletBal}</strong>`;
+    }).catch(() => {});
+
     this.toggleCheckoutModal(true);
   }
 
@@ -2184,26 +2197,14 @@ class TiffinApp {
     backdrop.classList.toggle('open', open);
   }
 
-  async selectPaymentMethod(method) {
+  selectPaymentMethod(method) {
     this.selectedPaymentMethod = method;
     document.getElementById('optPayCash')?.classList.toggle('selected', method === 'Cash');
     document.getElementById('optPayUPI')?.classList.toggle('selected', method === 'UPI');
-    document.getElementById('optPayReferral')?.classList.toggle('selected', method === 'REFERRAL');
-
     document.getElementById('upiQrBox')?.classList.toggle('hidden', method !== 'UPI');
-    document.getElementById('referralWalletBox')?.classList.toggle('hidden', method !== 'REFERRAL');
 
     if (method === 'UPI') {
       this.updateOnlinePaymentOptionsVisibility();
-    } else if (method === 'REFERRAL') {
-      await this.updateReferralWalletCheckoutUI();
-    } else {
-      const btnSubmit = document.getElementById('btnCheckoutSubmit');
-      if (btnSubmit) {
-        btnSubmit.disabled = false;
-        const grandTotal = this.calculateCartTotals ? this.calculateCartTotals().grandTotal : 0;
-        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotal}</span>)</span>`;
-      }
     }
   }
 
@@ -2704,29 +2705,21 @@ class TiffinApp {
       }
     }
 
-    if (this.selectedPaymentMethod === 'REFERRAL') {
-      const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
-      const orderTotal = cartTotals.grandTotal || 0;
-      try {
-        const balRes = await this.fetchWithAuth(`${API_BASE}/referrals/stats`);
-        const balJson = await balRes.json();
-        if (balJson.success && balJson.data) {
-          const latestBal = Number(balJson.data.wallet_balance || 0);
-          if (this.currentUser) this.currentUser.wallet_balance = latestBal;
-          if (latestBal < orderTotal) {
-            this.showToast(`Insufficient referral wallet balance. Your referral wallet balance is ₹${latestBal}, but this order requires ₹${orderTotal}.`, 'error');
-            await this.updateReferralWalletCheckoutUI();
-            return;
-          }
-        }
-      } catch (e) {}
-    }
+    const chkWalletUsed = document.getElementById('chkUseWallet')?.checked === true;
+    const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
+    const grandTotal = cartTotals.grandTotal || 0;
 
-    const payMethodName = this.selectedPaymentMethod === 'REFERRAL'
-      ? 'REFERRAL'
-      : (this.selectedPaymentMethod === 'UPI'
-        ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
-        : 'Cash');
+    let finalUsedWalletAmount = 0;
+    let payMethodName = this.selectedPaymentMethod === 'UPI'
+      ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
+      : 'Cash';
+
+    if (chkWalletUsed && this.appliedWalletDiscount > 0) {
+      finalUsedWalletAmount = this.appliedWalletDiscount;
+      if (finalUsedWalletAmount >= grandTotal) {
+        payMethodName = 'REFERRAL';
+      }
+    }
 
     const payload = {
       customer_name: name,
@@ -2737,7 +2730,7 @@ class TiffinApp {
       payment_method: payMethodName,
       payment_screenshot: this.tempPaymentScreenshot || '',
       utr_number: utrNumber || '',
-      used_wallet_amount: this.selectedPaymentMethod === 'REFERRAL' ? (this.calculateCartTotals().grandTotal || 0) : (this.appliedWalletDiscount || 0),
+      used_wallet_amount: finalUsedWalletAmount,
       items: this.cart
     };
 
@@ -2763,6 +2756,12 @@ class TiffinApp {
         }
         this.cart = [];
         this.tempPaymentScreenshot = null;
+        this.appliedWalletDiscount = 0;
+        const chk = document.getElementById('chkUseWallet');
+        if (chk) chk.checked = false;
+        const breakdownBox = document.getElementById('referralAppliedBreakdown');
+        if (breakdownBox) breakdownBox.classList.add('hidden');
+
         this.updateCartUI();
         this.toggleCheckoutModal(false);
 
@@ -2783,12 +2782,8 @@ class TiffinApp {
       this.isSubmittingOrder = false;
       if (btnSubmit) {
         btnSubmit.disabled = false;
-        const grandTotal = this.calculateCartTotals ? this.calculateCartTotals().grandTotal : 0;
-        if (this.selectedPaymentMethod === 'REFERRAL') {
-          await this.updateReferralWalletCheckoutUI();
-        } else {
-          btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotal}</span>)</span>`;
-        }
+        const grandTotalNow = this.calculateCartTotals ? this.calculateCartTotals().grandTotal : 0;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${grandTotalNow}</span>)</span>`;
       }
     }
   }
@@ -6213,15 +6208,59 @@ class TiffinApp {
     }
   }
 
-  toggleCheckoutWalletDiscount() {
+  async toggleCheckoutWalletDiscount() {
     const chk = document.getElementById('chkUseWallet');
-    const walletBal = Number(this.referralStats?.wallet_balance || 0);
-
+    const breakdownBox = document.getElementById('referralAppliedBreakdown');
+    
     if (chk && chk.checked) {
-      this.appliedWalletDiscount = Math.min(walletBal, 30);
-      this.showToast(`Applied ₹${this.appliedWalletDiscount} Referral Wallet Discount!`, 'success');
+      // Fetch latest wallet balance from backend
+      let walletBal = 0;
+      try {
+        const res = await this.fetchWithAuth(`${API_BASE}/referrals/stats`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          walletBal = Number(json.data.wallet_balance || 0);
+          if (this.currentUser) this.currentUser.wallet_balance = walletBal;
+          if (this.referralStats) this.referralStats.wallet_balance = walletBal;
+        }
+      } catch (e) {
+        walletBal = Number(this.referralStats?.wallet_balance || this.currentUser?.wallet_balance || 0);
+      }
+
+      const elText = document.getElementById('checkoutWalletAvailableText');
+      if (elText) elText.innerHTML = `Available Balance: <strong>₹${walletBal}</strong>`;
+
+      if (walletBal <= 0) {
+        this.showToast('Your referral wallet balance is ₹0. No referral balance available.', 'warning');
+        chk.checked = false;
+        this.appliedWalletDiscount = 0;
+        if (breakdownBox) breakdownBox.classList.add('hidden');
+        this.updateCartUI();
+        return;
+      }
+
+      const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
+      const grandTotal = cartTotals.grandTotal || 0;
+      const applied = Math.min(walletBal, grandTotal);
+      const remaining = Math.max(0, grandTotal - applied);
+
+      this.appliedWalletDiscount = applied;
+
+      const elTotal = document.getElementById('refBreakdownOrderTotal');
+      const elApplied = document.getElementById('refBreakdownAppliedVal');
+      const elNet = document.getElementById('refBreakdownNetPayable');
+
+      if (elTotal) elTotal.innerText = `₹${grandTotal}`;
+      if (elApplied) elApplied.innerText = `-₹${applied}`;
+      if (elNet) elNet.innerText = `₹${remaining}`;
+
+      if (breakdownBox) breakdownBox.classList.remove('hidden');
+
+      this.showToast(`Referral Wallet balance applied (-₹${applied})!`, 'success');
     } else {
       this.appliedWalletDiscount = 0;
+      if (breakdownBox) breakdownBox.classList.add('hidden');
+      this.showToast('Referral balance unapplied.', 'info');
     }
 
     this.updateCartUI();
