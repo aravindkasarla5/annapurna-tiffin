@@ -1832,12 +1832,6 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
     const domainUrl = process.env.APP_URL || `${protocol}://${host}`;
 
-    const upiId = settings.upi_id || 'annapurna.tiffin@upi';
-    const upiName = settings.upi_name || 'Sri Lakshmi Annapurna Tiffin Center';
-    const phonepeAppIntentUrl = `phonepe://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR`;
-    const upiIntentUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR`;
-    const androidPhonePeIntentUrl = `intent://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR#Intent;scheme=upi;package=com.phonepe.app;end;`;
-
     const amountInPaise = Math.round(amountToPay * 100);
     const redirectUrl = `${domainUrl}/api/phonepe/redirect?txnId=${encodeURIComponent(txnId)}`;
     const callbackUrl = `${domainUrl}/api/phonepe/callback`;
@@ -1852,8 +1846,7 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       callbackUrl: callbackUrl,
       mobileNumber: (req.user.mobile || customer_mobile || '').replace(/\D/g, '').slice(-10) || '9999999999',
       paymentInstrument: {
-        type: 'UPI_INTENT',
-        targetApp: 'com.phonepe.app'
+        type: 'PAY_PAGE'
       }
     };
 
@@ -1863,7 +1856,6 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     const xVerify = sha256 + '###' + PHONEPE_SALT_INDEX;
 
     let phonepeRedirectUrl = null;
-    let phonepeIntentUrl = null;
     let pgMessage = "PhonePe payment gateway initiated.";
 
     try {
@@ -1880,9 +1872,7 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       const pgJson = await pgResponse.json();
 
       if (pgJson.success && pgJson.data?.instrumentResponse) {
-        const inst = pgJson.data.instrumentResponse;
-        phonepeRedirectUrl = inst.redirectInfo?.url || null;
-        phonepeIntentUrl = inst.intentUrl || null;
+        phonepeRedirectUrl = pgJson.data.instrumentResponse.redirectInfo?.url || pgJson.data.instrumentResponse.intentUrl || null;
         pgMessage = pgJson.message || pgMessage;
       } else {
         console.warn('PhonePe Pay API returned response:', pgJson);
@@ -1902,10 +1892,6 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     res.json({
       success: true,
       redirectUrl: phonepeRedirectUrl,
-      intentUrl: phonepeIntentUrl || phonepeAppIntentUrl,
-      androidIntentUrl: androidPhonePeIntentUrl,
-      phonepeAppUrl: phonepeAppIntentUrl,
-      upiUrl: upiIntentUrl,
       txnId,
       data: targetOrder,
       message: pgMessage
