@@ -71,6 +71,9 @@ class TiffinApp {
     this.inactivityCheckInterval = null;
     this.lastBroadcastActivityTime = 0;
     this.isWarningModalShowing = false;
+
+    // Start Live 3-Minute Order Modification Timer Ticker
+    this.startModificationTimerTicker();
   }
 
   async fetchWithAuth(url, options = {}) {
@@ -3867,8 +3870,9 @@ class TiffinApp {
       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
-    const isRejected = order.order_status === 'Rejected' || order.order_status === 'Cancelled';
-    const isReceived = order.order_status === 'Received';
+    const isCancelled = order.order_status === 'Cancelled';
+    const isRejected = order.order_status === 'Rejected' || isCancelled;
+    const isReceived = order.order_status === 'Received' || order.order_status === 'Pending';
     const isPreparing = order.order_status === 'Preparing';
     const isReady = order.order_status === 'Ready';
     const isCompleted = order.order_status === 'Completed';
@@ -3879,7 +3883,8 @@ class TiffinApp {
     if (isPreparing) { statusColor = '#29B6F6'; statusIcon = 'fa-fire-burner'; statusLabel = 'Preparing'; }
     if (isReady) { statusColor = '#66BB6A'; statusIcon = 'fa-bell-concierge'; statusLabel = 'Ready'; }
     if (isCompleted) { statusColor = '#4CAF50'; statusIcon = 'fa-circle-check'; statusLabel = 'Completed'; }
-    if (isRejected) { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = 'Order Rejected'; }
+    if (isCancelled) { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = 'Cancelled'; }
+    else if (order.order_status === 'Rejected') { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = 'Order Rejected'; }
 
     let stepIdx = 0;
     if (isPreparing) stepIdx = 1;
@@ -3891,9 +3896,37 @@ class TiffinApp {
     const isReferralPay = (order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL';
     const isPaid = order.payment_status === 'Paid' || order.payment_status === 'Cash Received' || order.payment_status.includes('Verified');
 
+    // Calculate 3-minute modification cutoff
+    const createdAtMs = new Date(order.created_at || Date.now()).getTime();
+    const elapsedMs = Date.now() - createdAtMs;
+    const isWithin3Min = elapsedMs < 180000;
+    const canModify = isWithin3Min && ['Received', 'Pending'].includes(order.order_status);
+    const canCancel = ['Received', 'Pending'].includes(order.order_status);
+    const remainingSecs = Math.max(0, Math.floor((180000 - elapsedMs) / 1000));
+    const minsStr = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
+    const secsStr = String(remainingSecs % 60).padStart(2, '0');
+
     return `
       <div class="co-row-card ${isRejected ? 'is-rejected' : ''}">
-        ${isRejected ? `
+        ${isCancelled ? `
+          <!-- PROMINENT CANCELLED ORDER CALLOUT BANNER -->
+          <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(229,57,53,0.25); color: #E53935; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;">
+                <i class="fa-solid fa-circle-xmark"></i>
+              </div>
+              <div>
+                <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">Order Cancelled by Customer</strong>
+                <span style="font-size: 0.8rem; color: #FF8A80;">
+                  <strong>Reason:</strong> "${order.cancellation_reason || 'Ordered by mistake'}"
+                </span>
+              </div>
+            </div>
+            <button type="button" class="btn-sm-status" onclick="app.openOrderSupport('${order.order_number}')" style="background: #E53935; color: #FFF; border: none; padding: 7px 16px; font-weight: 800; font-size: 0.78rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-headset"></i> Order Support
+            </button>
+          </div>
+        ` : order.order_status === 'Rejected' ? `
           <!-- PROMINENT REJECTED ORDER CALLOUT BANNER -->
           <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
             <div style="display: flex; align-items: center; gap: 12px;">
@@ -3985,6 +4018,26 @@ class TiffinApp {
           <div class="co-actions-panel">
             <div class="co-actions-title"><i class="fa-solid fa-bolt" style="color: var(--accent-gold);"></i> Quick Actions</div>
             <div class="co-row-actions">
+              ${canModify ? `
+                <div class="order-mod-timer-box" style="grid-column: span 2; background: rgba(255, 179, 0, 0.12); border: 1px solid var(--accent-gold); padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; color: #FFF; display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                  <span><i class="fa-solid fa-clock-rotate-left" style="color: var(--accent-gold);"></i> You can modify this order for:</span>
+                  <strong data-order-timer-id="${order.id}" data-created-at="${order.created_at}" style="font-family: monospace; font-size: 0.92rem; color: var(--accent-gold);">${minsStr}:${secsStr}</strong>
+                </div>
+                <button type="button" class="co-row-btn edit-order-btn" id="btnEditOrder_${order.id}" onclick="app.openEditOrderModal('${order.id}')" style="background: rgba(255,179,0,0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-weight: 800;">
+                  <i class="fa-solid fa-box-open"></i> Edit Order
+                </button>
+              ` : (order.order_status === 'Received' || order.order_status === 'Pending') ? `
+                <div class="order-mod-timer-box" style="grid-column: span 2; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); padding: 6px 10px; border-radius: 8px; font-size: 0.76rem; color: var(--text-muted); text-align: center; margin-bottom: 4px;">
+                  <i class="fa-solid fa-hourglass-end"></i> Modification window expired.
+                </div>
+              ` : ''}
+
+              ${canCancel ? `
+                <button type="button" class="co-row-btn cancel-order-btn" id="btnCancelOrder_${order.id}" onclick="app.openCancelOrderModal('${order.id}')" style="background: rgba(229,57,53,0.18); color: #FF5252; border: 1px solid #E53935; font-weight: 800;">
+                  <i class="fa-solid fa-ban"></i> Cancel Order
+                </button>
+              ` : ''}
+
               <button class="co-row-btn view" onclick="app.showOrderDetail('${order.order_number}')">
                 <i class="fa-solid fa-eye"></i> View Full Details
               </button>
@@ -5146,10 +5199,26 @@ class TiffinApp {
 
     if (swEnabled) swEnabled.classList.toggle('active', ref.enabled !== false);
     if (lblEnabled) lblEnabled.innerText = ref.enabled !== false ? '🟢 PROGRAM ON' : '🔴 PROGRAM OFF';
-    if (elReward) elReward.value = ref.referrer_reward ?? 30;
+    if (elReward) {
+      const activeRewardVal = ref.referrer_reward ?? 10;
+      elReward.value = activeRewardVal;
+      document.querySelectorAll('.ref-preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.innerText.trim() === `₹${activeRewardVal}`);
+      });
+    }
     if (elDiscount) elDiscount.value = ref.new_customer_discount ?? 30;
     if (elMinOrder) elMinOrder.value = ref.min_order_value ?? 150;
     if (elLimit) elLimit.value = ref.monthly_limit ?? 500;
+  }
+
+  setReferralAmountPreset(amt) {
+    const el = document.getElementById('setRefReferrerReward');
+    if (el) {
+      el.value = amt;
+      document.querySelectorAll('.ref-preset-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.innerText.trim() === `₹${amt}`);
+      });
+    }
   }
 
   saveBusinessSettings(e) {
@@ -5189,14 +5258,56 @@ class TiffinApp {
     const upiIdInput = document.getElementById('setUpiId')?.value?.trim();
     const descInput = document.getElementById('setDesc')?.value?.trim();
 
+    // Validate Required Restaurant Information
+    if (!hotelNameInput) {
+      this.showToast("Restaurant Name is required and cannot be empty.", "error");
+      return;
+    }
+    if (!phoneInput) {
+      this.showToast("Helpline Phone Number is required and cannot be empty.", "error");
+      return;
+    }
+    if (!addrInput) {
+      this.showToast("Restaurant Address is required and cannot be empty.", "error");
+      return;
+    }
+
+    // Validate Required Timings
+    if (!openTimeInput) {
+      this.showToast("Opening Time is required.", "error");
+      return;
+    }
+    if (!closeTimeInput) {
+      this.showToast("Closing Time is required.", "error");
+      return;
+    }
+
+    const timeRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9]\s*(AM|PM|am|pm)$|^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/i;
+    if (!timeRegex.test(openTimeInput)) {
+      this.showToast("Please enter a valid Opening Time format (e.g. 06:00 AM or 06:00).", "error");
+      return;
+    }
+    if (!timeRegex.test(closeTimeInput)) {
+      this.showToast("Please enter a valid Closing Time format (e.g. 10:00 PM or 22:00).", "error");
+      return;
+    }
+
+    // Validate Referral Amount input
+    const refRewardRaw = document.getElementById('setRefReferrerReward')?.value;
+    const refRewardNum = Number(refRewardRaw);
+    if (refRewardRaw === '' || refRewardRaw === null || refRewardRaw === undefined || isNaN(refRewardNum) || !isFinite(refRewardNum) || refRewardNum <= 0) {
+      this.showToast("Referral Amount must be a valid positive monetary value greater than 0.", "error");
+      return;
+    }
+
     // Build payload: only send non-empty values; fall back to existing saved values
     // to prevent overwriting unchanged fields with empty strings
     const payload = {
-      hotel_name: (hotelNameInput && hotelNameInput !== '') ? hotelNameInput : (this.settings?.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center'),
-      phone: (phoneInput !== undefined && phoneInput !== null) ? phoneInput : (this.settings?.phone || ''),
-      address: (addrInput !== undefined && addrInput !== null) ? addrInput : (this.settings?.address || ''),
-      open_time: (openTimeInput !== undefined && openTimeInput !== null) ? openTimeInput : (this.settings?.open_time || ''),
-      close_time: (closeTimeInput !== undefined && closeTimeInput !== null) ? closeTimeInput : (this.settings?.close_time || ''),
+      hotel_name: hotelNameInput,
+      phone: phoneInput,
+      address: addrInput,
+      open_time: openTimeInput,
+      close_time: closeTimeInput,
       holidays: (holidaysInput !== undefined && holidaysInput !== null) ? holidaysInput : (this.settings?.holidays || ''),
       upi_id: (upiIdInput !== undefined && upiIdInput !== null) ? upiIdInput : (this.settings?.upi_id || ''),
       description: (descInput !== undefined && descInput !== null) ? descInput : (this.settings?.description || ''),
@@ -5207,7 +5318,7 @@ class TiffinApp {
       is_phonepe_enabled: isPhonePeEnabled,
       referral: {
         enabled: refEnabled,
-        referrer_reward: Number(document.getElementById('setRefReferrerReward')?.value ?? (this.settings?.referral?.referrer_reward ?? 30)),
+        referrer_reward: refRewardNum,
         new_customer_discount: Number(document.getElementById('setRefCustomerDiscount')?.value ?? (this.settings?.referral?.new_customer_discount ?? 30)),
         min_order_value: Number(document.getElementById('setRefMinOrderValue')?.value ?? (this.settings?.referral?.min_order_value ?? 150)),
         monthly_limit: Number(document.getElementById('setRefMonthlyLimit')?.value ?? (this.settings?.referral?.monthly_limit ?? 500))
@@ -5237,6 +5348,47 @@ class TiffinApp {
       console.error('Error saving settings:', err);
       // Do NOT clear fields or overwrite previous saved values on network error
       this.showToast('Failed to save settings. Please try again.', 'error');
+    }
+  }
+
+  async saveUpiVpaSetting() {
+    const upiInput = document.getElementById('setUpiId')?.value?.trim();
+    const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+
+    if (!upiInput || !upiVpaRegex.test(upiInput)) {
+      this.showToast("Please enter a valid UPI VPA address.", "error");
+      return;
+    }
+
+    const btn = document.getElementById('btnSaveUpiVpa');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upi_id: upiInput })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.settings = json.settings || json.data;
+        this.updateHeaderAndSettingsUI();
+        this.populateSettingsForm();
+        this.showToast('✓ Official Hotel UPI VPA updated successfully.', 'success');
+      } else {
+        this.showToast(json.message || 'Please enter a valid UPI VPA address.', 'error');
+      }
+    } catch (err) {
+      console.error('Error updating UPI VPA:', err);
+      this.showToast('Failed to save Official Hotel UPI VPA address. Please try again.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Changes`;
+      }
     }
   }
 
@@ -5295,9 +5447,28 @@ class TiffinApp {
     if (elHeroHours) elHeroHours.innerText = `${openT} - ${closeT}`;
     if (elHeroHolidays) elHeroHolidays.innerText = holidays;
 
-    // Helpline Links & Drawer
+    // Helpline Links & Support Cards
     const elHelplinePhone = document.getElementById('drawerHelplinePhone');
     if (elHelplinePhone) elHelplinePhone.innerText = `${phone} (${holidays || 'Open 7 Days'})`;
+
+    const elSupportPhone = document.getElementById('supportCardPhone');
+    const elSupportHours = document.getElementById('supportCardHours');
+    if (elSupportPhone) elSupportPhone.innerText = phone;
+    if (elSupportHours) elSupportHours.innerText = `${holidays ? holidays + ': ' : 'Mon - Sun: '}${openT} - ${closeT}`;
+
+    // Footer Timings & Contact Info
+    const elFooterOpen = document.getElementById('footerOpenTime');
+    const elFooterClose = document.getElementById('footerCloseTime');
+    const elFooterHolidays = document.getElementById('footerHolidays');
+    const elFooterPhone = document.getElementById('footerPhone');
+    const elFooterAddr = document.getElementById('footerAddress');
+    const elFooterUpi = document.getElementById('footerUpi');
+    if (elFooterOpen) elFooterOpen.innerText = openT;
+    if (elFooterClose) elFooterClose.innerText = closeT;
+    if (elFooterHolidays) elFooterHolidays.innerText = holidays || 'Open 7 Days a Week';
+    if (elFooterPhone) elFooterPhone.innerText = phone;
+    if (elFooterAddr) elFooterAddr.innerText = addr;
+    if (elFooterUpi) elFooterUpi.innerText = upi;
 
     // Checkout & Payment
     const elCheckoutUpi = document.getElementById('checkoutUpiIdDisplay');
@@ -7827,7 +7998,273 @@ class TiffinApp {
     this.renderCurrentView();
     this.updateCartUI();
 
-    this.openAuthModal('LOGIN', 'CUSTOMER');
+  // =========================================================================
+  // LIVE 3-MINUTE ORDER MODIFICATION & CANCELLATION ENGINE
+  // =========================================================================
+
+  startModificationTimerTicker() {
+    if (this.modTimerInterval) clearInterval(this.modTimerInterval);
+    this.modTimerInterval = setInterval(() => {
+      const timerEls = document.querySelectorAll('[data-order-timer-id]');
+      if (!timerEls || !timerEls.length) return;
+
+      timerEls.forEach(el => {
+        const createdAt = el.getAttribute('data-created-at');
+        const orderId = el.getAttribute('data-order-timer-id');
+        if (!createdAt) return;
+
+        const createdAtMs = new Date(createdAt).getTime();
+        const elapsedMs = Date.now() - createdAtMs;
+        const remainingSecs = Math.max(0, Math.floor((180000 - elapsedMs) / 1000));
+
+        if (remainingSecs > 0) {
+          const minsStr = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
+          const secsStr = String(remainingSecs % 60).padStart(2, '0');
+          el.innerText = `${minsStr}:${secsStr}`;
+        } else {
+          el.innerText = '00:00';
+          const containerBox = el.closest('.order-mod-timer-box');
+          if (containerBox) {
+            containerBox.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> Modification window expired.';
+            containerBox.style.background = 'rgba(255,255,255,0.04)';
+            containerBox.style.borderColor = 'var(--border-color)';
+            containerBox.style.color = 'var(--text-muted)';
+          }
+          const btnEdit = document.getElementById(`btnEditOrder_${orderId}`);
+          if (btnEdit) {
+            btnEdit.disabled = true;
+            btnEdit.style.opacity = '0.5';
+            btnEdit.style.cursor = 'not-allowed';
+          }
+        }
+      });
+    }, 1000);
+  }
+
+  openEditOrderModal(orderId) {
+    const order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    // Check cutoff
+    const createdAtMs = new Date(order.created_at || Date.now()).getTime();
+    if (Date.now() - createdAtMs >= 180000 || !['Received', 'Pending'].includes(order.order_status)) {
+      this.showToast('Modification window has expired for this order.', 'warning');
+      return;
+    }
+
+    this.editingOrder = JSON.parse(JSON.stringify(order));
+    this.editingOrderItems = (this.editingOrder.items || []).map(i => ({ ...i }));
+
+    const elId = document.getElementById('editTargetOrderId');
+    const elNum = document.getElementById('editModalOrderNumDisplay');
+    if (elId) elId.value = order.id;
+    if (elNum) elNum.innerText = `#${order.order_number}`;
+
+    this.renderEditModalItems();
+
+    const backdrop = document.getElementById('editOrderModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  renderEditModalItems() {
+    const container = document.getElementById('editOrderItemsListContainer');
+    if (!container) return;
+
+    if (!this.editingOrderItems || !this.editingOrderItems.length) {
+      container.innerHTML = `<p style="font-size: 0.85rem; color: #FF5252; padding: 1rem; text-align: center;">No items in order.</p>`;
+      return;
+    }
+
+    let subtotal = 0;
+    container.innerHTML = this.editingOrderItems.map((item, idx) => {
+      const qty = Number(item.quantity || 0);
+      const price = Number(item.price || 0);
+      const lineTotal = price * qty;
+      subtotal += lineTotal;
+
+      return `
+        <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 8px;">
+          <div>
+            <strong style="font-size: 0.88rem; color: #FFF; display: block;">${item.name}</strong>
+            <span style="font-size: 0.78rem; color: var(--accent-gold);">₹${price} each</span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="display: inline-flex; align-items: center; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px;">
+              <button type="button" onclick="app.changeEditQty(${idx}, -1)" style="background: none; border: none; color: #FFF; width: 28px; height: 28px; font-weight: 800; cursor: pointer;">-</button>
+              <span style="font-size: 0.88rem; font-weight: 800; color: var(--accent-gold); width: 24px; text-align: center;">${qty}</span>
+              <button type="button" onclick="app.changeEditQty(${idx}, 1)" style="background: none; border: none; color: #FFF; width: 28px; height: 28px; font-weight: 800; cursor: pointer;">+</button>
+            </div>
+            <span style="font-size: 0.9rem; font-weight: 800; color: #FFF; min-width: 50px; text-align: right;">₹${lineTotal}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const elSubtotal = document.getElementById('editModalSubtotalDisplay');
+    const elTotal = document.getElementById('editModalTotalDisplay');
+    if (elSubtotal) elSubtotal.innerText = `₹${subtotal}`;
+    if (elTotal) elTotal.innerText = `₹${subtotal}`;
+  }
+
+  changeEditQty(idx, delta) {
+    if (!this.editingOrderItems || !this.editingOrderItems[idx]) return;
+    const currentQty = Number(this.editingOrderItems[idx].quantity || 0);
+    const newQty = Math.max(0, currentQty + delta);
+    this.editingOrderItems[idx].quantity = newQty;
+    this.renderEditModalItems();
+  }
+
+  closeEditOrderModal() {
+    const backdrop = document.getElementById('editOrderModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+    this.editingOrder = null;
+    this.editingOrderItems = null;
+  }
+
+  async submitOrderModification(e) {
+    e.preventDefault();
+    if (this.isSubmittingOrderEdit) return;
+
+    const orderId = document.getElementById('editTargetOrderId')?.value;
+    if (!orderId || !this.editingOrderItems) return;
+
+    const activeItems = this.editingOrderItems.filter(i => Number(i.quantity) > 0);
+    if (!activeItems.length) {
+      this.showToast('Order must contain at least one item.', 'error');
+      return;
+    }
+
+    const btnSubmit = document.getElementById('btnSubmitOrderEdit');
+    this.isSubmittingOrderEdit = true;
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/modify`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: activeItems })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (json.wallet_balance !== undefined && this.currentUser) {
+          this.currentUser.wallet_balance = json.wallet_balance;
+        }
+        this.showToast(json.message || 'Order modified successfully!', 'success');
+        this.closeEditOrderModal();
+        await this.fetchOrders();
+        await this.fetchNotifications();
+      } else {
+        this.showToast(json.message || 'Failed to modify order.', 'error');
+      }
+    } catch (err) {
+      console.error('Error modifying order:', err);
+      this.showToast('Failed to modify order.', 'error');
+    } finally {
+      this.isSubmittingOrderEdit = false;
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Changes`;
+      }
+    }
+  }
+
+  openCancelOrderModal(orderId) {
+    const order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    if (['preparing', 'ready', 'completed', 'cancelled', 'rejected'].includes((order.order_status || '').toLowerCase())) {
+      this.showToast(`Order #${order.order_number} cannot be cancelled because its status is ${order.order_status}.`, 'warning');
+      return;
+    }
+
+    const elId = document.getElementById('cancelTargetOrderId');
+    const elNum = document.getElementById('cancelModalOrderNumDisplay');
+    if (elId) elId.value = order.id;
+    if (elNum) elNum.innerText = `#${order.order_number}`;
+
+    const radios = document.getElementsByName('cancelReasonRadio');
+    if (radios.length) radios[0].checked = true;
+
+    const otherWrapper = document.getElementById('cancelOtherReasonWrapper');
+    if (otherWrapper) otherWrapper.classList.add('hidden');
+
+    const customInput = document.getElementById('cancelCustomReasonInput');
+    if (customInput) customInput.value = '';
+
+    const backdrop = document.getElementById('cancelOrderModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  handleCancelReasonRadioChange(val) {
+    const otherWrapper = document.getElementById('cancelOtherReasonWrapper');
+    if (otherWrapper) {
+      otherWrapper.classList.toggle('hidden', val !== 'Other');
+    }
+  }
+
+  closeCancelOrderModal() {
+    const backdrop = document.getElementById('cancelOrderModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  async submitOrderCancellation(e) {
+    e.preventDefault();
+    if (this.isSubmittingOrderCancel) return;
+
+    const orderId = document.getElementById('cancelTargetOrderId')?.value;
+    if (!orderId) return;
+
+    const selectedRadio = document.querySelector('input[name="cancelReasonRadio"]:checked')?.value || 'Ordered by mistake';
+    let reason = selectedRadio;
+    if (selectedRadio === 'Other') {
+      const customText = document.getElementById('cancelCustomReasonInput')?.value?.trim();
+      if (!customText) {
+        this.showToast('Please enter your cancellation reason.', 'warning');
+        return;
+      }
+      reason = customText;
+    }
+
+    const btnSubmit = document.getElementById('btnSubmitOrderCancel');
+    this.isSubmittingOrderCancel = true;
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Cancelling...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason })
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (json.wallet_balance !== undefined && this.currentUser) {
+          this.currentUser.wallet_balance = json.wallet_balance;
+        }
+        this.showToast(json.message || 'Order cancelled successfully.', 'success');
+        this.closeCancelOrderModal();
+        await this.fetchOrders();
+        await this.fetchNotifications();
+        await this.fetchReferralStats();
+      } else {
+        this.showToast(json.message || 'Failed to cancel order.', 'error');
+      }
+    } catch (err) {
+      console.error('Error cancelling order:', err);
+      this.showToast('Failed to cancel order.', 'error');
+    } finally {
+      this.isSubmittingOrderCancel = false;
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-ban"></i> Confirm Cancellation`;
+      }
+    }
   }
 }
 

@@ -6656,3 +6656,25 @@ body.guest-mode #btnMobileMenuToggle {
   }
 }
 
+/* Referral Amount Quick Preset Chips */
+.ref-preset-btn {
+  background: rgba(255, 179, 0, 0.12);
+  border: 1px solid rgba(255, 179, 0, 0.35);
+  color: var(--accent-gold);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ref-preset-btn:hover,
+.ref-preset-btn.active {
+  background: var(--accent-gold);
+  color: #000;
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 8px rgba(255, 179, 0, 0.4);
+}
+
+

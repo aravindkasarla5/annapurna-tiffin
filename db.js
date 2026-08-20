@@ -318,7 +318,8 @@ async function initDatabase() {
     // PostgreSQL/SQLite schema column migration adjustments
     if (usePg) {
       try {
-        await query(`ALTER TABLE settings ALTER COLUMN upi_qr_code TYPE TEXT;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);
@@ -339,6 +340,8 @@ async function initDatabase() {
       }
     } else {
       const safeAlter = async (sql) => { try { await query(sql); } catch(e) {} };
+      await safeAlter(`ALTER TABLE orders ADD COLUMN cancellation_reason TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN cancelled_at TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN payment_screenshot TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN screenshot_url TEXT;`);

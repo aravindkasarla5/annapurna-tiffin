@@ -361,8 +361,12 @@ app.post('/api/auth/register', async (req, res) => {
     // Insert into referrals table after user row exists in PostgreSQL
     if (referrer) {
       const settingsRes = await db.query('SELECT referral FROM settings WHERE id = 1;');
-      const settingsReferral = settingsRes.rows[0]?.referral || {};
-      const rewardVal = Number(settingsReferral.referrer_reward || 30);
+      let settingsReferral = settingsRes.rows[0]?.referral || {};
+      if (typeof settingsReferral === 'string') {
+        try { settingsReferral = JSON.parse(settingsReferral); } catch (e) {}
+      }
+      const rawVal = Number(settingsReferral.referrer_reward);
+      const rewardVal = (!isNaN(rawVal) && isFinite(rawVal) && rawVal > 0) ? rawVal : 10;
 
       await db.query(
         `INSERT INTO referrals (id, referrer_id, referrer_mobile, referrer_name, referred_id, referred_mobile, referred_name, status, reward_amount, date_time)
@@ -647,6 +651,46 @@ const handleSaveSettings = async (req, res) => {
       is_phonepe_enabled, description, referral
     } = req.body;
 
+    // Validate Restaurant Information & Operating Timings if provided
+    if (hotel_name !== undefined && (typeof hotel_name !== 'string' || hotel_name.trim() === '')) {
+      return res.status(400).json({ success: false, message: "Restaurant Name is required and cannot be empty." });
+    }
+    if (phone !== undefined && (typeof phone !== 'string' || phone.trim() === '')) {
+      return res.status(400).json({ success: false, message: "Helpline Phone Number is required and cannot be empty." });
+    }
+    if (address !== undefined && (typeof address !== 'string' || address.trim() === '')) {
+      return res.status(400).json({ success: false, message: "Restaurant Address is required and cannot be empty." });
+    }
+
+    const timeFormatRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9]\s*(AM|PM|am|pm)$|^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/i;
+    if (open_time !== undefined) {
+      const openStr = String(open_time).trim();
+      if (!openStr) {
+        return res.status(400).json({ success: false, message: "Opening Time is required and cannot be empty." });
+      }
+      if (!timeFormatRegex.test(openStr)) {
+        return res.status(400).json({ success: false, message: "Invalid Opening Time format. Please enter a valid time (e.g. 06:00 AM or 06:00)." });
+      }
+    }
+    if (close_time !== undefined) {
+      const closeStr = String(close_time).trim();
+      if (!closeStr) {
+        return res.status(400).json({ success: false, message: "Closing Time is required and cannot be empty." });
+      }
+      if (!timeFormatRegex.test(closeStr)) {
+        return res.status(400).json({ success: false, message: "Invalid Closing Time format. Please enter a valid time (e.g. 10:00 PM or 22:00)." });
+      }
+    }
+
+    // Validate Official Hotel UPI VPA Address if provided
+    if (upi_id !== undefined) {
+      const upiStr = String(upi_id).trim();
+      const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+      if (!upiStr || !upiVpaRegex.test(upiStr)) {
+        return res.status(400).json({ success: false, message: "Please enter a valid UPI VPA address." });
+      }
+    }
+
     const newHotelName = hotel_name !== undefined && hotel_name !== null && hotel_name !== '' ? hotel_name : (s.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center');
     const newHotelLogo = hotel_logo !== undefined ? hotel_logo : s.hotel_logo;
     const newPhone = phone !== undefined ? phone : s.phone;
@@ -689,6 +733,23 @@ const handleSaveSettings = async (req, res) => {
 
     let newRef = s.referral;
     if (referral) {
+      if (referral.referrer_reward !== undefined) {
+        const rewardInput = referral.referrer_reward;
+        const numReward = Number(rewardInput);
+        if (
+          rewardInput === null ||
+          rewardInput === undefined ||
+          rewardInput === '' ||
+          isNaN(numReward) ||
+          !isFinite(numReward) ||
+          numReward <= 0
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid Referral Amount. Must be a valid positive monetary value greater than 0."
+          });
+        }
+      }
       let existingRef = typeof s.referral === 'string' ? JSON.parse(s.referral) : (s.referral || {});
       newRef = { ...existingRef, ...referral };
     }
@@ -989,19 +1050,20 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       }
 
       // Create Order Record
+      const nowIso = new Date().toISOString();
       await tx.query(
         `INSERT INTO orders (
           id, order_number, customer_id, customer_name, customer_mobile, 
           order_type, delivery_address, notes, total_amount, used_wallet_amount, 
           net_amount, payment_method, payment_status, order_status, items,
-          utr_number, payment_screenshot, screenshot_url
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18);`,
+          utr_number, payment_screenshot, screenshot_url, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);`,
         [
           newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
           order_type || 'Takeaway', delivery_address || null, notes || null,
           grand_total, walletDeducted, netAmount, finalPayMethod,
           finalPayStatus, 'Received', JSON.stringify(formattedItems),
-          cleanUtr, savedScreenshotUrl, savedScreenshotUrl
+          cleanUtr, savedScreenshotUrl, savedScreenshotUrl, nowIso
         ]
       );
 
@@ -1064,7 +1126,356 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
   }
 });
 
-// GET Wallet Transactions History
+// =========================================================================
+// CUSTOMER ORDER MODIFICATION & CANCELLATION API
+// =========================================================================
+
+// Helper to parse order creation timestamp robustly across database formats
+function parseOrderCreatedAtMs(createdAt) {
+  if (!createdAt) return Date.now();
+  let d = new Date(createdAt);
+  if (!isNaN(d.getTime())) {
+    if (typeof createdAt === 'string' && createdAt.includes(' ') && !createdAt.includes('Z') && !createdAt.includes('+')) {
+      const utcStr = createdAt.replace(' ', 'T') + 'Z';
+      const utcD = new Date(utcStr);
+      if (!isNaN(utcD.getTime())) return utcD.getTime();
+    }
+    return d.getTime();
+  }
+  return Date.now();
+}
+
+// PUT /api/orders/:id/modify - Modify an existing customer order within 3-minute window
+app.put('/api/orders/:id/modify', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: "Order must contain at least one item." });
+    }
+
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+    if (!oRes.rows || oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+    const order = oRes.rows[0];
+
+    // Backend Ownership Check
+    if (order.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only modify your own orders." });
+    }
+
+    // Backend 3-Minute Modification Window Check
+    const createdAtMs = parseOrderCreatedAtMs(order.created_at);
+    const elapsedMs = Date.now() - createdAtMs;
+    if (elapsedMs >= 180000) {
+      return res.status(400).json({
+        success: false,
+        message: "Modification window expired. Orders can only be modified within 3 minutes of placement."
+      });
+    }
+
+    // Backend Order Status Check
+    const statusLower = (order.order_status || '').toLowerCase();
+    if (!['received', 'pending'].includes(statusLower)) {
+      return res.status(400).json({
+        success: false,
+        message: `Order #${order.order_number} cannot be modified because its current status is "${order.order_status}".`
+      });
+    }
+
+    // Fetch latest tiffins to recalculate authoritative price from DB
+    const tiffinsRes = await db.query('SELECT id, name, price FROM tiffins;');
+    const tiffinMap = new Map();
+    (tiffinsRes.rows || []).forEach(t => tiffinMap.set(t.id, t));
+
+    let grandTotal = 0;
+    const formattedItems = [];
+
+    for (const item of items) {
+      const qty = Number(item.quantity || 0);
+      if (qty <= 0) continue;
+
+      const itemId = item.id || item.tiffin_id;
+      const matchedTiffin = tiffinMap.get(itemId);
+      const itemPrice = matchedTiffin ? Number(matchedTiffin.price) : Number(item.price || 0);
+
+      if (itemPrice <= 0) continue;
+
+      const itemTotal = itemPrice * qty;
+      grandTotal += itemTotal;
+
+      formattedItems.push({
+        tiffin_id: itemId,
+        name: matchedTiffin ? matchedTiffin.name : item.name,
+        price: itemPrice,
+        quantity: qty
+      });
+    }
+
+    if (formattedItems.length === 0 || grandTotal <= 0) {
+      return res.status(400).json({ success: false, message: "Modified order must contain at least one valid item." });
+    }
+
+    let updatedOrder = null;
+    let updatedWalletBalance = 0;
+
+    await db.executeTransaction(async (tx) => {
+      const userRes = await tx.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+      const currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
+
+      const isReferralPayment = (order.payment_method || '').toUpperCase() === 'REFERRAL' || (order.payment_status || '').toUpperCase() === 'REFERRAL';
+      const originalWalletDeducted = Number(order.used_wallet_amount || 0);
+
+      let newWalletDeducted = 0;
+      let newNetAmount = grandTotal;
+
+      if (isReferralPayment) {
+        const maxAvailableWallet = currentWallet + originalWalletDeducted;
+        if (grandTotal > maxAvailableWallet) {
+          const err = new Error(`Insufficient referral wallet balance. Required: ₹${grandTotal}, Available: ₹${maxAvailableWallet}`);
+          err.isInsufficientWallet = true;
+          err.currentWallet = currentWallet;
+          err.requiredAmount = grandTotal;
+          throw err;
+        }
+
+        newWalletDeducted = grandTotal;
+        const newWalletBal = maxAvailableWallet - grandTotal;
+        newNetAmount = grandTotal;
+
+        await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [newWalletBal, req.user.id]);
+
+        const walletDiff = originalWalletDeducted - grandTotal;
+        if (walletDiff !== 0) {
+          await tx.query(
+            `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+            [
+              'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+              req.user.id,
+              Math.abs(walletDiff),
+              walletDiff > 0 ? 'CREDIT' : 'DEBIT',
+              `Order Modification Adjustment #${order.order_number}`,
+              new Date().toLocaleString('en-IN'),
+              order.order_number,
+              currentWallet,
+              newWalletBal,
+              'SUCCESS'
+            ]
+          );
+        }
+      } else {
+        if (originalWalletDeducted > 0) {
+          const maxAvailableWallet = currentWallet + originalWalletDeducted;
+          newWalletDeducted = Math.min(maxAvailableWallet, originalWalletDeducted, grandTotal);
+          const newWalletBal = maxAvailableWallet - newWalletDeducted;
+          newNetAmount = Math.max(0, grandTotal - newWalletDeducted);
+
+          await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [newWalletBal, req.user.id]);
+        }
+      }
+
+      await tx.query(
+        `UPDATE orders SET items = $1, total_amount = $2, used_wallet_amount = $3, net_amount = $4 WHERE id = $5;`,
+        [JSON.stringify(formattedItems), grandTotal, newWalletDeducted, newNetAmount, order.id]
+      );
+
+      await tx.query(
+        `UPDATE payments SET amount = $1 WHERE order_number = $2;`,
+        [isReferralPayment ? grandTotal : newNetAmount, order.order_number]
+      );
+
+      // Send Customer & Owner Notifications
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        [
+          'notif_' + Date.now() + '_cust',
+          'CUSTOMER',
+          req.user.id,
+          'Order Modified',
+          `Order #${order.order_number} has been updated successfully. Total is now ₹${grandTotal}.`,
+          'ORDER',
+          false,
+          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        ]
+      );
+
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        [
+          'notif_' + Date.now() + '_own',
+          'OWNER',
+          req.user.id,
+          'Order Modified by Customer',
+          `Order #${order.order_number} modified by ${req.user.name}. New total: ₹${grandTotal}.`,
+          'ORDER',
+          false,
+          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        ]
+      );
+
+      const finalRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
+      updatedOrder = finalRes.rows[0];
+    });
+
+    const userBalRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+    updatedWalletBalance = Number(userBalRes.rows[0]?.wallet_balance || 0);
+
+    if (updatedOrder) {
+      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) {}
+    }
+
+    res.json({
+      success: true,
+      data: updatedOrder,
+      wallet_balance: updatedWalletBalance,
+      message: `Order #${order.order_number} updated successfully!`
+    });
+  } catch (err) {
+    if (err.isInsufficientWallet) {
+      return res.status(400).json({
+        success: false,
+        message: err.message
+      });
+    }
+    console.error('Order Modification Error:', err);
+    res.status(500).json({ success: false, message: "Database server error modifying order." });
+  }
+});
+
+// POST /api/orders/:id/cancel - Cancel a customer order atomically with reason and referral refund
+app.post('/api/orders/:id/cancel', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rawReason = (req.body.reason || req.body.cancellation_reason || '').toString().trim();
+    const cancellationReason = rawReason || 'Ordered by mistake';
+
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+    if (!oRes.rows || oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+    const order = oRes.rows[0];
+
+    // Backend Ownership Check
+    if (order.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only cancel your own orders." });
+    }
+
+    // Backend Status Check
+    const currentStatus = (order.order_status || '').toLowerCase();
+    if (currentStatus === 'cancelled') {
+      return res.status(400).json({ success: false, message: `Order #${order.order_number} is already cancelled.` });
+    }
+    if (['preparing', 'ready', 'completed'].includes(currentStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Order #${order.order_number} cannot be cancelled because it is already "${order.order_status}".`
+      });
+    }
+
+    let updatedOrder = null;
+    let updatedWalletBalance = 0;
+
+    await db.executeTransaction(async (tx) => {
+      const userRes = await tx.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+      const currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
+
+      const walletDeducted = Number(order.used_wallet_amount || 0);
+      let newWalletBal = currentWallet;
+
+      // Restore Referral Wallet Balance if wallet funds were used
+      if (walletDeducted > 0) {
+        newWalletBal = currentWallet + walletDeducted;
+        await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [newWalletBal, req.user.id]);
+
+        await tx.query(
+          `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+          [
+            'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            req.user.id,
+            walletDeducted,
+            'CREDIT',
+            `Refund for Cancelled Order #${order.order_number}`,
+            new Date().toLocaleString('en-IN'),
+            order.order_number,
+            currentWallet,
+            newWalletBal,
+            'SUCCESS'
+          ]
+        );
+      }
+
+      // Update Order Status atomically
+      const nowIso = new Date().toISOString();
+      await tx.query(
+        `UPDATE orders SET order_status = 'Cancelled', cancellation_reason = $1, cancelled_at = $2 WHERE id = $3;`,
+        [cancellationReason, nowIso, order.id]
+      );
+
+      // Update Payment Status
+      await tx.query(
+        `UPDATE payments SET payment_status = 'Cancelled' WHERE order_number = $1;`,
+        [order.order_number]
+      );
+
+      // Send Customer & Owner Notifications
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        [
+          'notif_' + Date.now() + '_cust',
+          'CUSTOMER',
+          req.user.id,
+          'Order Cancelled',
+          `Order #${order.order_number} has been cancelled successfully.`,
+          'ORDER',
+          false,
+          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        ]
+      );
+
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        [
+          'notif_' + Date.now() + '_own',
+          'OWNER',
+          req.user.id,
+          'Order Cancelled by Customer',
+          `Order #${order.order_number} was cancelled by customer (${cancellationReason}).`,
+          'ORDER',
+          false,
+          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        ]
+      );
+
+      const finalRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
+      updatedOrder = finalRes.rows[0];
+    });
+
+    const userBalRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+    updatedWalletBalance = Number(userBalRes.rows[0]?.wallet_balance || 0);
+
+    if (updatedOrder) {
+      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) {}
+    }
+
+    res.json({
+      success: true,
+      data: updatedOrder,
+      wallet_balance: updatedWalletBalance,
+      message: `Order #${order.order_number} cancelled successfully.`
+    });
+  } catch (err) {
+    console.error('Order Cancellation Error:', err);
+    res.status(500).json({ success: false, message: "Database server error cancelling order." });
+  }
+});
 app.get('/api/wallet/transactions', authenticateToken, async (req, res) => {
   try {
     const txRes = await db.query(
@@ -1314,10 +1725,20 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
     const previousOrdersCount = Number(orderCountRes.rows[0]?.count || 0);
 
     if (previousOrdersCount === 0) {
-      const rewardAmt = Number(refRecord.reward_amount || 30);
+      // Get currently configured Owner referral amount dynamically
+      const settingsRes = await db.query('SELECT referral FROM settings WHERE id = 1;');
+      let settingsReferral = settingsRes.rows[0]?.referral || {};
+      if (typeof settingsReferral === 'string') {
+        try { settingsReferral = JSON.parse(settingsReferral); } catch (e) {}
+      }
 
-      // Update referral to Completed
-      await db.query("UPDATE referrals SET status = 'Completed', order_number = $1 WHERE id = $2;", [orderNum, refRecord.id]);
+      const activeRewardAmt = Number(settingsReferral.referrer_reward);
+      const rewardAmt = (!isNaN(activeRewardAmt) && isFinite(activeRewardAmt) && activeRewardAmt > 0)
+        ? activeRewardAmt
+        : Number(refRecord.reward_amount || 10);
+
+      // Update referral to Completed with the dynamic reward amount used
+      await db.query("UPDATE referrals SET status = 'Completed', order_number = $1, reward_amount = $2 WHERE id = $3;", [orderNum, rewardAmt, refRecord.id]);
 
       // Credit Referrer Wallet
       if (refRecord.referrer_id) {

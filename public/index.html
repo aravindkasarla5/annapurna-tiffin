@@ -896,8 +896,8 @@
             </div>
             <div>
               <h4>Call Support Helpline</h4>
-              <p>+91 9392874900</p>
-              <span class="support-card-sub">Mon - Sun: 06:30 AM - 10:30 PM</span>
+              <p id="supportCardPhone">+91 9392874900</p>
+              <span class="support-card-sub" id="supportCardHours">Mon - Sun: 06:30 AM - 10:30 PM</span>
             </div>
           </div>
         </a>
@@ -1685,6 +1685,12 @@
                     <textarea class="form-textarea-custom" id="setDesc" rows="2" placeholder="Fresh, hot, and authentic South Indian tiffins served daily with traditional family love."></textarea>
                   </div>
                 </div>
+
+                <div style="margin-top: 1.25rem; display: flex; justify-content: flex-end;">
+                  <button type="submit" class="btn-primary-block" style="width: auto; padding: 10px 22px; font-weight: 800; background: var(--primary); color: #FFF; border: none; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1709,6 +1715,11 @@
                     <div class="input-icon-wrapper">
                       <input type="text" class="form-input-custom" id="setUpiId" placeholder="e.g. annapurna.tiffin@upi" required>
                       <i class="fa-solid fa-shield-halved input-end-icon" style="color: var(--accent-gold);"></i>
+                    </div>
+                    <div style="margin-top: 8px; display: flex; justify-content: flex-end;">
+                      <button type="button" class="btn-primary-block" id="btnSaveUpiVpa" onclick="app.saveUpiVpaSetting()" style="width: auto; padding: 8px 18px; font-weight: 800; font-size: 0.82rem; background: var(--accent-gold); color: #000; border: none; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                      </button>
                     </div>
                   </div>
 
@@ -1798,26 +1809,55 @@
                 </div>
 
                 <div class="settings-form-body">
-                  <div class="form-row-2col">
-                    <div class="form-group-custom">
-                      <label for="setRefReferrerReward" class="form-label-custom">Referrer Reward (₹)</label>
-                      <input type="number" class="form-input-custom" id="setRefReferrerReward" min="0" placeholder="30">
+                  <!-- Changeable Referral Amount Section -->
+                  <div class="form-group-custom" style="background: rgba(0, 0, 0, 0.3); padding: 1.1rem; border-radius: var(--radius-md); border: 1.5px solid var(--accent-gold); margin-bottom: 1.25rem;">
+                    <label for="setRefReferrerReward" class="form-label-custom" style="font-size: 0.95rem; font-weight: 800; color: #FFF; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+                      <span><i class="fa-solid fa-hand-holding-dollar" style="color: var(--accent-gold); margin-right: 6px;"></i> Referral Amount</span>
+                      <span style="font-size: 0.72rem; color: var(--accent-gold); text-transform: uppercase; font-weight: 700;">Owner Controlled</span>
+                    </label>
+                    <p style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 10px;">
+                      Configure the referral reward amount given for future qualifying completed referrals.
+                    </p>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                      <div class="input-icon-wrapper" style="flex: 1; max-width: 220px; position: relative;">
+                        <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-weight: 800; font-size: 1.1rem; color: var(--accent-gold);">₹</span>
+                        <input type="number" class="form-input-custom" id="setRefReferrerReward" min="1" step="any" placeholder="10" style="padding-left: 32px; font-size: 1.1rem; font-weight: 800; color: #FFF; background: rgba(0,0,0,0.4);" required>
+                      </div>
+                      <button type="submit" class="btn-primary-block" style="width: auto; padding: 10px 18px; font-size: 0.85rem; background: var(--accent-gold); color: #000; font-weight: 800; border: none; border-radius: var(--radius-md); cursor: pointer;">
+                        <i class="fa-solid fa-floppy-disk"></i> Save
+                      </button>
                     </div>
-                    <div class="form-group-custom">
-                      <label for="setRefCustomerDiscount" class="form-label-custom">New Customer Off (₹)</label>
-                      <input type="number" class="form-input-custom" id="setRefCustomerDiscount" min="0" placeholder="30">
+
+                    <!-- Quick Preset Buttons -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px;">
+                      <span style="font-size: 0.74rem; color: var(--text-muted); font-weight: 700;">Quick Presets:</span>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(5)">₹5</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(10)">₹10</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(15)">₹15</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(20)">₹20</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(25)">₹25</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(30)">₹30</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(35)">₹35</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(40)">₹40</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(50)">₹50</button>
+                      <button type="button" class="ref-preset-btn" onclick="app.setReferralAmountPreset(100)">₹100</button>
                     </div>
                   </div>
 
                   <div class="form-row-2col">
                     <div class="form-group-custom">
+                      <label for="setRefCustomerDiscount" class="form-label-custom">New Customer Off (₹)</label>
+                      <input type="number" class="form-input-custom" id="setRefCustomerDiscount" min="0" placeholder="30">
+                    </div>
+                    <div class="form-group-custom">
                       <label for="setRefMinOrderValue" class="form-label-custom">Min First Order (₹)</label>
                       <input type="number" class="form-input-custom" id="setRefMinOrderValue" min="0" placeholder="150">
                     </div>
-                    <div class="form-group-custom">
-                      <label for="setRefMonthlyLimit" class="form-label-custom">Max Monthly Cap (₹)</label>
-                      <input type="number" class="form-input-custom" id="setRefMonthlyLimit" min="0" placeholder="500">
-                    </div>
+                  </div>
+
+                  <div class="form-group-custom" style="margin-top: 10px;">
+                    <label for="setRefMonthlyLimit" class="form-label-custom">Max Monthly Cap (₹)</label>
+                    <input type="number" class="form-input-custom" id="setRefMonthlyLimit" min="0" placeholder="500">
                   </div>
                 </div>
               </div>
@@ -2111,9 +2151,9 @@
       <div class="footer-col">
         <h4><i class="fa-solid fa-clock" style="color: var(--accent-gold);"></i> Timings & Service</h4>
         <div class="timing-info">
-          <p><strong>Opening Time:</strong> 06:30 AM</p>
-          <p><strong>Closing Time:</strong> 10:30 PM</p>
-          <p><strong>Holidays:</strong> Open 7 Days a Week</p>
+          <p><strong>Opening Time:</strong> <span id="footerOpenTime">06:30 AM</span></p>
+          <p><strong>Closing Time:</strong> <span id="footerCloseTime">10:30 PM</span></p>
+          <p><strong>Holidays:</strong> <span id="footerHolidays">Open 7 Days a Week</span></p>
           <p style="margin-top: 6px; color: var(--accent-gold); font-size: 0.8rem;"><i class="fa-solid fa-bolt"></i>
             Fast Parcel & Dine-In Service</p>
         </div>
@@ -2121,11 +2161,11 @@
 
       <div class="footer-col">
         <h4><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Contact & Location</h4>
-        <p class="contact-line"><i class="fa-solid fa-phone"></i> +91 9392874900</p>
-        <p class="contact-line"><i class="fa-solid fa-map-pin"></i> #42, Temple Road, Near Gandhi Circle, Bengaluru, KA
+        <p class="contact-line"><i class="fa-solid fa-phone"></i> <span id="footerPhone">+91 9392874900</span></p>
+        <p class="contact-line"><i class="fa-solid fa-map-pin"></i> <span id="footerAddress">#42, Temple Road, Near Gandhi Circle, Bengaluru, KA</span>
         </p>
         <p class="contact-line"><i class="fa-solid fa-qrcode"></i> UPI: <span
-            style="color: var(--accent-gold);">annapurna.tiffin@upi</span></p>
+            style="color: var(--accent-gold);" id="footerUpi">annapurna.tiffin@upi</span></p>
       </div>
     </div>
 
@@ -3116,6 +3156,107 @@
             <button type="button" class="btn-secondary-outline" onclick="app.closeRejectOrderModal()" style="flex: 1;">Cancel</button>
             <button type="submit" class="btn-primary-block" style="flex: 2; background: linear-gradient(135deg, #E53935, #C62828); box-shadow: 0 4px 14px rgba(229,57,53,0.4);">
               <i class="fa-solid fa-ban"></i> Confirm Order Rejection
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Edit / Modify Order Modal -->
+  <div class="modal-backdrop" id="editOrderModalBackdrop" onclick="app.closeEditOrderModal()">
+    <div class="modal-card" style="max-width: 520px; width: 92%; border: 1.5px solid var(--accent-gold);" onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+        <h3 style="color: #FFF; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-box" style="color: var(--accent-gold);"></i> Edit Order <span id="editModalOrderNumDisplay" style="color: var(--accent-gold); font-weight: 800;">#TF1000</span>
+        </h3>
+        <button class="icon-btn" onclick="app.closeEditOrderModal()" style="width: 32px; height: 32px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body" style="padding: 1rem 0 0 0;">
+        <div style="background: rgba(255, 179, 0, 0.1); border: 1px solid var(--accent-gold); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.8rem; color: #FFF; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between;">
+          <span><i class="fa-solid fa-clock-rotate-left" style="color: var(--accent-gold);"></i> Modification Window:</span>
+          <span id="editModalTimerDisplay" style="font-weight: 800; font-family: monospace; font-size: 0.95rem; color: var(--accent-gold);">02:59</span>
+        </div>
+
+        <form id="editOrderForm" onsubmit="app.submitOrderModification(event)">
+          <input type="hidden" id="editTargetOrderId">
+          
+          <div style="max-height: 260px; overflow-y: auto; padding-right: 4px; margin-bottom: 1rem;" id="editOrderItemsListContainer">
+            <!-- Dynamically populated edit items with quantity steppers -->
+          </div>
+
+          <!-- Total Calculation Summary Card -->
+          <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 1.2rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px;">
+              <span>Updated Subtotal:</span>
+              <span id="editModalSubtotalDisplay" style="font-weight: 700; color: #FFF;">₹0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 1.05rem; font-weight: 800; color: var(--accent-gold); border-top: 1px dashed var(--border-color); padding-top: 6px; margin-top: 4px;">
+              <span>Updated Total:</span>
+              <span id="editModalTotalDisplay">₹0</span>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn-secondary-outline" onclick="app.closeEditOrderModal()" style="flex: 1; min-width: 110px;">
+              Cancel Edit
+            </button>
+            <button type="submit" class="btn-primary-block" id="btnSubmitOrderEdit" style="flex: 2; min-width: 160px; background: var(--accent-gold); color: #000; font-weight: 800; border: none;">
+              <i class="fa-solid fa-floppy-disk"></i> Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Cancel Order Confirmation Modal -->
+  <div class="modal-backdrop" id="cancelOrderModalBackdrop" onclick="app.closeCancelOrderModal()">
+    <div class="modal-card" style="max-width: 480px; width: 92%; border: 1.5px solid #E53935;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+        <h3 style="color: #FF5252; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-triangle-exclamation"></i> Cancel Order?
+        </h3>
+        <button class="icon-btn" onclick="app.closeCancelOrderModal()" style="width: 32px; height: 32px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body" style="padding-top: 1rem;">
+        <p style="font-size: 0.92rem; color: #FFF; font-weight: 700; margin-bottom: 0.75rem;">
+          Are you sure you want to cancel <span id="cancelModalOrderNumDisplay" style="color: var(--accent-gold);">Order #TF1000</span>?
+        </p>
+
+        <form id="cancelOrderForm" onsubmit="app.submitOrderCancellation(event)">
+          <input type="hidden" id="cancelTargetOrderId">
+
+          <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 0.6rem;">
+            Please Select Cancellation Reason:
+          </label>
+
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 1rem;">
+            <label style="display: flex; align-items: center; gap: 10px; font-size: 0.88rem; color: #FFF; cursor: pointer; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <input type="radio" name="cancelReasonRadio" value="Ordered by mistake" checked onchange="app.handleCancelReasonRadioChange('Ordered by mistake')">
+              <span>Ordered by mistake</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 10px; font-size: 0.88rem; color: #FFF; cursor: pointer; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <input type="radio" name="cancelReasonRadio" value="Changed my mind" onchange="app.handleCancelReasonRadioChange('Changed my mind')">
+              <span>Changed my mind</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 10px; font-size: 0.88rem; color: #FFF; cursor: pointer; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+              <input type="radio" name="cancelReasonRadio" value="Other" onchange="app.handleCancelReasonRadioChange('Other')">
+              <span>Other (Specify reason)</span>
+            </label>
+          </div>
+
+          <div id="cancelOtherReasonWrapper" class="hidden" style="margin-bottom: 1rem;">
+            <label style="font-size: 0.8rem; color: #FFF; font-weight: 700; display: block; margin-bottom: 4px;">Enter Reason:</label>
+            <textarea class="form-control" id="cancelCustomReasonInput" rows="2" placeholder="Tell us why you are cancelling this order..."></textarea>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn-secondary-outline" onclick="app.closeCancelOrderModal()" style="flex: 1; min-width: 110px;">
+              Keep Order
+            </button>
+            <button type="submit" class="btn-primary-block" id="btnSubmitOrderCancel" style="flex: 2; min-width: 160px; background: linear-gradient(135deg, #E53935, #C62828); color: #FFF; font-weight: 800; border: none; box-shadow: 0 4px 14px rgba(229,57,53,0.4);">
+              <i class="fa-solid fa-ban"></i> Confirm Cancellation
             </button>
           </div>
         </form>
