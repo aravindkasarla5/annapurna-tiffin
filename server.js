@@ -1836,6 +1836,7 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     const upiName = settings.upi_name || 'Sri Lakshmi Annapurna Tiffin Center';
     const phonepeAppIntentUrl = `phonepe://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR`;
     const upiIntentUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR`;
+    const androidPhonePeIntentUrl = `intent://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR#Intent;scheme=upi;package=com.phonepe.app;end;`;
 
     const amountInPaise = Math.round(amountToPay * 100);
     const redirectUrl = `${domainUrl}/api/phonepe/redirect?txnId=${encodeURIComponent(txnId)}`;
@@ -1902,6 +1903,7 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       success: true,
       redirectUrl: phonepeRedirectUrl,
       intentUrl: phonepeIntentUrl || phonepeAppIntentUrl,
+      androidIntentUrl: androidPhonePeIntentUrl,
       phonepeAppUrl: phonepeAppIntentUrl,
       upiUrl: upiIntentUrl,
       txnId,
