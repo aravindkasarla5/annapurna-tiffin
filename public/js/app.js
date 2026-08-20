@@ -6985,12 +6985,18 @@ class TiffinApp {
     }
 
     const backdrop = document.getElementById('orderReviewModalBackdrop');
-    if (backdrop) backdrop.classList.add('open');
+    if (backdrop) {
+      backdrop.style.display = 'flex';
+      backdrop.classList.add('open');
+    }
   }
 
   closeOrderReviewModal() {
     const backdrop = document.getElementById('orderReviewModalBackdrop');
-    if (backdrop) backdrop.classList.remove('open');
+    if (backdrop) {
+      backdrop.classList.remove('open');
+      backdrop.style.display = '';
+    }
   }
 
   resetStarUI() {
@@ -8160,7 +8166,10 @@ class TiffinApp {
     this.renderEditModalItems();
 
     const backdrop = document.getElementById('editOrderModalBackdrop');
-    if (backdrop) backdrop.classList.add('open');
+    if (backdrop) {
+      backdrop.style.display = 'flex';
+      backdrop.classList.add('open');
+    }
   }
 
   renderEditModalItems() {
@@ -8214,7 +8223,10 @@ class TiffinApp {
 
   closeEditOrderModal() {
     const backdrop = document.getElementById('editOrderModalBackdrop');
-    if (backdrop) backdrop.classList.remove('open');
+    if (backdrop) {
+      backdrop.classList.remove('open');
+      backdrop.style.display = '';
+    }
     this.editingOrder = null;
     this.editingOrderItems = null;
   }
@@ -8303,7 +8315,10 @@ class TiffinApp {
     if (customInput) customInput.value = '';
 
     const backdrop = document.getElementById('cancelOrderModalBackdrop');
-    if (backdrop) backdrop.classList.add('open');
+    if (backdrop) {
+      backdrop.style.display = 'flex';
+      backdrop.classList.add('open');
+    }
   }
 
   handleCancelReasonRadioChange(val) {
@@ -8315,7 +8330,10 @@ class TiffinApp {
 
   closeCancelOrderModal() {
     const backdrop = document.getElementById('cancelOrderModalBackdrop');
-    if (backdrop) backdrop.classList.remove('open');
+    if (backdrop) {
+      backdrop.classList.remove('open');
+      backdrop.style.display = '';
+    }
   }
 
   async submitOrderCancellation(e) {
