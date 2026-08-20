@@ -2633,20 +2633,37 @@ class TiffinApp {
     const { grandTotal } = this.calculateCartTotals();
 
     if (!this.cart || !this.cart.length || grandTotal <= 0) {
-      this.showToast('Invalid payment amount. Please check your order.', 'error');
+      this.showToast('Your cart is empty or amount is invalid.', 'error');
       return;
     }
 
     if (this.isSubmittingOrder) return;
 
-    const name = document.getElementById('ordCustomerName')?.value || (this.currentUser ? this.currentUser.name : '');
-    const mobile = document.getElementById('ordCustomerMobile')?.value || (this.currentUser ? this.currentUser.mobile : '');
+    const elName = document.getElementById('ordCustomerName');
+    const elMobile = document.getElementById('ordCustomerMobile');
+    const elAddress = document.getElementById('ordDeliveryAddress');
+
+    const name = (elName?.value || (this.currentUser ? this.currentUser.name : '') || '').trim();
+    const mobile = (elMobile?.value || (this.currentUser ? this.currentUser.mobile : '') || '').trim();
     const orderType = document.getElementById('ordType')?.value || 'Takeaway';
-    const deliveryAddress = document.getElementById('ordDeliveryAddress')?.value.trim() || '';
+    const deliveryAddress = (elAddress?.value || '').trim();
     const notes = document.getElementById('ordNotes')?.value || '';
 
+    if (!name) {
+      this.showToast('Please enter your Customer Name in the checkout form above.', 'error');
+      if (elName) elName.focus();
+      return;
+    }
+
+    if (!mobile || mobile.length < 10) {
+      this.showToast('Please enter a valid 10-digit Mobile Number in the checkout form above.', 'error');
+      if (elMobile) elMobile.focus();
+      return;
+    }
+
     if (orderType === 'Delivery' && !deliveryAddress) {
-      this.showToast('Please enter your delivery address.', 'error');
+      this.showToast('Please enter your Delivery Address in the checkout form above.', 'error');
+      if (elAddress) elAddress.focus();
       return;
     }
 
