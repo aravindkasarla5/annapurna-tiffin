@@ -1578,7 +1578,7 @@ app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) =>
 
 app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), async (req, res) => {
   const { id } = req.params;
-  const { order_status, payment_status } = req.body;
+  const { order_status, payment_status, rejection_reason } = req.body;
 
   const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
   const order = oRes.rows[0];
@@ -1588,8 +1588,9 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
 
   const newOrderStatus = order_status || order.order_status;
   const newPaymentStatus = payment_status || order.payment_status;
+  const newRejectionReason = rejection_reason !== undefined ? rejection_reason : order.rejection_reason;
 
-  await db.query('UPDATE orders SET order_status = $1, payment_status = $2 WHERE id = $3;', [newOrderStatus, newPaymentStatus, order.id]);
+  await db.query('UPDATE orders SET order_status = $1, payment_status = $2, rejection_reason = $3 WHERE id = $4;', [newOrderStatus, newPaymentStatus, newRejectionReason, order.id]);
   await db.query('UPDATE payments SET payment_status = $1 WHERE order_number = $2;', [newPaymentStatus, order.order_number]);
 
   // Dispatch Customer Notification on Status Update

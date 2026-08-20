@@ -2602,13 +2602,27 @@ textarea.form-control {
   transform: translateY(-2px);
 }
 
-/* REJECTED ORDER CARD HIGHLIGHT */
+/* CUSTOMER CANCELLED ORDER CARD HIGHLIGHT (ORANGE) */
+.co-row-card.is-customer-cancelled {
+  border: 1.5px solid rgba(255, 152, 0, 0.7) !important;
+  background: linear-gradient(180deg, rgba(255, 152, 0, 0.12) 0%, var(--bg-surface-elevated) 100%) !important;
+  box-shadow: 0 6px 22px rgba(255, 152, 0, 0.25) !important;
+}
+
+.co-row-card.is-customer-cancelled:hover {
+  border-color: #FF9800 !important;
+  box-shadow: 0 10px 30px rgba(255, 152, 0, 0.45) !important;
+}
+
+/* OWNER REJECTED ORDER CARD HIGHLIGHT (RED) */
+.co-row-card.is-owner-rejected,
 .co-row-card.is-rejected {
-  border: 1.5px solid rgba(229, 57, 53, 0.6) !important;
-  background: linear-gradient(180deg, rgba(229, 57, 53, 0.14) 0%, var(--bg-surface-elevated) 100%) !important;
+  border: 1.5px solid rgba(229, 57, 53, 0.7) !important;
+  background: linear-gradient(180deg, rgba(229, 57, 53, 0.12) 0%, var(--bg-surface-elevated) 100%) !important;
   box-shadow: 0 6px 22px rgba(229, 57, 53, 0.25) !important;
 }
 
+.co-row-card.is-owner-rejected:hover,
 .co-row-card.is-rejected:hover {
   border-color: #E53935 !important;
   box-shadow: 0 10px 30px rgba(229, 57, 53, 0.45) !important;

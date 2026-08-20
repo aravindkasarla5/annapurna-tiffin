@@ -321,6 +321,7 @@ async function initDatabase() {
       try {
         await query(`ALTER TABLE reviews ADD COLUMN IF NOT EXISTS order_number VARCHAR(100);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejection_reason TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
@@ -344,6 +345,7 @@ async function initDatabase() {
       const safeAlter = async (sql) => { try { await query(sql); } catch(e) {} };
       await safeAlter(`ALTER TABLE reviews ADD COLUMN order_number TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN cancellation_reason TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN rejection_reason TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN cancelled_at TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN payment_screenshot TEXT;`);

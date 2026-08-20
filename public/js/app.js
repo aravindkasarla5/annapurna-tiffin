@@ -3663,7 +3663,8 @@ class TiffinApp {
       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
-    const isRejected = order.order_status === 'Rejected' || order.order_status === 'Cancelled';
+    const isCancelled = order.order_status === 'Cancelled' || order.order_status === 'CUSTOMER_CANCELLED';
+    const isRejected = order.order_status === 'Rejected' || order.order_status === 'OWNER_REJECTED';
     const isReceived = order.order_status === 'Received';
     const isPreparing = order.order_status === 'Preparing';
     const isReady = order.order_status === 'Ready';
@@ -3675,7 +3676,8 @@ class TiffinApp {
     if (isPreparing) { statusColor = '#29B6F6'; statusIcon = 'fa-fire-burner'; statusLabel = 'Preparing'; }
     if (isReady) { statusColor = '#66BB6A'; statusIcon = 'fa-bell-concierge'; statusLabel = 'Ready'; }
     if (isCompleted) { statusColor = '#4CAF50'; statusIcon = 'fa-circle-check'; statusLabel = 'Completed'; }
-    if (isRejected) { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = 'Order Rejected'; }
+    if (isCancelled) { statusColor = '#FF9800'; statusIcon = 'fa-triangle-exclamation'; statusLabel = '🟠 Customer Cancelled'; }
+    else if (isRejected) { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = '🔴 Owner Rejected'; }
 
     let stepIdx = 0;
     if (isPreparing) stepIdx = 1;
@@ -3689,15 +3691,38 @@ class TiffinApp {
     const isPendingPayment = order.payment_status.includes('Pending') || order.payment_status.includes('Verification');
 
     return `
-      <div class="co-row-card owner-mode ${isRejected ? 'is-rejected' : ''}" data-order-card-id="${order.id}">
-        ${isRejected ? `
-          <!-- OWNER REJECTED BANNER WITH REASON & QUICK ACTIONS -->
-          <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
-            <div style="display: flex; align-items: center; gap: 12px;">
+      <div class="co-row-card owner-mode ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''}" data-order-card-id="${order.id}">
+        ${isCancelled ? `
+          <!-- CUSTOMER CANCELLED BANNER (ORANGE) -->
+          <div style="background: rgba(255, 152, 0, 0.14); border: 1.5px solid #FF9800; padding: 12px 16px; border-radius: var(--radius-md); color: #FFE0B2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 250px;">
+              <i class="fa-solid fa-triangle-exclamation" style="font-size: 1.4rem; color: #FF9800; flex-shrink: 0;"></i>
+              <div style="word-break: break-word; overflow-wrap: break-word;">
+                <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">🟠 Customer Cancelled</strong>
+                <span style="font-size: 0.84rem; color: #FFE0B2; font-weight: 600;">
+                  <strong>Cancellation Reason:</strong> ${order.cancellation_reason || 'Ordered by mistake'}
+                </span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-sm-status" onclick="app.restoreRejectedOrder('${order.id}', this)" style="background: rgba(255, 152, 0, 0.25); color: #FFB74D; border: 1px solid #FF9800; padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-rotate-left"></i> Restore Order
+              </button>
+              <button type="button" class="btn-sm-status" onclick="app.deleteOrder('${order.id}', this)" style="background: rgba(229,57,53,0.25); color: #FF5252; border: 1px solid rgba(229,57,53,0.5); padding: 6px 14px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Permanently delete from database history">
+                <i class="fa-solid fa-trash-can"></i> Delete
+              </button>
+            </div>
+          </div>
+        ` : isRejected ? `
+          <!-- OWNER REJECTED BANNER (RED) -->
+          <div style="background: rgba(229, 57, 53, 0.14); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 250px;">
               <i class="fa-solid fa-circle-xmark" style="font-size: 1.4rem; color: #E53935; flex-shrink: 0;"></i>
-              <div>
-                <strong style="font-size: 0.95rem; color: #FFF; display: block;">This Order Was Rejected</strong>
-                <span style="font-size: 0.8rem; color: #FF8A80;">Reason: "${order.rejection_reason || 'No specific reason provided'}"</span>
+              <div style="word-break: break-word; overflow-wrap: break-word;">
+                <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">🔴 Owner Rejected</strong>
+                <span style="font-size: 0.84rem; color: #FF8A80; font-weight: 600;">
+                  <strong>Rejection Reason:</strong> ${order.rejection_reason || 'Item unavailable'}
+                </span>
               </div>
             </div>
             <div style="display: flex; gap: 8px;">
@@ -3906,8 +3931,8 @@ class TiffinApp {
       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
 
-    const isCancelled = order.order_status === 'Cancelled';
-    const isRejected = order.order_status === 'Rejected' || isCancelled;
+    const isCancelled = order.order_status === 'Cancelled' || order.order_status === 'CUSTOMER_CANCELLED';
+    const isRejected = order.order_status === 'Rejected' || order.order_status === 'OWNER_REJECTED';
     const isReceived = order.order_status === 'Received' || order.order_status === 'Pending';
     const isPreparing = order.order_status === 'Preparing';
     const isReady = order.order_status === 'Ready';
@@ -3919,8 +3944,8 @@ class TiffinApp {
     if (isPreparing) { statusColor = '#29B6F6'; statusIcon = 'fa-fire-burner'; statusLabel = 'Preparing'; }
     if (isReady) { statusColor = '#66BB6A'; statusIcon = 'fa-bell-concierge'; statusLabel = 'Ready'; }
     if (isCompleted) { statusColor = '#4CAF50'; statusIcon = 'fa-circle-check'; statusLabel = 'Completed'; }
-    if (isCancelled) { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = 'Cancelled'; }
-    else if (order.order_status === 'Rejected') { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = 'Order Rejected'; }
+    if (isCancelled) { statusColor = '#FF9800'; statusIcon = 'fa-triangle-exclamation'; statusLabel = '🟠 Customer Cancelled'; }
+    else if (isRejected) { statusColor = '#E53935'; statusIcon = 'fa-circle-xmark'; statusLabel = '🔴 Owner Rejected'; }
 
     let stepIdx = 0;
     if (isPreparing) stepIdx = 1;
@@ -3943,36 +3968,36 @@ class TiffinApp {
     const secsStr = String(remainingSecs % 60).padStart(2, '0');
 
     return `
-      <div class="co-row-card ${isRejected ? 'is-rejected' : ''}">
+      <div class="co-row-card ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''}">
         ${isCancelled ? `
-          <!-- PROMINENT CANCELLED ORDER CALLOUT BANNER -->
-          <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(229,57,53,0.25); color: #E53935; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;">
-                <i class="fa-solid fa-circle-xmark"></i>
+          <!-- PROMINENT CANCELLED ORDER CALLOUT BANNER (ORANGE) -->
+          <div style="background: rgba(255, 152, 0, 0.14); border: 1.5px solid #FF9800; padding: 12px 16px; border-radius: var(--radius-md); color: #FFE0B2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 250px;">
+              <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 152, 0, 0.25); color: #FF9800; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
               </div>
-              <div>
-                <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">Order Cancelled by Customer</strong>
-                <span style="font-size: 0.8rem; color: #FF8A80;">
-                  <strong>Reason:</strong> "${order.cancellation_reason || 'Ordered by mistake'}"
+              <div style="word-break: break-word; overflow-wrap: break-word;">
+                <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">🟠 Customer Cancelled</strong>
+                <span style="font-size: 0.84rem; color: #FFE0B2; font-weight: 600;">
+                  <strong>Cancellation Reason:</strong> ${order.cancellation_reason || 'Ordered by mistake'}
                 </span>
               </div>
             </div>
-            <button type="button" class="btn-sm-status" onclick="app.openOrderSupport('${order.order_number}')" style="background: #E53935; color: #FFF; border: none; padding: 7px 16px; font-weight: 800; font-size: 0.78rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <button type="button" class="btn-sm-status" onclick="app.openOrderSupport('${order.order_number}')" style="background: #FF9800; color: #FFF; border: none; padding: 7px 16px; font-weight: 800; font-size: 0.78rem; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
               <i class="fa-solid fa-headset"></i> Order Support
             </button>
           </div>
-        ` : order.order_status === 'Rejected' ? `
-          <!-- PROMINENT REJECTED ORDER CALLOUT BANNER -->
-          <div style="background: rgba(229, 57, 53, 0.15); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
-            <div style="display: flex; align-items: center; gap: 12px;">
+        ` : isRejected ? `
+          <!-- PROMINENT REJECTED ORDER CALLOUT BANNER (RED) -->
+          <div style="background: rgba(229, 57, 53, 0.14); border: 1.5px solid #E53935; padding: 12px 16px; border-radius: var(--radius-md); color: #FF5252; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 250px;">
               <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(229,57,53,0.25); color: #E53935; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;">
                 <i class="fa-solid fa-circle-xmark"></i>
               </div>
-              <div>
-                <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">Order Rejected by Hotel Manager</strong>
-                <span style="font-size: 0.8rem; color: #FF8A80;">
-                  ${order.rejection_reason ? `<strong>Reason:</strong> "${order.rejection_reason}"` : 'The hotel is currently unable to accept or fulfill this order. Any online UPI payment refund will be initiated automatically.'}
+              <div style="word-break: break-word; overflow-wrap: break-word;">
+                <strong style="font-size: 0.95rem; color: #FFF; display: block; margin-bottom: 2px;">🔴 Owner Rejected</strong>
+                <span style="font-size: 0.84rem; color: #FF8A80; font-weight: 600;">
+                  <strong>Rejection Reason:</strong> ${order.rejection_reason || 'Item unavailable'}
                 </span>
               </div>
             </div>
@@ -5269,6 +5294,7 @@ class TiffinApp {
 
   async saveSettings(e) {
     if (e) e.preventDefault();
+    if (this.isSavingSettings) return;
 
     // Read all switch states directly from DOM to ensure we capture latest user intent
     const swEnabled = document.getElementById('setRefEnabledSwitch');
@@ -5280,17 +5306,14 @@ class TiffinApp {
     const swPhonePe = document.getElementById('setPhonePeEnabledSwitch');
     const isPhonePeEnabled = swPhonePe ? swPhonePe.classList.contains('active') : (this.settings ? (this.settings.is_phonepe_enabled !== false) : true);
 
-    // Read hotel open/close state from DOM switch (not stale this.settings)
     const storeSwitch = document.getElementById('settingHotelOpenSwitch');
     const isHotelOpen = storeSwitch ? storeSwitch.classList.contains('active') : (this.settings ? (this.settings.is_open !== false) : true);
 
-    // QR code: use temp (newly uploaded) or existing saved value
     let qrVal = this.settings ? (this.settings.upi_qr_code || '') : '';
     if (this.tempOwnerQrCode !== undefined && this.tempOwnerQrCode !== null) {
       qrVal = this.tempOwnerQrCode;
     }
 
-    // Read text fields from DOM
     const hotelNameInput = document.getElementById('setHotelName')?.value?.trim();
     const phoneInput = document.getElementById('setPhone')?.value?.trim();
     const addrInput = document.getElementById('setAddr')?.value?.trim();
@@ -5300,50 +5323,58 @@ class TiffinApp {
     const upiIdInput = document.getElementById('setUpiId')?.value?.trim();
     const descInput = document.getElementById('setDesc')?.value?.trim();
 
-    // Validate Required Restaurant Information
     if (!hotelNameInput) {
-      this.showToast("Restaurant Name is required and cannot be empty.", "error");
+      this.showToast("❌ Unable to update Business Settings. Restaurant Name is required.", "error");
       return;
     }
     if (!phoneInput) {
-      this.showToast("Helpline Phone Number is required and cannot be empty.", "error");
+      this.showToast("❌ Unable to update Business Settings. Helpline Phone Number is required.", "error");
       return;
     }
     if (!addrInput) {
-      this.showToast("Restaurant Address is required and cannot be empty.", "error");
+      this.showToast("❌ Unable to update Business Settings. Restaurant Address is required.", "error");
       return;
     }
 
-    // Validate Required Timings
     if (!openTimeInput) {
-      this.showToast("Opening Time is required.", "error");
+      this.showToast("❌ Unable to update Business Settings. Opening Time is required.", "error");
       return;
     }
     if (!closeTimeInput) {
-      this.showToast("Closing Time is required.", "error");
+      this.showToast("❌ Unable to update Business Settings. Closing Time is required.", "error");
       return;
     }
 
     const timeRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9]\s*(AM|PM|am|pm)$|^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/i;
     if (!timeRegex.test(openTimeInput)) {
-      this.showToast("Please enter a valid Opening Time format (e.g. 06:00 AM or 06:00).", "error");
+      this.showToast("❌ Unable to update Business Settings. Invalid Opening Time format (e.g. 06:00 AM).", "error");
       return;
     }
     if (!timeRegex.test(closeTimeInput)) {
-      this.showToast("Please enter a valid Closing Time format (e.g. 10:00 PM or 22:00).", "error");
+      this.showToast("❌ Unable to update Business Settings. Invalid Closing Time format (e.g. 10:00 PM).", "error");
       return;
     }
 
-    // Validate Referral Amount input
+    const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+    if (!upiIdInput || !upiVpaRegex.test(upiIdInput)) {
+      this.showToast("❌ Unable to update Business Settings. Please enter a valid UPI VPA address.", "error");
+      return;
+    }
+
     const refRewardRaw = document.getElementById('setRefReferrerReward')?.value;
     const refRewardNum = Number(refRewardRaw);
     if (refRewardRaw === '' || refRewardRaw === null || refRewardRaw === undefined || isNaN(refRewardNum) || !isFinite(refRewardNum) || refRewardNum <= 0) {
-      this.showToast("Referral Amount must be a valid positive monetary value greater than 0.", "error");
+      this.showToast("❌ Unable to update Business Settings. Referral Amount must be a valid positive monetary value greater than 0.", "error");
       return;
     }
 
-    // Build payload: only send non-empty values; fall back to existing saved values
-    // to prevent overwriting unchanged fields with empty strings
+    const submitBtns = document.querySelectorAll('#settingsForm button[type="submit"]');
+    this.isSavingSettings = true;
+    submitBtns.forEach(btn => {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    });
+
     const payload = {
       hotel_name: hotelNameInput,
       phone: phoneInput,
@@ -5375,21 +5406,24 @@ class TiffinApp {
       });
       const json = await res.json();
       if (json.success) {
-        // Update local state from PostgreSQL response — never use stale local values
         this.settings = json.settings || json.data;
         this.tempOwnerQrCode = null;
         this.isQrRemovedFlag = false;
         this.updateHeaderAndSettingsUI();
         this.populateSettingsForm();
-        this.showToast('🟢 Settings saved & published successfully!', 'success');
+        this.showToast('✓ Business Settings updated successfully.', 'success');
       } else {
-        // Do NOT clear fields or overwrite previous saved values on failure
-        this.showToast(json.message || 'Failed to save settings. Please try again.', 'error');
+        this.showToast(json.message || '❌ Unable to update Business Settings.', 'error');
       }
     } catch (err) {
       console.error('Error saving settings:', err);
-      // Do NOT clear fields or overwrite previous saved values on network error
-      this.showToast('Failed to save settings. Please try again.', 'error');
+      this.showToast('❌ Unable to update Business Settings.', 'error');
+    } finally {
+      this.isSavingSettings = false;
+      submitBtns.forEach(btn => {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Changes`;
+      });
     }
   }
 
@@ -5398,7 +5432,7 @@ class TiffinApp {
     const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
 
     if (!upiInput || !upiVpaRegex.test(upiInput)) {
-      this.showToast("Please enter a valid UPI VPA address.", "error");
+      this.showToast("❌ Unable to update Business Settings. Please enter a valid UPI VPA address.", "error");
       return;
     }
 
@@ -5419,17 +5453,66 @@ class TiffinApp {
         this.settings = json.settings || json.data;
         this.updateHeaderAndSettingsUI();
         this.populateSettingsForm();
-        this.showToast('✓ Official Hotel UPI VPA updated successfully.', 'success');
+        this.showToast('✓ Business Settings updated successfully.', 'success');
       } else {
-        this.showToast(json.message || 'Please enter a valid UPI VPA address.', 'error');
+        this.showToast(json.message || '❌ Unable to update Business Settings.', 'error');
       }
     } catch (err) {
       console.error('Error updating UPI VPA:', err);
-      this.showToast('Failed to save Official Hotel UPI VPA address. Please try again.', 'error');
+      this.showToast('❌ Unable to update Business Settings.', 'error');
     } finally {
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save Changes`;
+      }
+    }
+  }
+
+  async saveReferralAmountSetting() {
+    const refRewardRaw = document.getElementById('setRefReferrerReward')?.value;
+    const refRewardNum = Number(refRewardRaw);
+
+    if (refRewardRaw === '' || refRewardRaw === null || refRewardRaw === undefined || isNaN(refRewardNum) || !isFinite(refRewardNum) || refRewardNum <= 0) {
+      this.showToast("❌ Unable to update Business Settings. Referral Amount must be a valid positive monetary value greater than 0.", "error");
+      return;
+    }
+
+    const btn = document.getElementById('btnSaveReferralAmount');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Saving...`;
+    }
+
+    try {
+      const existingRef = typeof this.settings?.referral === 'string' ? JSON.parse(this.settings.referral) : (this.settings?.referral || {});
+      const payload = {
+        referral: {
+          ...existingRef,
+          referrer_reward: refRewardNum
+        }
+      };
+
+      const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.settings = json.settings || json.data;
+        this.updateHeaderAndSettingsUI();
+        this.populateSettingsForm();
+        this.showToast('✓ Business Settings updated successfully.', 'success');
+      } else {
+        this.showToast(json.message || '❌ Unable to update Business Settings.', 'error');
+      }
+    } catch (err) {
+      console.error('Error updating Referral Amount:', err);
+      this.showToast('❌ Unable to update Business Settings.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Save`;
       }
     }
   }
