@@ -5266,7 +5266,7 @@ body.guest-mode #btnMobileMenuToggle {
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 1000;
+  z-index: 99999 !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5274,13 +5274,14 @@ body.guest-mode #btnMobileMenuToggle {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
 .modal-backdrop.open {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  display: flex !important;
 }
 
 .modal-card {
