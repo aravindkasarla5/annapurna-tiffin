@@ -2661,6 +2661,12 @@ class TiffinApp {
     };
 
     this.isSubmittingOrder = true;
+    const payBtns = document.querySelectorAll('.btn-phonepe-pay');
+    payBtns.forEach(btn => {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin" style="font-size: 1.2rem;"></i> <span>Opening PhonePe...</span>`;
+    });
+
     try {
       this.showToast('Initiating PhonePe payment gateway...', 'info');
       const res = await this.fetchWithAuth(`${API_BASE}/phonepe/initiate`, {
@@ -2671,13 +2677,29 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success && json.redirectUrl) {
-        window.location.href = json.redirectUrl;
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (isMobile && json.intentUrl) {
+          window.location.href = json.intentUrl;
+          setTimeout(() => {
+            window.location.href = json.redirectUrl;
+          }, 1500);
+        } else {
+          window.location.href = json.redirectUrl;
+        }
       } else {
         this.showToast(json.message || 'Unable to launch PhonePe payment.', 'error');
+        payBtns.forEach(btn => {
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i> <span>Pay ₹<span id="phonePeBtnAmount">${grandTotal}</span> with PhonePe</span>`;
+        });
       }
     } catch (err) {
       console.error('Error initiating PhonePe payment:', err);
       this.showToast('Unable to connect to PhonePe gateway. Please try again.', 'error');
+      payBtns.forEach(btn => {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i> <span>Pay ₹<span id="phonePeBtnAmount">${grandTotal}</span> with PhonePe</span>`;
+      });
     } finally {
       this.isSubmittingOrder = false;
     }
@@ -2696,6 +2718,7 @@ class TiffinApp {
     if (!txnId || !this.currentUser) return;
 
     try {
+      this.showToast('Verifying transaction with PhonePe...', 'info');
       const res = await this.fetchWithAuth(`${API_BASE}/phonepe/status/${txnId}`);
       const json = await res.json();
 
@@ -2705,21 +2728,143 @@ class TiffinApp {
         this.updateCartUI();
 
         this.switchView('secCustomerOrders');
-        this.showToast('Payment Successful! Your order has been placed.', 'success');
+        this.showToast(`🟢 PAYMENT SUCCESSFUL! Order #${json.data.order_number} confirmed with PhonePe.`, 'success');
 
-        document.getElementById('confirmedOrderNumDisplay').innerText = `#${json.data.order_number}`;
-        document.getElementById('confirmationModalBackdrop').classList.add('open');
+        const confirmDisplay = document.getElementById('confirmedOrderNumDisplay');
+        const confirmBackdrop = document.getElementById('confirmationModalBackdrop');
+        if (confirmDisplay) confirmDisplay.innerText = `#${json.data.order_number}`;
+        if (confirmBackdrop) confirmBackdrop.classList.add('open');
 
         await this.fetchOrders();
         await this.fetchNotifications();
-      } else if (json.status === 'CANCELLED' || statusParam === 'CANCELLED') {
-        this.showToast('Payment Cancelled. Your order was not placed.', 'warning');
+      } else if (json.status === 'FAILED' || statusParam === 'FAILED') {
+        this.cart = [];
+        this.updateCartUI();
+        this.switchView('secCustomerOrders');
+        this.showToast(`🔴 PAYMENT FAILED for Order #${json.data?.order_number || ''}. Click "Pay Again" on your order card to retry.`, 'error');
+        await this.fetchOrders();
+      } else if (json.status === 'PROCESSING' || statusParam === 'PROCESSING') {
+        this.cart = [];
+        this.updateCartUI();
+        this.switchView('secCustomerOrders');
+        this.showToast(`🟠 PAYMENT PROCESSING for Order #${json.data?.order_number || ''}. You can upload a payment screenshot if needed.`, 'warning');
+        await this.fetchOrders();
       } else {
-        this.showToast('Payment Failed. Your order was not placed.', 'error');
+        this.switchView('secCustomerOrders');
+        this.showToast('PhonePe payment status updated.', 'info');
+        await this.fetchOrders();
       }
     } catch (err) {
       console.error('Error verifying PhonePe callback:', err);
-      this.showToast('Payment Failed. Your order was not placed.', 'error');
+      this.switchView('secCustomerOrders');
+      this.showToast('Unable to verify PhonePe status. Please check your orders history.', 'error');
+      await this.fetchOrders();
+    }
+  }
+
+  async payAgainPhonePe(orderId) {
+    if (!orderId) return;
+    if (!this.processingPayAgain) this.processingPayAgain = new Set();
+    if (this.processingPayAgain.has(orderId)) return;
+
+    this.processingPayAgain.add(orderId);
+    const btn = document.getElementById(`btnPayAgain_${orderId}`);
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Opening PhonePe...`;
+    }
+
+    try {
+      this.showToast('Initiating PhonePe payment retry...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/phonepe/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId })
+      });
+      const json = await res.json();
+
+      if (json.success && json.redirectUrl) {
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (isMobile && json.intentUrl) {
+          window.location.href = json.intentUrl;
+          setTimeout(() => {
+            window.location.href = json.redirectUrl;
+          }, 1500);
+        } else {
+          window.location.href = json.redirectUrl;
+        }
+      } else {
+        this.showToast(json.message || 'Unable to launch PhonePe payment retry.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fa-solid fa-rotate-right" style="color: #00E676;"></i> Pay Again`;
+        }
+      }
+    } catch (err) {
+      console.error('Error initiating Pay Again:', err);
+      this.showToast('Failed to connect to PhonePe gateway. Please try again.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-rotate-right" style="color: #00E676;"></i> Pay Again`;
+      }
+    } finally {
+      this.processingPayAgain.delete(orderId);
+    }
+  }
+
+  handleProcessingScreenshotSelect(e, orderId) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      this.showToast('Screenshot file size must be less than 5MB', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      if (!this.processingScreenshots) this.processingScreenshots = new Map();
+      this.processingScreenshots.set(orderId, evt.target.result);
+      const fileNameEl = document.getElementById(`procScreenshotName_${orderId}`);
+      const btnUpload = document.getElementById(`btnUploadProcScreenshot_${orderId}`);
+      if (fileNameEl) fileNameEl.innerText = file.name;
+      if (btnUpload) btnUpload.style.display = 'inline-flex';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async uploadProcessingScreenshot(orderId) {
+    if (!this.processingScreenshots || !this.processingScreenshots.has(orderId)) {
+      this.showToast('Please select a screenshot file first.', 'error');
+      return;
+    }
+    const b64Data = this.processingScreenshots.get(orderId);
+    const btn = document.getElementById(`btnUploadProcScreenshot_${orderId}`);
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Uploading...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/processing-screenshot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_screenshot: b64Data })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast('Processing payment screenshot uploaded successfully!', 'success');
+        this.processingScreenshots.delete(orderId);
+        await this.fetchOrders();
+      } else {
+        this.showToast(json.message || 'Failed to upload processing screenshot.', 'error');
+      }
+    } catch (err) {
+      console.error('Error uploading processing screenshot:', err);
+      this.showToast('Failed to upload screenshot. Please try again.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Upload Screenshot`;
+      }
     }
   }
 
@@ -3954,7 +4099,27 @@ class TiffinApp {
 
     const typeIcon = order.order_type === 'Takeaway' ? 'fa-box' : order.order_type === 'Delivery' ? 'fa-motorcycle' : 'fa-utensils';
     const isReferralPay = (order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL';
-    const isPaid = order.payment_status === 'Paid' || order.payment_status === 'Cash Received' || order.payment_status.includes('Verified');
+    
+    const payMethodStr = (order.payment_method || '').toLowerCase();
+    const isPhonePe = payMethodStr.includes('phonepe');
+    const rawPayStatus = (order.payment_status || '').toLowerCase();
+    const isPaid = order.payment_status === 'Paid' || order.payment_status === 'Cash Received' || order.payment_status.includes('Verified') || rawPayStatus.includes('success');
+    const isPhonePeFailed = isPhonePe && (rawPayStatus.includes('fail') || rawPayStatus.includes('reject'));
+    const isPhonePeProcessing = isPhonePe && !isPaid && !isPhonePeFailed;
+    const isPhonePeSuccess = isPhonePe && isPaid;
+
+    let payPillHtml = '';
+    if (isReferralPay) {
+      payPillHtml = `<span class="co-row-pay-pill referral"><i class="fa-solid fa-circle" style="color: #00E676;"></i> 🟢 REFERRAL</span>`;
+    } else if (isPhonePeSuccess) {
+      payPillHtml = `<span class="co-row-pay-pill paid" style="background: rgba(76, 175, 80, 0.18); color: #4CAF50; border: 1px solid #4CAF50;"><i class="fa-solid fa-circle-check"></i> 🟢 Payment Successful</span>`;
+    } else if (isPhonePeFailed) {
+      payPillHtml = `<span class="co-row-pay-pill failed" style="background: rgba(229, 57, 53, 0.18); color: #FF5252; border: 1px solid #E53935;"><i class="fa-solid fa-circle-xmark"></i> 🔴 Payment Failed</span>`;
+    } else if (isPhonePeProcessing) {
+      payPillHtml = `<span class="co-row-pay-pill processing" style="background: rgba(255, 152, 0, 0.18); color: #FFB74D; border: 1px solid #FF9800;"><i class="fa-solid fa-hourglass-half"></i> 🟠 Payment Processing</span>`;
+    } else {
+      payPillHtml = `<span class="co-row-pay-pill ${isPaid ? 'paid' : 'pending'}"><i class="fa-solid ${isPaid ? 'fa-circle-check' : 'fa-hourglass-half'}"></i> ${order.payment_status} (${order.payment_method})</span>`;
+    }
 
     // Calculate 3-minute modification cutoff
     const createdAtMs = new Date(order.created_at || Date.now()).getTime();
@@ -4023,9 +4188,7 @@ class TiffinApp {
           <div class="co-top-right">
             <div class="co-payment-status-block">
               <span class="co-pay-title-label"><i class="fa-solid fa-credit-card" style="color: var(--accent-gold);"></i> Payment Status:</span>
-              <span class="co-row-pay-pill ${isReferralPay ? 'referral' : (isPaid ? 'paid' : 'pending')}">
-                <i class="fa-solid ${isReferralPay ? 'fa-circle' : (isPaid ? 'fa-circle-check' : 'fa-hourglass-half')}" style="${isReferralPay ? 'color: #00E676;' : ''}"></i> ${isReferralPay ? '🟢 REFERRAL' : `${order.payment_status} (${order.payment_method})`}
-              </span>
+              ${payPillHtml}
             </div>
             <div class="co-total-amount-block">
               <span class="co-total-title-label">Total Amount</span>
@@ -4064,11 +4227,47 @@ class TiffinApp {
 
             ${order.utr_number || order.payment_screenshot ? `
               <div class="co-payment-utr-line">
-                ${order.utr_number ? `<span class="utr-code"><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> UTR: <code style="background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; color: #FFF; font-family: monospace;">${order.utr_number}</code></span>` : ''}
+                ${order.utr_number ? `<span class="utr-code"><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> Transaction Ref / UTR: <code style="background: rgba(255,255,255,0.08); padding: 2px 7px; border-radius: 4px; color: #FFF; font-family: monospace;">${order.utr_number}</code></span>` : ''}
                 ${order.payment_screenshot ? `
                   <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}', 'Payment Screenshot - Order #${order.order_number}')" style="background: rgba(41,182,246,0.15); color: #29B6F6; border: 1px solid rgba(41,182,246,0.3); padding: 4px 10px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
                     <i class="fa-solid fa-camera"></i> View Screenshot
                   </button>
+                ` : ''}
+              </div>
+            ` : ''}
+
+            ${isPhonePeProcessing ? `
+              <!-- ISOLATED PROCESSING PAYMENT SCREENSHOT UPLOAD CARD (ONLY FOR 🟠 PAYMENT PROCESSING) -->
+              <div class="processing-screenshot-card" style="margin-top: 0.85rem; background: rgba(255, 152, 0, 0.1); border: 1.5px dashed rgba(255, 152, 0, 0.5); padding: 12px; border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
+                  <span style="font-weight: 700; font-size: 0.84rem; color: #FFF; display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-camera" style="color: var(--accent-gold);"></i> Upload Processing Payment Screenshot
+                  </span>
+                  <span style="font-size: 0.72rem; color: #FFB74D; background: rgba(255,152,0,0.2); padding: 2px 8px; border-radius: 10px; font-weight: 700;">
+                    🟠 Payment Processing
+                  </span>
+                </div>
+                <p style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 10px;">
+                  If your PhonePe payment is currently processing, upload a transaction screenshot here to assist verification.
+                </p>
+
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                  <label class="btn-secondary-outline" style="font-size: 0.78rem; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-upload"></i> Choose Screenshot
+                    <input type="file" accept="image/*" onchange="app.handleProcessingScreenshotSelect(event, '${order.id}')" style="display: none;">
+                  </label>
+                  <span id="procScreenshotName_${order.id}" style="font-size: 0.76rem; color: var(--accent-gold); font-style: italic;">No file selected</span>
+                  <button type="button" id="btnUploadProcScreenshot_${order.id}" class="btn-primary-block" onclick="app.uploadProcessingScreenshot('${order.id}')" style="width: auto; padding: 6px 14px; font-size: 0.78rem; background: var(--accent-gold); color: #000; font-weight: 800; border: none; border-radius: 6px; cursor: pointer; display: none;">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload Screenshot
+                  </button>
+                </div>
+
+                ${order.payment_screenshot ? `
+                  <div style="margin-top: 10px;">
+                    <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${order.payment_screenshot}', 'Processing Payment Screenshot - Order #${order.order_number}')" style="background: rgba(41,182,246,0.15); color: #29B6F6; border: 1px solid rgba(41,182,246,0.3); padding: 5px 12px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                      <i class="fa-solid fa-camera"></i> View Uploaded Processing Screenshot
+                    </button>
+                  </div>
                 ` : ''}
               </div>
             ` : ''}
@@ -4078,6 +4277,12 @@ class TiffinApp {
           <div class="co-actions-panel">
             <div class="co-actions-title"><i class="fa-solid fa-bolt" style="color: var(--accent-gold);"></i> Quick Actions</div>
             <div class="co-row-actions">
+              ${isPhonePeFailed ? `
+                <button type="button" class="co-row-btn btn-phonepe-pay-again" id="btnPayAgain_${order.id}" onclick="app.payAgainPhonePe('${order.id}')" style="grid-column: span 2; background: linear-gradient(135deg, #5f259f, #4a1c7c); color: #FFF; border: 1.5px solid #8e44ad; font-weight: 800; padding: 10px 16px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 14px rgba(95, 37, 159, 0.4); margin-bottom: 6px;">
+                  <i class="fa-solid fa-rotate-right" style="color: #00E676; font-size: 1rem;"></i> Pay Again
+                </button>
+              ` : ''}
+
               ${canModify ? `
                 <div class="order-mod-timer-box" style="grid-column: span 2; background: rgba(255, 179, 0, 0.12); border: 1px solid var(--accent-gold); padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; color: #FFF; display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
                   <span><i class="fa-solid fa-clock-rotate-left" style="color: var(--accent-gold);"></i> You can modify this order for:</span>

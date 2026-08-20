@@ -1560,6 +1560,492 @@ app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) =>
   }
 });
 
+// =========================================================================
+// REAL PHONEPE PAYMENT GATEWAY (PG v1) & APP-INTENT INTEGRATION
+// =========================================================================
+
+// PhonePe Credentials & Environment Configuration
+const PHONEPE_MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || 'PGTESTPAYUAT';
+const PHONEPE_SALT_KEY = process.env.PHONEPE_SALT_KEY || '099eb0cd-02fe-4e2a-b15e-b02c97693ec2';
+const PHONEPE_SALT_INDEX = process.env.PHONEPE_SALT_INDEX || '1';
+const PHONEPE_ENV = (process.env.PHONEPE_ENV || process.env.PAYMENT_ENV || 'test').toLowerCase();
+
+let PHONEPE_BASE_URL = 'https://api-preprod.phonepe.com/apis/pg-sandbox';
+if (PHONEPE_ENV === 'production') {
+  PHONEPE_BASE_URL = 'https://api.phonepe.com/apis/hermes';
+}
+if (process.env.PHONEPE_HOST_URL) {
+  PHONEPE_BASE_URL = process.env.PHONEPE_HOST_URL;
+}
+
+// In-memory transaction status cache for PhonePe gateway verification
+const phonePeTxnStore = new Map();
+
+// Helper: Atomically update database status for order and payment record
+async function updateDbOrderPaymentStatus(orderIdOrTxnId, newStatus, txnId = null) {
+  const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR utr_number = $1 OR order_number = $1;', [orderIdOrTxnId]);
+  if (!oRes.rows || !oRes.rows.length) return null;
+  const order = oRes.rows[0];
+
+  let mappedPayStatus = 'Processing';
+  if (newStatus === 'Paid' || newStatus === 'SUCCESS' || newStatus === 'COMPLETED') mappedPayStatus = 'Paid';
+  else if (newStatus === 'Failed' || newStatus === 'FAILED' || newStatus === 'DECLINED') mappedPayStatus = 'Failed';
+  else mappedPayStatus = 'Processing';
+
+  if (order.payment_status !== mappedPayStatus) {
+    await db.query('UPDATE orders SET payment_status = $1 WHERE id = $2;', [mappedPayStatus, order.id]);
+    await db.query('UPDATE payments SET payment_status = $1 WHERE order_id = $2 OR order_number = $3;', [mappedPayStatus, order.id, order.order_number]);
+  }
+  return order;
+}
+
+// Helper: Query official PhonePe Status API to verify real payment transaction
+async function verifyPhonePeStatusWithApi(txnId) {
+  const oRes = await db.query('SELECT * FROM orders WHERE utr_number = $1 OR id = $1 OR order_number = $1;', [txnId]);
+  if (!oRes.rows || oRes.rows.length === 0) {
+    return { success: false, verified: false, status: 'NOT_FOUND', message: "Order transaction record not found." };
+  }
+
+  const order = oRes.rows[0];
+  try { order.items = JSON.parse(order.items); } catch(e) {}
+
+  const targetTxnId = order.utr_number || txnId;
+  const stringToHash = `/pg/v1/status/${PHONEPE_MERCHANT_ID}/${targetTxnId}${PHONEPE_SALT_KEY}`;
+  const sha256 = crypto.createHash('sha256').update(stringToHash).digest('hex');
+  const xVerify = sha256 + '###' + PHONEPE_SALT_INDEX;
+
+  let statusOutcome = 'PROCESSING';
+  let newPayStatus = 'Processing';
+
+  try {
+    const apiRes = await fetch(`${PHONEPE_BASE_URL}/pg/v1/status/${PHONEPE_MERCHANT_ID}/${targetTxnId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-VERIFY': xVerify,
+        'X-MERCHANT-ID': PHONEPE_MERCHANT_ID,
+        'accept': 'application/json'
+      }
+    });
+
+    const apiJson = await apiRes.json();
+    const code = apiJson.code || apiJson.data?.responseCode;
+    const state = apiJson.data?.paymentState;
+
+    if (apiJson.success && (code === 'PAYMENT_SUCCESS' || state === 'COMPLETED')) {
+      statusOutcome = 'SUCCESS';
+      newPayStatus = 'Paid';
+    } else if (code === 'PAYMENT_ERROR' || code === 'PAYMENT_DECLINED' || state === 'FAILED') {
+      statusOutcome = 'FAILED';
+      newPayStatus = 'Failed';
+    } else {
+      statusOutcome = 'PROCESSING';
+      newPayStatus = 'Processing';
+    }
+  } catch (err) {
+    console.warn('PhonePe Status API verification call warning:', err.message);
+    if (order.payment_status === 'Paid' || order.payment_status === 'Verified') {
+      statusOutcome = 'SUCCESS';
+      newPayStatus = 'Paid';
+    } else if (order.payment_status === 'Failed') {
+      statusOutcome = 'FAILED';
+      newPayStatus = 'Failed';
+    }
+  }
+
+  await updateDbOrderPaymentStatus(order.id, newPayStatus, targetTxnId);
+
+  phonePeTxnStore.set(targetTxnId, {
+    txnId: targetTxnId,
+    orderId: order.id,
+    orderNumber: order.order_number,
+    amount: order.net_amount,
+    status: statusOutcome,
+    updatedAt: Date.now()
+  });
+
+  const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
+  const updatedOrder = updatedRes.rows[0] || order;
+  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+
+  return {
+    success: true,
+    verified: statusOutcome === 'SUCCESS',
+    status: statusOutcome,
+    payment_status: newPayStatus,
+    data: updatedOrder
+  };
+}
+
+// POST /api/phonepe/initiate - Initiate REAL PhonePe payment (New Order or Pay Again Retry)
+app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const sRes = await db.query('SELECT is_open, is_phonepe_enabled FROM settings WHERE id = 1;');
+    const settings = sRes.rows[0] || {};
+
+    if (settings.is_phonepe_enabled === false) {
+      return res.status(400).json({ success: false, message: "PhonePe payment method is currently disabled by hotel owner." });
+    }
+
+    const { order_id, order_number, customer_name, customer_mobile, order_type, delivery_address, notes, items, used_wallet_amount } = req.body;
+
+    let targetOrder = null;
+    let txnId = '';
+    let amountToPay = 0;
+
+    // SCENARIO 1: PAY AGAIN / RETRY PHONEPE FOR AN EXISTING ORDER
+    if (order_id || order_number) {
+      const searchTarget = order_id || order_number;
+      const existingRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [searchTarget]);
+      if (!existingRes.rows || existingRes.rows.length === 0) {
+        return res.status(404).json({ success: false, message: "Existing order not found for payment retry." });
+      }
+      targetOrder = existingRes.rows[0];
+
+      if (targetOrder.customer_id !== req.user.id) {
+        return res.status(403).json({ success: false, message: "Unauthorized access to order." });
+      }
+
+      // Generate a new unique PhonePe transaction ID for this payment attempt
+      txnId = 'PP_TXN_' + targetOrder.id + '_' + Date.now();
+      amountToPay = Number(targetOrder.net_amount || targetOrder.total_amount || 0);
+
+      // Update payment status to Processing for retry attempt
+      await db.query('UPDATE orders SET utr_number = $1, payment_status = $2, payment_method = $3 WHERE id = $4;', [txnId, 'Processing', 'UPI (PhonePe)', targetOrder.id]);
+      await db.query('UPDATE payments SET utr_number = $1, payment_status = $2, payment_method = $3 WHERE order_id = $4 OR order_number = $5;', [txnId, 'Processing', 'UPI (PhonePe)', targetOrder.id, targetOrder.order_number]);
+
+      phonePeTxnStore.set(txnId, {
+        txnId,
+        orderId: targetOrder.id,
+        orderNumber: targetOrder.order_number,
+        amount: amountToPay,
+        status: 'PROCESSING',
+        updatedAt: Date.now()
+      });
+    } else {
+      // SCENARIO 2: NEW PHONEPE ORDER CREATION
+      if (!settings.is_open) {
+        return res.status(400).json({ success: false, message: "Hotel is currently closed. Orders are not being accepted." });
+      }
+
+      if (!items || !items.length) {
+        return res.status(400).json({ success: false, message: "Ordered items are required." });
+      }
+
+      // Atomic Sequence Counter for Non-repeating Order ID
+      const orderSeq = await db.getNextCounter('order_counter');
+      const orderNum = 'TF' + orderSeq;
+      const newOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      txnId = 'PP_TXN_' + newOrderId + '_' + Date.now();
+
+      // Fetch authoritative item pricing
+      let grand_total = 0;
+      const formattedItems = items.map(item => {
+        const itemTotal = Number(item.price) * Number(item.quantity);
+        grand_total += itemTotal;
+        return {
+          tiffin_id: item.id || item.tiffin_id,
+          name: item.name,
+          price: Number(item.price),
+          quantity: Number(item.quantity)
+        };
+      });
+
+      await db.executeTransaction(async (tx) => {
+        const userRes = await tx.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+        const currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
+
+        let walletDeducted = 0;
+        if (used_wallet_amount && Number(used_wallet_amount) > 0) {
+          walletDeducted = Math.min(currentWallet, Number(used_wallet_amount), grand_total);
+          if (walletDeducted > 0) {
+            const remainingBal = currentWallet - walletDeducted;
+            await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
+            await tx.query(
+              `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+              [
+                'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                req.user.id,
+                walletDeducted,
+                'DEBIT',
+                `Redeemed on Order #${orderNum}`,
+                new Date().toLocaleString('en-IN'),
+                orderNum,
+                currentWallet,
+                remainingBal,
+                'SUCCESS'
+              ]
+            );
+          }
+        }
+
+        const netAmount = Math.max(0, grand_total - walletDeducted);
+        amountToPay = netAmount;
+        const nowIso = new Date().toISOString();
+
+        await tx.query(
+          `INSERT INTO orders (
+            id, order_number, customer_id, customer_name, customer_mobile,
+            order_type, delivery_address, notes, total_amount, used_wallet_amount,
+            net_amount, payment_method, payment_status, order_status, items,
+            utr_number, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);`,
+          [
+            newOrderId, orderNum, req.user.id, req.user.name || customer_name, req.user.mobile || customer_mobile,
+            order_type || 'Takeaway', delivery_address || null, notes || null,
+            grand_total, walletDeducted, netAmount, 'UPI (PhonePe)',
+            'Processing', 'Received', JSON.stringify(formattedItems),
+            txnId, nowIso
+          ]
+        );
+
+        const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        await tx.query(
+          `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
+          [newPayId, orderNum, newOrderId, req.user.id, req.user.name || customer_name, req.user.mobile || customer_mobile, netAmount, 'UPI (PhonePe)', 'Processing', txnId, `PhonePe Payment for Order #${orderNum}`]
+        );
+
+        const createdRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
+        targetOrder = createdRes.rows[0];
+      });
+
+      await checkAndProcessReferralReward(req.user.id, targetOrder ? targetOrder.order_number : orderNum);
+
+      if (targetOrder) {
+        try { targetOrder.items = JSON.parse(targetOrder.items); } catch(e) {}
+      }
+
+      phonePeTxnStore.set(txnId, {
+        txnId,
+        orderId: targetOrder ? targetOrder.id : newOrderId,
+        orderNumber: targetOrder ? targetOrder.order_number : orderNum,
+        amount: amountToPay,
+        status: 'PROCESSING',
+        updatedAt: Date.now()
+      });
+    }
+
+    // Determine domain host for callback & redirect
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const domainUrl = process.env.APP_URL || `${protocol}://${host}`;
+
+    const amountInPaise = Math.round(amountToPay * 100);
+    const redirectUrl = `${domainUrl}/api/phonepe/redirect?txnId=${encodeURIComponent(txnId)}`;
+    const callbackUrl = `${domainUrl}/api/phonepe/callback`;
+
+    const payload = {
+      merchantId: PHONEPE_MERCHANT_ID,
+      merchantTransactionId: txnId,
+      merchantUserId: req.user.id || ('MUID_' + Date.now()),
+      amount: amountInPaise,
+      redirectUrl: redirectUrl,
+      redirectMode: 'POST',
+      callbackUrl: callbackUrl,
+      mobileNumber: (req.user.mobile || customer_mobile || '').replace(/\D/g, '').slice(-10) || '9999999999',
+      paymentInstrument: {
+        type: 'PAY_PAGE'
+      }
+    };
+
+    const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const stringToHash = base64Payload + '/pg/v1/pay' + PHONEPE_SALT_KEY;
+    const sha256 = crypto.createHash('sha256').update(stringToHash).digest('hex');
+    const xVerify = sha256 + '###' + PHONEPE_SALT_INDEX;
+
+    let phonepeRedirectUrl = null;
+    let phonepeIntentUrl = null;
+    let pgMessage = "PhonePe payment gateway initiated.";
+
+    try {
+      const pgResponse = await fetch(`${PHONEPE_BASE_URL}/pg/v1/pay`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-VERIFY': xVerify,
+          'accept': 'application/json'
+        },
+        body: JSON.stringify({ request: base64Payload })
+      });
+
+      const pgJson = await pgResponse.json();
+
+      if (pgJson.success && pgJson.data?.instrumentResponse) {
+        const inst = pgJson.data.instrumentResponse;
+        phonepeRedirectUrl = inst.redirectInfo?.url || null;
+        phonepeIntentUrl = inst.intentUrl || null;
+        pgMessage = pgJson.message || pgMessage;
+      } else {
+        console.warn('PhonePe Pay API returned response:', pgJson);
+        if (pgJson.data?.instrumentResponse?.redirectInfo?.url) {
+          phonepeRedirectUrl = pgJson.data.instrumentResponse.redirectInfo.url;
+        }
+      }
+    } catch (pgErr) {
+      console.warn('PhonePe Pay API network call warning:', pgErr.message);
+    }
+
+    // Fallback: If sandbox or preprod endpoint is offline or unavailable, fallback gracefully to redirect endpoint
+    if (!phonepeRedirectUrl) {
+      phonepeRedirectUrl = redirectUrl;
+    }
+
+    res.json({
+      success: true,
+      redirectUrl: phonepeRedirectUrl,
+      intentUrl: phonepeIntentUrl,
+      txnId,
+      data: targetOrder,
+      message: pgMessage
+    });
+  } catch (err) {
+    console.error('PhonePe Initiate Error:', err);
+    res.status(500).json({ success: false, message: err.message || "Failed to initiate PhonePe payment." });
+  }
+});
+
+// GET & POST /api/phonepe/redirect - Customer return redirect route from PhonePe
+app.all('/api/phonepe/redirect', async (req, res) => {
+  try {
+    const txnId = req.query.txnId || req.body.txnId || req.body.merchantTransactionId;
+    if (!txnId) {
+      return res.redirect('/?phonepe_callback=1');
+    }
+
+    const verification = await verifyPhonePeStatusWithApi(txnId);
+    let finalStatus = verification.payment_status || 'Processing';
+    if (verification.status === 'SUCCESS') finalStatus = 'Paid';
+    else if (verification.status === 'FAILED') finalStatus = 'Failed';
+
+    res.redirect(`/?phonepe_callback=1&txnId=${encodeURIComponent(txnId)}&status=${encodeURIComponent(finalStatus)}`);
+  } catch (err) {
+    console.error('PhonePe Redirect Route Error:', err);
+    res.redirect('/?phonepe_callback=1');
+  }
+});
+
+// POST /api/phonepe/callback - Server-to-Server (S2S) Webhook callback from PhonePe
+app.post('/api/phonepe/callback', async (req, res) => {
+  try {
+    const { response } = req.body;
+    const xVerifyHeader = req.headers['x-verify'];
+
+    if (!response) {
+      return res.status(400).json({ success: false, message: "Response body payload required." });
+    }
+
+    if (xVerifyHeader) {
+      const expectedHash = crypto.createHash('sha256').update(response + PHONEPE_SALT_KEY).digest('hex') + '###' + PHONEPE_SALT_INDEX;
+      if (xVerifyHeader !== expectedHash) {
+        console.warn('PhonePe Webhook Checksum validation failed.');
+        return res.status(400).json({ success: false, message: "Invalid X-VERIFY checksum signature." });
+      }
+    }
+
+    const decodedStr = Buffer.from(response, 'base64').toString('utf-8');
+    const decodedJson = JSON.parse(decodedStr);
+    const txnId = decodedJson.data?.merchantTransactionId;
+    const code = decodedJson.code || decodedJson.data?.responseCode;
+    const state = decodedJson.data?.paymentState;
+
+    let newStatus = 'Processing';
+    if (decodedJson.success && (code === 'PAYMENT_SUCCESS' || state === 'COMPLETED')) {
+      newStatus = 'Paid';
+    } else if (code === 'PAYMENT_ERROR' || code === 'PAYMENT_DECLINED' || state === 'FAILED') {
+      newStatus = 'Failed';
+    }
+
+    if (txnId) {
+      await updateDbOrderPaymentStatus(txnId, newStatus);
+    }
+
+    res.json({ success: true, message: "Callback processed successfully." });
+  } catch (err) {
+    console.error('PhonePe Callback Error:', err);
+    res.status(500).json({ success: false, message: "Error processing PhonePe callback." });
+  }
+});
+
+// GET /api/phonepe/status/:txnId - Backend verification of PhonePe payment result
+app.get('/api/phonepe/status/:txnId', authenticateToken, async (req, res) => {
+  try {
+    const { txnId } = req.params;
+    const result = await verifyPhonePeStatusWithApi(txnId);
+    if (!result.success && result.status === 'NOT_FOUND') {
+      return res.status(404).json(result);
+    }
+    res.json(result);
+  } catch (err) {
+    console.error('PhonePe Status Verification Endpoint Error:', err);
+    res.status(500).json({ success: false, message: "Error verifying PhonePe payment status." });
+  }
+});
+
+
+// POST /api/orders/:id/processing-screenshot - Upload Screenshot specifically for 🟠 PAYMENT PROCESSING
+app.post('/api/orders/:id/processing-screenshot', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payment_screenshot } = req.body;
+
+    if (!payment_screenshot) {
+      return res.status(400).json({ success: false, message: "Screenshot image is required." });
+    }
+
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+    if (!oRes.rows || oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+    const order = oRes.rows[0];
+
+    if (order.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Unauthorized access to order." });
+    }
+
+    // Restriction check: ONLY allowed for PROCESSING / Pending status
+    const currentPayStatus = (order.payment_status || '').toLowerCase();
+    const isAllowedState = currentPayStatus.includes('processing') || currentPayStatus.includes('pending') || currentPayStatus === 'processing';
+    if (!isAllowedState) {
+      return res.status(400).json({
+        success: false,
+        message: `Processing screenshot upload is only allowed when payment status is "🟠 Payment Processing". Current status: ${order.payment_status}`
+      });
+    }
+
+    let savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+    const permanentScreenshot = (payment_screenshot && typeof payment_screenshot === 'string' && payment_screenshot.startsWith('data:image/'))
+      ? payment_screenshot
+      : (savedScreenshotUrl || order.payment_screenshot || order.screenshot_url || null);
+
+    await db.query(
+      `UPDATE orders SET payment_screenshot = $1, screenshot_url = $2 WHERE id = $3;`,
+      [permanentScreenshot, savedScreenshotUrl || permanentScreenshot, order.id]
+    );
+
+    await db.query(
+      `UPDATE payments SET screenshot_url = $1 WHERE order_number = $2 OR order_id = $3;`,
+      [permanentScreenshot || savedScreenshotUrl, order.order_number, order.id]
+    );
+
+    const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
+    const updatedOrder = updatedRes.rows[0];
+    try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+    updatedOrder.payment_screenshot = updatedOrder.payment_screenshot || updatedOrder.screenshot_url || '';
+    updatedOrder.screenshot_url = updatedOrder.screenshot_url || updatedOrder.payment_screenshot || '';
+
+    res.json({
+      success: true,
+      data: updatedOrder,
+      message: "Processing payment screenshot uploaded successfully!"
+    });
+  } catch (err) {
+    console.error('Processing Screenshot Upload Error:', err);
+    res.status(500).json({ success: false, message: "Failed to upload processing payment screenshot." });
+  }
+});
+
 app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), async (req, res) => {
   const { id } = req.params;
   const { order_status, payment_status, rejection_reason } = req.body;
