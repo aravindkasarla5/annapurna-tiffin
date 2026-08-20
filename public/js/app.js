@@ -7998,6 +7998,9 @@ class TiffinApp {
     this.renderCurrentView();
     this.updateCartUI();
 
+    this.openAuthModal('LOGIN', 'CUSTOMER');
+  }
+
   // =========================================================================
   // LIVE 3-MINUTE ORDER MODIFICATION & CANCELLATION ENGINE
   // =========================================================================

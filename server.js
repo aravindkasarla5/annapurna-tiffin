@@ -840,7 +840,7 @@ async function seedOwnerUser() {
   } catch(e) {}
 }
 
-app.get('/api/menu', async (req, res) => {
+const getMenuHandler = async (req, res) => {
   let tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
   if (!tRes.rows || tRes.rows.length === 0) {
     console.log('Menu table empty — seeding default tiffins list...');
@@ -852,7 +852,10 @@ app.get('/api/menu', async (req, res) => {
     tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
   }
   res.json({ success: true, data: tRes.rows || [] });
-});
+};
+
+app.get('/api/menu', getMenuHandler);
+app.get('/api/tiffins', getMenuHandler);
 
 app.post('/api/menu', authenticateToken, requireRole('OWNER'), async (req, res) => {
   const { name, description, price, category, image, is_available } = req.body;
