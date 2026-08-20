@@ -2929,6 +2929,12 @@ textarea.form-control {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  position: relative;
+  z-index: 2;
+}
+
+.co-row-btn * {
+  pointer-events: none;
 }
 
 .co-row-btn:active {
