@@ -1850,6 +1850,8 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       }
     };
 
+    console.log(`[PhonePe Gateway] Initiating transaction ${txnId} | Amount: ₹${amountToPay} (${amountInPaise} paise) | ENV: ${PHONEPE_ENV}`);
+
     const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
     const stringToHash = base64Payload + '/pg/v1/pay' + PHONEPE_SALT_KEY;
     const sha256 = crypto.createHash('sha256').update(stringToHash).digest('hex');
@@ -1874,14 +1876,15 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       if (pgJson.success && pgJson.data?.instrumentResponse) {
         phonepeRedirectUrl = pgJson.data.instrumentResponse.redirectInfo?.url || pgJson.data.instrumentResponse.intentUrl || null;
         pgMessage = pgJson.message || pgMessage;
+        console.log('[PhonePe Gateway Success]:', pgMessage, phonepeRedirectUrl);
       } else {
-        console.warn('PhonePe Pay API returned response:', pgJson);
+        console.warn('[PhonePe Gateway API Response Warning]:', pgJson);
         if (pgJson.data?.instrumentResponse?.redirectInfo?.url) {
           phonepeRedirectUrl = pgJson.data.instrumentResponse.redirectInfo.url;
         }
       }
     } catch (pgErr) {
-      console.warn('PhonePe Pay API network call warning:', pgErr.message);
+      console.warn('[PhonePe Gateway API Network Warning]:', pgErr.message);
     }
 
     // Fallback: If sandbox or preprod endpoint is offline or unavailable, fallback gracefully to redirect endpoint
@@ -1897,7 +1900,7 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       message: pgMessage
     });
   } catch (err) {
-    console.error('PhonePe Initiate Error:', err);
+    console.error('[PhonePe Gateway Exception]:', err);
     res.status(500).json({ success: false, message: err.message || "Failed to initiate PhonePe payment." });
   }
 });

@@ -2691,12 +2691,19 @@ class TiffinApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const json = await res.json();
 
-      if (json.success && json.redirectUrl) {
+      let json = {};
+      try {
+        json = await res.json();
+      } catch (parseErr) {
+        console.error('Failed to parse PhonePe response:', parseErr);
+      }
+
+      if (res.ok && json.success && json.redirectUrl) {
         window.location.href = json.redirectUrl;
       } else {
-        this.showToast(json.message || 'Unable to launch PhonePe payment.', 'error');
+        const errorMsg = json.message || (res.statusText ? `PhonePe error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment.');
+        this.showToast(errorMsg, 'error');
         payBtns.forEach(btn => {
           btn.disabled = false;
           btn.innerHTML = `<i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i> <span>Pay ₹<span id="phonePeBtnAmount">${grandTotal}</span> with PhonePe</span>`;
@@ -2704,7 +2711,7 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Error initiating PhonePe payment:', err);
-      this.showToast('Unable to connect to PhonePe gateway. Please try again.', 'error');
+      this.showToast(err.message || 'Unable to connect to PhonePe gateway. Please try again.', 'error');
       payBtns.forEach(btn => {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i> <span>Pay ₹<span id="phonePeBtnAmount">${grandTotal}</span> with PhonePe</span>`;
@@ -2790,12 +2797,19 @@ class TiffinApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_id: orderId })
       });
-      const json = await res.json();
 
-      if (json.success && json.redirectUrl) {
+      let json = {};
+      try {
+        json = await res.json();
+      } catch (parseErr) {
+        console.error('Failed to parse PhonePe retry response:', parseErr);
+      }
+
+      if (res.ok && json.success && json.redirectUrl) {
         window.location.href = json.redirectUrl;
       } else {
-        this.showToast(json.message || 'Unable to launch PhonePe payment retry.', 'error');
+        const errorMsg = json.message || (res.statusText ? `PhonePe error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment retry.');
+        this.showToast(errorMsg, 'error');
         if (btn) {
           btn.disabled = false;
           btn.innerHTML = `<i class="fa-solid fa-rotate-right" style="color: #00E676;"></i> Pay Again`;
