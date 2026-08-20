@@ -1624,7 +1624,7 @@
                     <i class="fa-solid fa-utensils"></i> Hotel / Tiffin Center Name
                   </label>
                   <div class="input-icon-wrapper">
-                    <input type="text" class="form-input-custom" id="setHotelName" placeholder="e.g. Sri Lakshmi Annapurna Tiffin Center" required>
+                    <input type="text" class="form-input-custom" id="setHotelName" placeholder="e.g. Sri Lakshmi Annapurna Tiffin Center">
                     <i class="fa-solid fa-pen input-end-icon"></i>
                   </div>
                 </div>
@@ -1634,7 +1634,7 @@
                     <i class="fa-solid fa-phone"></i> Helpline Phone Number
                   </label>
                   <div class="input-icon-wrapper">
-                    <input type="text" class="form-input-custom" id="setPhone" placeholder="+91 9392874900" required>
+                    <input type="text" class="form-input-custom" id="setPhone" placeholder="+91 9392874900">
                     <i class="fa-solid fa-headset input-end-icon"></i>
                   </div>
                 </div>
@@ -1644,7 +1644,7 @@
                     <i class="fa-solid fa-location-dot"></i> Restaurant Full Address
                   </label>
                   <div class="input-icon-wrapper">
-                    <textarea class="form-textarea-custom" id="setAddr" rows="2" placeholder="#42, Temple Road, Near Gandhi Circle, Bengaluru, KA" required></textarea>
+                    <textarea class="form-textarea-custom" id="setAddr" rows="2" placeholder="#42, Temple Road, Near Gandhi Circle, Bengaluru, KA"></textarea>
                   </div>
                 </div>
 
@@ -1654,7 +1654,7 @@
                       <i class="fa-regular fa-clock"></i> Opening Time
                     </label>
                     <div class="input-icon-wrapper">
-                      <input type="text" class="form-input-custom" id="setOpenTime" placeholder="e.g. 06:30 AM" required>
+                      <input type="text" class="form-input-custom" id="setOpenTime" placeholder="e.g. 06:30 AM">
                     </div>
                   </div>
 
@@ -1663,7 +1663,7 @@
                       <i class="fa-solid fa-clock"></i> Closing Time
                     </label>
                     <div class="input-icon-wrapper">
-                      <input type="text" class="form-input-custom" id="setCloseTime" placeholder="e.g. 10:30 PM" required>
+                      <input type="text" class="form-input-custom" id="setCloseTime" placeholder="e.g. 10:30 PM">
                     </div>
                   </div>
                 </div>
@@ -1713,7 +1713,7 @@
                       <i class="fa-solid fa-at"></i> Official Hotel UPI VPA Address
                     </label>
                     <div class="input-icon-wrapper">
-                      <input type="text" class="form-input-custom" id="setUpiId" placeholder="e.g. annapurna.tiffin@upi" required>
+                      <input type="text" class="form-input-custom" id="setUpiId" placeholder="e.g. annapurna.tiffin@upi">
                       <i class="fa-solid fa-shield-halved input-end-icon" style="color: var(--accent-gold);"></i>
                     </div>
                     <div style="margin-top: 8px; display: flex; justify-content: flex-end;">
@@ -1821,7 +1821,7 @@
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
                       <div class="input-icon-wrapper" style="flex: 1; max-width: 220px; position: relative;">
                         <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-weight: 800; font-size: 1.1rem; color: var(--accent-gold);">₹</span>
-                        <input type="number" class="form-input-custom" id="setRefReferrerReward" min="1" step="any" placeholder="10" style="padding-left: 32px; font-size: 1.1rem; font-weight: 800; color: #FFF; background: rgba(0,0,0,0.4);" required>
+                        <input type="number" class="form-input-custom" id="setRefReferrerReward" min="1" step="any" placeholder="10" oninput="app.highlightReferralPreset(this.value)" style="padding-left: 32px; font-size: 1.1rem; font-weight: 800; color: #FFF; background: rgba(0,0,0,0.4);">
                       </div>
                       <button type="button" class="btn-primary-block" id="btnSaveReferralAmount" onclick="app.saveReferralAmountSetting()" style="width: auto; padding: 10px 18px; font-size: 0.85rem; background: var(--accent-gold); color: #000; font-weight: 800; border: none; border-radius: var(--radius-md); cursor: pointer;">
                         <i class="fa-solid fa-floppy-disk"></i> Save

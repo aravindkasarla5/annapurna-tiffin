@@ -651,54 +651,38 @@ const handleSaveSettings = async (req, res) => {
       is_phonepe_enabled, description, referral
     } = req.body;
 
-    // Validate Restaurant Information & Operating Timings if provided
-    if (hotel_name !== undefined && (typeof hotel_name !== 'string' || hotel_name.trim() === '')) {
-      return res.status(400).json({ success: false, message: "Restaurant Name is required and cannot be empty." });
-    }
-    if (phone !== undefined && (typeof phone !== 'string' || phone.trim() === '')) {
-      return res.status(400).json({ success: false, message: "Helpline Phone Number is required and cannot be empty." });
-    }
-    if (address !== undefined && (typeof address !== 'string' || address.trim() === '')) {
-      return res.status(400).json({ success: false, message: "Restaurant Address is required and cannot be empty." });
-    }
-
+    // Validate format of non-empty fields if provided
     const timeFormatRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9]\s*(AM|PM|am|pm)$|^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/i;
-    if (open_time !== undefined) {
+    if (open_time !== undefined && open_time !== null) {
       const openStr = String(open_time).trim();
-      if (!openStr) {
-        return res.status(400).json({ success: false, message: "Opening Time is required and cannot be empty." });
-      }
-      if (!timeFormatRegex.test(openStr)) {
+      if (openStr !== '' && !timeFormatRegex.test(openStr)) {
         return res.status(400).json({ success: false, message: "Invalid Opening Time format. Please enter a valid time (e.g. 06:00 AM or 06:00)." });
       }
     }
-    if (close_time !== undefined) {
+    if (close_time !== undefined && close_time !== null) {
       const closeStr = String(close_time).trim();
-      if (!closeStr) {
-        return res.status(400).json({ success: false, message: "Closing Time is required and cannot be empty." });
-      }
-      if (!timeFormatRegex.test(closeStr)) {
+      if (closeStr !== '' && !timeFormatRegex.test(closeStr)) {
         return res.status(400).json({ success: false, message: "Invalid Closing Time format. Please enter a valid time (e.g. 10:00 PM or 22:00)." });
       }
     }
 
-    // Validate Official Hotel UPI VPA Address if provided
-    if (upi_id !== undefined) {
+    // Validate Official Hotel UPI VPA Address if provided non-empty
+    if (upi_id !== undefined && upi_id !== null) {
       const upiStr = String(upi_id).trim();
       const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
-      if (!upiStr || !upiVpaRegex.test(upiStr)) {
+      if (upiStr !== '' && !upiVpaRegex.test(upiStr)) {
         return res.status(400).json({ success: false, message: "Please enter a valid UPI VPA address." });
       }
     }
 
-    const newHotelName = hotel_name !== undefined && hotel_name !== null && hotel_name !== '' ? hotel_name : (s.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center');
+    const newHotelName = hotel_name !== undefined && hotel_name !== null ? hotel_name : (s.hotel_name || '');
     const newHotelLogo = hotel_logo !== undefined ? hotel_logo : s.hotel_logo;
-    const newPhone = phone !== undefined ? phone : s.phone;
-    const newAddress = address !== undefined ? address : s.address;
-    const newOpenTime = open_time !== undefined ? open_time : s.open_time;
-    const newCloseTime = close_time !== undefined ? close_time : s.close_time;
-    const newHolidays = holidays !== undefined ? holidays : s.holidays;
-    const newUpiId = upi_id !== undefined ? upi_id : s.upi_id;
+    const newPhone = phone !== undefined && phone !== null ? phone : (s.phone || '');
+    const newAddress = address !== undefined && address !== null ? address : (s.address || '');
+    const newOpenTime = open_time !== undefined && open_time !== null ? open_time : (s.open_time || '');
+    const newCloseTime = close_time !== undefined && close_time !== null ? close_time : (s.close_time || '');
+    const newHolidays = holidays !== undefined && holidays !== null ? holidays : (s.holidays || '');
+    const newUpiId = upi_id !== undefined && upi_id !== null ? upi_id : (s.upi_id || '');
     const newUpiName = upi_name !== undefined ? upi_name : (s.upi_name || newHotelName);
 
     // QR scanner image is stored directly as a base64 data URL inside PostgreSQL

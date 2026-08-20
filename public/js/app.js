@@ -268,8 +268,8 @@ class TiffinApp {
           this.settings = incoming;
         }
         this.updateHeaderAndSettingsUI();
-        // Auto-populate settings form whenever owner is viewing Business Settings
-        if (this.activeView === 'secOwnerSettings') {
+        // Auto-populate settings form whenever owner opens Business Settings
+        if (this.activeView === 'secOwnerSettings' && !this.isSettingsFormPopulated) {
           this.populateSettingsForm();
         }
       }
@@ -1941,8 +1941,7 @@ class TiffinApp {
     }
     if (this.activeView === 'secOwnerSupport') this.fetchSupportTickets();
     if (this.activeView === 'secOwnerSettings') {
-      // Always re-fetch from PostgreSQL when opening Business Settings to ensure
-      // the form shows the latest saved values, not stale in-memory state
+      this.isSettingsFormPopulated = false;
       this.fetchSettings().then(() => this.populateSettingsForm());
     }
   }
@@ -5212,15 +5211,18 @@ class TiffinApp {
     const elUpi = document.getElementById('setUpiId');
     const elDesc = document.getElementById('setDesc');
 
-    // Only set value if element exists — never overwrite saved values with empty strings
-    if (elName && s.hotel_name !== undefined) elName.value = s.hotel_name || '';
-    if (elPhone && s.phone !== undefined) elPhone.value = s.phone || '';
-    if (elAddr && s.address !== undefined) elAddr.value = s.address || '';
-    if (elOpen && s.open_time !== undefined) elOpen.value = s.open_time || '';
-    if (elClose && s.close_time !== undefined) elClose.value = s.close_time || '';
-    if (elHolidays && s.holidays !== undefined) elHolidays.value = s.holidays || '';
-    if (elUpi && s.upi_id !== undefined) elUpi.value = s.upi_id || '';
-    if (elDesc && s.description !== undefined) elDesc.value = s.description || '';
+    // Only set value if element exists — set exact loaded values including empty strings
+    if (elName && s.hotel_name !== undefined) elName.value = s.hotel_name !== null ? s.hotel_name : '';
+    if (elPhone && s.phone !== undefined) elPhone.value = s.phone !== null ? s.phone : '';
+    if (elAddr && s.address !== undefined) elAddr.value = s.address !== null ? s.address : '';
+    if (elOpen && s.open_time !== undefined) elOpen.value = s.open_time !== null ? s.open_time : '';
+    if (elClose && s.close_time !== undefined) elClose.value = s.close_time !== null ? s.close_time : '';
+    if (elHolidays && s.holidays !== undefined) elHolidays.value = s.holidays !== null ? s.holidays : '';
+    if (elUpi && s.upi_id !== undefined) elUpi.value = s.upi_id !== null ? s.upi_id : '';
+    if (elDesc && s.description !== undefined) elDesc.value = s.description !== null ? s.description : '';
+
+    // Mark form as populated so background polling does not overwrite active user input while editing
+    this.isSettingsFormPopulated = true;
 
     // QR preview image
     const qrImg = document.getElementById('setQrPreviewImg');
@@ -5256,7 +5258,10 @@ class TiffinApp {
     if (lblPhonePe) lblPhonePe.innerText = isPhonePeEnabled ? '🟢 ON' : '🔴 OFF';
 
     // Referral Program Settings Controls
-    const ref = s.referral || {};
+    let ref = s.referral || {};
+    if (typeof ref === 'string') {
+      try { ref = JSON.parse(ref); } catch (e) { ref = {}; }
+    }
     const swEnabled = document.getElementById('setRefEnabledSwitch');
     const lblEnabled = document.getElementById('setRefEnabledLabel');
     const elReward = document.getElementById('setRefReferrerReward');
@@ -5267,24 +5272,29 @@ class TiffinApp {
     if (swEnabled) swEnabled.classList.toggle('active', ref.enabled !== false);
     if (lblEnabled) lblEnabled.innerText = ref.enabled !== false ? '🟢 PROGRAM ON' : '🔴 PROGRAM OFF';
     if (elReward) {
-      const activeRewardVal = ref.referrer_reward ?? 10;
+      const rawReward = (ref.referrer_reward !== undefined && ref.referrer_reward !== null && ref.referrer_reward !== '') ? Number(ref.referrer_reward) : 10;
+      const activeRewardVal = (!isNaN(rawReward) && isFinite(rawReward) && rawReward > 0) ? rawReward : 10;
       elReward.value = activeRewardVal;
-      document.querySelectorAll('.ref-preset-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.innerText.trim() === `₹${activeRewardVal}`);
-      });
+      this.highlightReferralPreset(activeRewardVal);
     }
     if (elDiscount) elDiscount.value = ref.new_customer_discount ?? 30;
     if (elMinOrder) elMinOrder.value = ref.min_order_value ?? 150;
     if (elLimit) elLimit.value = ref.monthly_limit ?? 500;
   }
 
+  highlightReferralPreset(val) {
+    const numVal = Number(val);
+    document.querySelectorAll('.ref-preset-btn').forEach(btn => {
+      const btnAmt = Number(btn.innerText.replace('₹', '').trim());
+      btn.classList.toggle('active', !isNaN(numVal) && btnAmt === numVal);
+    });
+  }
+
   setReferralAmountPreset(amt) {
     const el = document.getElementById('setRefReferrerReward');
     if (el) {
       el.value = amt;
-      document.querySelectorAll('.ref-preset-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.innerText.trim() === `₹${amt}`);
-      });
+      this.highlightReferralPreset(amt);
     }
   }
 
@@ -5314,49 +5324,30 @@ class TiffinApp {
       qrVal = this.tempOwnerQrCode;
     }
 
-    const hotelNameInput = document.getElementById('setHotelName')?.value?.trim();
-    const phoneInput = document.getElementById('setPhone')?.value?.trim();
-    const addrInput = document.getElementById('setAddr')?.value?.trim();
-    const openTimeInput = document.getElementById('setOpenTime')?.value?.trim();
-    const closeTimeInput = document.getElementById('setCloseTime')?.value?.trim();
-    const holidaysInput = document.getElementById('setHolidays')?.value?.trim();
-    const upiIdInput = document.getElementById('setUpiId')?.value?.trim();
-    const descInput = document.getElementById('setDesc')?.value?.trim();
+    const hotelNameInput = document.getElementById('setHotelName')?.value;
+    const phoneInput = document.getElementById('setPhone')?.value;
+    const addrInput = document.getElementById('setAddr')?.value;
+    const openTimeInput = document.getElementById('setOpenTime')?.value;
+    const closeTimeInput = document.getElementById('setCloseTime')?.value;
+    const holidaysInput = document.getElementById('setHolidays')?.value;
+    const upiIdInput = document.getElementById('setUpiId')?.value;
+    const descInput = document.getElementById('setDesc')?.value;
 
-    if (!hotelNameInput) {
-      this.showToast("❌ Unable to update Business Settings. Restaurant Name is required.", "error");
-      return;
-    }
-    if (!phoneInput) {
-      this.showToast("❌ Unable to update Business Settings. Helpline Phone Number is required.", "error");
-      return;
-    }
-    if (!addrInput) {
-      this.showToast("❌ Unable to update Business Settings. Restaurant Address is required.", "error");
-      return;
-    }
-
-    if (!openTimeInput) {
-      this.showToast("❌ Unable to update Business Settings. Opening Time is required.", "error");
-      return;
-    }
-    if (!closeTimeInput) {
-      this.showToast("❌ Unable to update Business Settings. Closing Time is required.", "error");
-      return;
-    }
-
+    const openTimeTrim = (openTimeInput || '').trim();
+    const closeTimeTrim = (closeTimeInput || '').trim();
     const timeRegex = /^(0?[1-9]|1[0-2]):[0-5][0-9]\s*(AM|PM|am|pm)$|^(0?[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$/i;
-    if (!timeRegex.test(openTimeInput)) {
+    if (openTimeTrim !== '' && !timeRegex.test(openTimeTrim)) {
       this.showToast("❌ Unable to update Business Settings. Invalid Opening Time format (e.g. 06:00 AM).", "error");
       return;
     }
-    if (!timeRegex.test(closeTimeInput)) {
+    if (closeTimeTrim !== '' && !timeRegex.test(closeTimeTrim)) {
       this.showToast("❌ Unable to update Business Settings. Invalid Closing Time format (e.g. 10:00 PM).", "error");
       return;
     }
 
+    const upiIdTrim = (upiIdInput || '').trim();
     const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
-    if (!upiIdInput || !upiVpaRegex.test(upiIdInput)) {
+    if (upiIdTrim !== '' && !upiVpaRegex.test(upiIdTrim)) {
       this.showToast("❌ Unable to update Business Settings. Please enter a valid UPI VPA address.", "error");
       return;
     }
@@ -5376,14 +5367,14 @@ class TiffinApp {
     });
 
     const payload = {
-      hotel_name: hotelNameInput,
-      phone: phoneInput,
-      address: addrInput,
-      open_time: openTimeInput,
-      close_time: closeTimeInput,
-      holidays: (holidaysInput !== undefined && holidaysInput !== null) ? holidaysInput : (this.settings?.holidays || ''),
-      upi_id: (upiIdInput !== undefined && upiIdInput !== null) ? upiIdInput : (this.settings?.upi_id || ''),
-      description: (descInput !== undefined && descInput !== null) ? descInput : (this.settings?.description || ''),
+      hotel_name: hotelNameInput !== undefined ? hotelNameInput : '',
+      phone: phoneInput !== undefined ? phoneInput : '',
+      address: addrInput !== undefined ? addrInput : '',
+      open_time: openTimeInput !== undefined ? openTimeInput : '',
+      close_time: closeTimeInput !== undefined ? closeTimeInput : '',
+      holidays: holidaysInput !== undefined ? holidaysInput : '',
+      upi_id: upiIdInput !== undefined ? upiIdInput : '',
+      description: descInput !== undefined ? descInput : '',
       upi_qr_code: qrVal,
       remove_qr: Boolean(this.isQrRemovedFlag),
       is_open: isHotelOpen,
@@ -5409,6 +5400,7 @@ class TiffinApp {
         this.settings = json.settings || json.data;
         this.tempOwnerQrCode = null;
         this.isQrRemovedFlag = false;
+        this.isSettingsFormPopulated = false;
         this.updateHeaderAndSettingsUI();
         this.populateSettingsForm();
         this.showToast('✓ Business Settings updated successfully.', 'success');
@@ -5428,10 +5420,11 @@ class TiffinApp {
   }
 
   async saveUpiVpaSetting() {
-    const upiInput = document.getElementById('setUpiId')?.value?.trim();
+    const upiInput = document.getElementById('setUpiId')?.value;
+    const upiIdTrim = (upiInput || '').trim();
     const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
 
-    if (!upiInput || !upiVpaRegex.test(upiInput)) {
+    if (upiIdTrim !== '' && !upiVpaRegex.test(upiIdTrim)) {
       this.showToast("❌ Unable to update Business Settings. Please enter a valid UPI VPA address.", "error");
       return;
     }
@@ -5446,11 +5439,12 @@ class TiffinApp {
       const res = await this.fetchWithAuth(`${API_BASE}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upi_id: upiInput })
+        body: JSON.stringify({ upi_id: upiInput !== undefined ? upiInput : '' })
       });
       const json = await res.json();
       if (json.success) {
         this.settings = json.settings || json.data;
+        this.isSettingsFormPopulated = false;
         this.updateHeaderAndSettingsUI();
         this.populateSettingsForm();
         this.showToast('✓ Business Settings updated successfully.', 'success');
@@ -5484,7 +5478,10 @@ class TiffinApp {
     }
 
     try {
-      const existingRef = typeof this.settings?.referral === 'string' ? JSON.parse(this.settings.referral) : (this.settings?.referral || {});
+      let existingRef = this.settings?.referral || {};
+      if (typeof existingRef === 'string') {
+        try { existingRef = JSON.parse(existingRef); } catch (e) { existingRef = {}; }
+      }
       const payload = {
         referral: {
           ...existingRef,
@@ -5500,6 +5497,7 @@ class TiffinApp {
       const json = await res.json();
       if (json.success) {
         this.settings = json.settings || json.data;
+        this.isSettingsFormPopulated = false;
         this.updateHeaderAndSettingsUI();
         this.populateSettingsForm();
         this.showToast('✓ Business Settings updated successfully.', 'success');

@@ -362,7 +362,6 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN balance_after REAL;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN status TEXT DEFAULT 'SUCCESS';`);
     }
-    await query(`UPDATE settings SET hotel_name = 'Sri Lakshmi Annapurna Tiffin Center', upi_name = 'Sri Lakshmi Annapurna Tiffin Center' WHERE id = 1;`);
   } catch (cErr) {
     console.error('Error initializing counters:', cErr);
   }
