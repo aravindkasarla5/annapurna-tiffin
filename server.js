@@ -1680,7 +1680,7 @@ async function verifyPhonePeStatusWithApi(txnId) {
 // POST /api/phonepe/initiate - Initiate REAL PhonePe payment (New Order or Pay Again Retry)
 app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
   try {
-    const sRes = await db.query('SELECT is_open, is_phonepe_enabled FROM settings WHERE id = 1;');
+    const sRes = await db.query('SELECT is_open, is_phonepe_enabled, upi_id, upi_name FROM settings WHERE id = 1;');
     const settings = sRes.rows[0] || {};
 
     if (settings.is_phonepe_enabled === false) {
@@ -1832,6 +1832,11 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
     const domainUrl = process.env.APP_URL || `${protocol}://${host}`;
 
+    const upiId = settings.upi_id || 'annapurna.tiffin@upi';
+    const upiName = settings.upi_name || 'Sri Lakshmi Annapurna Tiffin Center';
+    const phonepeAppIntentUrl = `phonepe://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR`;
+    const upiIntentUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(upiName)}&am=${amountToPay}&tr=${encodeURIComponent(txnId)}&cu=INR`;
+
     const amountInPaise = Math.round(amountToPay * 100);
     const redirectUrl = `${domainUrl}/api/phonepe/redirect?txnId=${encodeURIComponent(txnId)}`;
     const callbackUrl = `${domainUrl}/api/phonepe/callback`;
@@ -1846,7 +1851,8 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       callbackUrl: callbackUrl,
       mobileNumber: (req.user.mobile || customer_mobile || '').replace(/\D/g, '').slice(-10) || '9999999999',
       paymentInstrument: {
-        type: 'PAY_PAGE'
+        type: 'UPI_INTENT',
+        targetApp: 'com.phonepe.app'
       }
     };
 
@@ -1895,7 +1901,9 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     res.json({
       success: true,
       redirectUrl: phonepeRedirectUrl,
-      intentUrl: phonepeIntentUrl,
+      intentUrl: phonepeIntentUrl || phonepeAppIntentUrl,
+      phonepeAppUrl: phonepeAppIntentUrl,
+      upiUrl: upiIntentUrl,
       txnId,
       data: targetOrder,
       message: pgMessage

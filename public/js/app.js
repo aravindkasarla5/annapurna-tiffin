@@ -2693,15 +2693,18 @@ class TiffinApp {
       });
       const json = await res.json();
 
-      if (json.success && json.redirectUrl) {
+      if (json.success && (json.redirectUrl || json.intentUrl || json.phonepeAppUrl)) {
         const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        if (isMobile && json.intentUrl) {
-          window.location.href = json.intentUrl;
+        if (isMobile) {
+          const mobileLaunchUrl = json.phonepeAppUrl || json.intentUrl || json.upiUrl || json.redirectUrl;
+          window.location.href = mobileLaunchUrl;
           setTimeout(() => {
-            window.location.href = json.redirectUrl;
-          }, 1500);
+            if (json.redirectUrl && json.redirectUrl !== mobileLaunchUrl) {
+              window.location.href = json.redirectUrl;
+            }
+          }, 2500);
         } else {
-          window.location.href = json.redirectUrl;
+          window.location.href = json.redirectUrl || json.intentUrl;
         }
       } else {
         this.showToast(json.message || 'Unable to launch PhonePe payment.', 'error');
@@ -2800,15 +2803,18 @@ class TiffinApp {
       });
       const json = await res.json();
 
-      if (json.success && json.redirectUrl) {
+      if (json.success && (json.redirectUrl || json.intentUrl || json.phonepeAppUrl)) {
         const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        if (isMobile && json.intentUrl) {
-          window.location.href = json.intentUrl;
+        if (isMobile) {
+          const mobileLaunchUrl = json.phonepeAppUrl || json.intentUrl || json.upiUrl || json.redirectUrl;
+          window.location.href = mobileLaunchUrl;
           setTimeout(() => {
-            window.location.href = json.redirectUrl;
-          }, 1500);
+            if (json.redirectUrl && json.redirectUrl !== mobileLaunchUrl) {
+              window.location.href = json.redirectUrl;
+            }
+          }, 2500);
         } else {
-          window.location.href = json.redirectUrl;
+          window.location.href = json.redirectUrl || json.intentUrl;
         }
       } else {
         this.showToast(json.message || 'Unable to launch PhonePe payment retry.', 'error');
