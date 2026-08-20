@@ -1678,7 +1678,7 @@ async function verifyPhonePeStatusWithApi(txnId) {
 }
 
 // POST /api/phonepe/initiate - Initiate REAL PhonePe payment (New Order or Pay Again Retry)
-app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
   try {
     const sRes = await db.query('SELECT is_open, is_phonepe_enabled, upi_id, upi_name FROM settings WHERE id = 1;');
     const settings = sRes.rows[0] || {};
@@ -1688,6 +1688,10 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     }
 
     const { order_id, order_number, customer_name, customer_mobile, order_type, delivery_address, notes, items, used_wallet_amount } = req.body;
+
+    const customerId = req.user ? req.user.id : ('usr_guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4));
+    const customerName = (req.user ? req.user.name : customer_name) || customer_name || 'Customer';
+    const customerMobile = (req.user ? req.user.mobile : customer_mobile) || customer_mobile || '9999999999';
 
     let targetOrder = null;
     let txnId = '';
@@ -1702,7 +1706,7 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       }
       targetOrder = existingRes.rows[0];
 
-      if (targetOrder.customer_id !== req.user.id) {
+      if (req.user && targetOrder.customer_id && targetOrder.customer_id !== req.user.id) {
         return res.status(403).json({ success: false, message: "Unauthorized access to order." });
       }
 
@@ -1752,11 +1756,14 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
       });
 
       await db.executeTransaction(async (tx) => {
-        const userRes = await tx.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
-        const currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
+        let currentWallet = 0;
+        if (req.user) {
+          const userRes = await tx.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+          currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
+        }
 
         let walletDeducted = 0;
-        if (used_wallet_amount && Number(used_wallet_amount) > 0) {
+        if (req.user && used_wallet_amount && Number(used_wallet_amount) > 0) {
           walletDeducted = Math.min(currentWallet, Number(used_wallet_amount), grand_total);
           if (walletDeducted > 0) {
             const remainingBal = currentWallet - walletDeducted;
@@ -1792,7 +1799,7 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
             utr_number, created_at
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);`,
           [
-            newOrderId, orderNum, req.user.id, req.user.name || customer_name, req.user.mobile || customer_mobile,
+            newOrderId, orderNum, customerId, customerName, customerMobile,
             order_type || 'Takeaway', delivery_address || null, notes || null,
             grand_total, walletDeducted, netAmount, 'UPI (PhonePe)',
             'Processing', 'Received', JSON.stringify(formattedItems),
@@ -1804,14 +1811,16 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
         await tx.query(
           `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
-          [newPayId, orderNum, newOrderId, req.user.id, req.user.name || customer_name, req.user.mobile || customer_mobile, netAmount, 'UPI (PhonePe)', 'Processing', txnId, `PhonePe Payment for Order #${orderNum}`]
+          [newPayId, orderNum, newOrderId, customerId, customerName, customerMobile, netAmount, 'UPI (PhonePe)', 'Processing', txnId, `PhonePe Payment for Order #${orderNum}`]
         );
 
         const createdRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
         targetOrder = createdRes.rows[0];
       });
 
-      await checkAndProcessReferralReward(req.user.id, targetOrder ? targetOrder.order_number : orderNum);
+      if (req.user) {
+        await checkAndProcessReferralReward(req.user.id, targetOrder ? targetOrder.order_number : orderNum);
+      }
 
       if (targetOrder) {
         try { targetOrder.items = JSON.parse(targetOrder.items); } catch(e) {}
@@ -1839,12 +1848,12 @@ app.post('/api/phonepe/initiate', authenticateToken, requireRole('CUSTOMER'), as
     const payload = {
       merchantId: PHONEPE_MERCHANT_ID,
       merchantTransactionId: txnId,
-      merchantUserId: req.user.id || ('MUID_' + Date.now()),
+      merchantUserId: (req.user ? req.user.id : customerId) || ('MUID_' + Date.now()),
       amount: amountInPaise,
       redirectUrl: redirectUrl,
       redirectMode: 'POST',
       callbackUrl: callbackUrl,
-      mobileNumber: (req.user.mobile || customer_mobile || '').replace(/\D/g, '').slice(-10) || '9999999999',
+      mobileNumber: (customerMobile || '9999999999').replace(/\D/g, '').slice(-10) || '9999999999',
       paymentInstrument: {
         type: 'PAY_PAGE'
       }
@@ -1921,7 +1930,7 @@ app.all('/api/phonepe/redirect', async (req, res) => {
     res.redirect(`/?phonepe_callback=1&txnId=${encodeURIComponent(txnId)}&status=${encodeURIComponent(finalStatus)}`);
   } catch (err) {
     console.error('PhonePe Redirect Route Error:', err);
-    res.redirect('/?phonepe_callback=1');
+    res.redirect('/?phonepe_callback=1&status=FAILED');
   }
 });
 
@@ -1968,7 +1977,7 @@ app.post('/api/phonepe/callback', async (req, res) => {
 });
 
 // GET /api/phonepe/status/:txnId - Backend verification of PhonePe payment result
-app.get('/api/phonepe/status/:txnId', authenticateToken, async (req, res) => {
+app.get('/api/phonepe/status/:txnId', optionalAuth, async (req, res) => {
   try {
     const { txnId } = req.params;
     const result = await verifyPhonePeStatusWithApi(txnId);
