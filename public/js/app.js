@@ -124,6 +124,7 @@ class TiffinApp {
 
   async init() {
     console.log('Initializing Annapurna Tiffin Center App...');
+    this.bindGlobalQuickActionListeners();
 
     // Restore session and token from localStorage if available
     const savedToken = localStorage.getItem('tiffin_token') || sessionStorage.getItem('tiffin_token');
@@ -167,6 +168,41 @@ class TiffinApp {
     ['mousedown', 'click', 'keydown', 'touchstart'].forEach(evt => {
       window.addEventListener(evt, () => this.initAudioContext(), { passive: true });
     });
+  }
+
+  bindGlobalQuickActionListeners() {
+    if (this._quickActionListenersBound) return;
+    this._quickActionListenersBound = true;
+
+    const handleAction = (e) => {
+      const btn = e.target.closest('[data-action], .co-row-btn, .btn-sm-status');
+      if (!btn) return;
+
+      const onclickAttr = btn.getAttribute('onclick') || '';
+      const action = btn.getAttribute('data-action');
+      const orderNum = btn.getAttribute('data-order-num') || btn.getAttribute('data-order-number');
+      const orderId = btn.getAttribute('data-order-id');
+
+      if (action === 'open-review' || onclickAttr.includes('openOrderReviewModal')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const num = orderNum || (onclickAttr.match(/openOrderReviewModal\('([^']+)'\)/) || [])[1];
+        if (num) this.openOrderReviewModal(num);
+      } else if (action === 'open-cancel' || onclickAttr.includes('openCancelOrderModal')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = orderId || (onclickAttr.match(/openCancelOrderModal\('([^']+)'\)/) || [])[1];
+        if (id) this.openCancelOrderModal(id);
+      } else if (action === 'open-edit' || onclickAttr.includes('openEditOrderModal')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = orderId || (onclickAttr.match(/openEditOrderModal\('([^']+)'\)/) || [])[1];
+        if (id) this.openEditOrderModal(id);
+      }
+    };
+
+    document.addEventListener('click', handleAction, true);
+    document.addEventListener('touchstart', handleAction, { passive: false });
   }
 
   async loadUserData() {
@@ -8092,9 +8128,19 @@ class TiffinApp {
     }, 1000);
   }
 
-  openEditOrderModal(orderId) {
-    const order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId);
-    if (!order) return;
+  async openEditOrderModal(orderId) {
+    if (!orderId) return;
+    let order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId || String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
+
+    if (!order) {
+      await this.fetchOrders(true);
+      order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId || String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
+    }
+
+    if (!order) {
+      this.showToast('Order details loading, please try again.', 'info');
+      return;
+    }
 
     // Check cutoff
     const createdAtMs = new Date(order.created_at || Date.now()).getTime();
@@ -8223,12 +8269,22 @@ class TiffinApp {
     }
   }
 
-  openCancelOrderModal(orderId) {
-    const order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId);
-    if (!order) return;
+  async openCancelOrderModal(orderId) {
+    if (!orderId) return;
+    let order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId || String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
+
+    if (!order) {
+      await this.fetchOrders(true);
+      order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId || String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
+    }
+
+    if (!order) {
+      this.showToast('Order details loading, please try again.', 'info');
+      return;
+    }
 
     if (['preparing', 'ready', 'completed', 'cancelled', 'rejected'].includes((order.order_status || '').toLowerCase())) {
-      this.showToast(`Order #${order.order_number} cannot be cancelled because its status is ${order.order_status}.`, 'warning');
+      this.showToast(`Order #${order.order_number} cannot be cancelled because its status is "${order.order_status}".`, 'warning');
       return;
     }
 
@@ -8321,6 +8377,7 @@ class TiffinApp {
 
 // Instantiate global app engine
 const app = new TiffinApp();
+window.app = app;
 
 document.addEventListener('DOMContentLoaded', () => {
   app.init();
