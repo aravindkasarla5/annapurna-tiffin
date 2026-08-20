@@ -4046,9 +4046,15 @@ class TiffinApp {
                 <i class="fa-solid fa-file-invoice"></i> Download Bill / Receipt
               </button>
 
-              <button class="co-row-btn review" onclick="app.openOrderReviewModal('${order.order_number}')">
-                <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rate & Review Order
-              </button>
+              ${order.review ? `
+                <button class="co-row-btn review reviewed" onclick="app.openOrderReviewModal('${order.order_number}')" style="background: rgba(255, 179, 0, 0.22); color: var(--accent-gold); border: 1.5px solid var(--accent-gold); font-weight: 800;" title="Click to view or edit your review">
+                  <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rated ${order.review.rating}/5 • Edit Review
+                </button>
+              ` : `
+                <button class="co-row-btn review" onclick="app.openOrderReviewModal('${order.order_number}')">
+                  <i class="fa-regular fa-star" style="color: var(--accent-gold);"></i> Rate & Review Order
+                </button>
+              `}
 
               <button class="co-row-btn support" onclick="app.openOrderSupport('${order.order_number}')">
                 <i class="fa-solid fa-headset"></i> Order Support & Help
@@ -6915,17 +6921,32 @@ class TiffinApp {
     this.selectedRating = 0;
     this.selectedIssues = [];
 
+    const order = (this.orders || []).find(o => o.order_number === orderNum || o.id === orderNum);
+    const existingReview = order?.review;
+
     const elOrderNum = document.getElementById('reviewOrderNumDisplay');
     if (elOrderNum) elOrderNum.innerText = `#${orderNum}`;
 
     const commentInput = document.getElementById('reviewComment');
-    if (commentInput) commentInput.value = '';
-
     const btnSubmit = document.getElementById('btnSubmitReview');
-    if (btnSubmit) btnSubmit.disabled = true;
 
-    this.resetStarUI();
-    this.updateReviewModalFlowUI();
+    if (existingReview) {
+      this.selectedRating = Number(existingReview.rating || 5);
+      if (commentInput) commentInput.value = existingReview.comment || '';
+      this.setStarRating(this.selectedRating);
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Update Your Review`;
+      }
+    } else {
+      if (commentInput) commentInput.value = '';
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Submit Review`;
+      }
+      this.resetStarUI();
+      this.updateReviewModalFlowUI();
+    }
 
     const backdrop = document.getElementById('orderReviewModalBackdrop');
     if (backdrop) backdrop.classList.add('open');
@@ -7007,6 +7028,8 @@ class TiffinApp {
 
   async submitOrderReview(e) {
     if (e) e.preventDefault();
+    if (this.isSubmittingReview) return;
+
     if (!this.selectedRating) {
       this.showToast('Please select a star rating.', 'error');
       return;
@@ -7015,6 +7038,13 @@ class TiffinApp {
     const comment = document.getElementById('reviewComment')?.value.trim();
     const chkPublic = document.getElementById('chkReviewPublic');
     const isPublic = this.selectedRating >= 4 && chkPublic ? chkPublic.checked : false;
+
+    const btnSubmit = document.getElementById('btnSubmitReview');
+    this.isSubmittingReview = true;
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Submitting...`;
+    }
 
     const payload = {
       order_number: this.activeReviewOrderNumber,
@@ -7035,16 +7065,34 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message, 'success');
+        // Optimistically attach review to local order object
+        const order = (this.orders || []).find(o => o.order_number === this.activeReviewOrderNumber || o.id === this.activeReviewOrderNumber);
+        if (order) {
+          order.review = json.data || {
+            id: 'rev_' + Date.now(),
+            order_number: this.activeReviewOrderNumber,
+            rating: this.selectedRating,
+            comment: comment,
+            date_time: new Date().toLocaleDateString('en-IN')
+          };
+        }
+
+        this.showToast(json.message || '✓ Thank you! Review saved successfully.', 'success');
         this.closeOrderReviewModal();
-        await this.fetchOrders();
+        this.renderCurrentView(); // Instant UI update without page refresh
         await this.fetchNotifications();
       } else {
         this.showToast(json.message || 'Error submitting review.', 'error');
       }
     } catch (err) {
       console.error('Error submitting review:', err);
-      this.showToast('Server communication error.', 'error');
+      this.showToast('Server communication error. Please try again.', 'error');
+    } finally {
+      this.isSubmittingReview = false;
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Submit Review`;
+      }
     }
   }
 

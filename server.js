@@ -909,6 +909,22 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       params = [req.user.id];
     }
     const oRes = await db.query(queryStr, params);
+    let revMap = new Map();
+    try {
+      let revQuery = 'SELECT * FROM reviews ORDER BY created_at DESC;';
+      let revParams = [];
+      if (req.user.role === 'CUSTOMER') {
+        revQuery = 'SELECT * FROM reviews WHERE customer_id = $1 ORDER BY created_at DESC;';
+        revParams = [req.user.id];
+      }
+      const revRes = await db.query(revQuery, revParams);
+      (revRes.rows || []).forEach(r => {
+        if (r.order_number && !revMap.has(r.order_number)) {
+          revMap.set(r.order_number, r);
+        }
+      });
+    } catch (rErr) {}
+
     const parsedOrders = oRes.rows.map(o => {
       if (typeof o.items === 'string') {
         try { o.items = JSON.parse(o.items); } catch (e) { o.items = []; }
@@ -916,6 +932,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       const screenshot = o.payment_screenshot || o.screenshot_url || '';
       o.payment_screenshot = screenshot;
       o.screenshot_url = screenshot;
+      o.review = revMap.get(o.order_number) || null;
       return o;
     });
     res.json({ success: true, data: parsedOrders });
@@ -2225,16 +2242,84 @@ app.get('/api/reviews', optionalAuth, async (req, res) => {
 
 app.post('/api/reviews', authenticateToken, async (req, res) => {
   try {
-    const { rating, comment } = req.body;
-    const revId = 'rev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-    await db.query(
-      `INSERT INTO reviews (id, customer_id, customer_name, rating, comment, is_visible, date_time)
-       VALUES ($1, $2, $3, $4, $5, true, $6);`,
-      [revId, req.user.id, req.user.name, Number(rating || 5), comment || '', new Date().toLocaleDateString('en-IN')]
+    const { order_number, rating, comment } = req.body;
+    const numRating = Number(rating);
+
+    if (!numRating || isNaN(numRating) || numRating < 1 || numRating > 5) {
+      return res.status(400).json({ success: false, message: "Please select a valid 1-5 star rating." });
+    }
+
+    if (!order_number) {
+      return res.status(400).json({ success: false, message: "Order number is required." });
+    }
+
+    // Verify order exists and belongs to authenticated customer
+    const orderRes = await db.query('SELECT * FROM orders WHERE order_number = $1;', [order_number]);
+    const order = orderRes.rows[0];
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+
+    if (req.user.role === 'CUSTOMER' && order.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only review your own orders." });
+    }
+
+    // Check if review already exists for this order
+    const existingRevRes = await db.query(
+      'SELECT * FROM reviews WHERE order_number = $1 AND customer_id = $2;',
+      [order_number, req.user.id]
     );
-    res.json({ success: true, message: "Thank you for your feedback!" });
+
+    const nowFormatted = new Date().toLocaleDateString('en-IN', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+
+    let reviewData;
+    if (existingRevRes.rows && existingRevRes.rows.length > 0) {
+      // Update existing review
+      const existingRev = existingRevRes.rows[0];
+      await db.query(
+        `UPDATE reviews SET rating = $1, comment = $2, is_visible = true, date_time = $3 WHERE id = $4;`,
+        [numRating, comment || '', nowFormatted, existingRev.id]
+      );
+      reviewData = {
+        ...existingRev,
+        rating: numRating,
+        comment: comment || '',
+        date_time: nowFormatted
+      };
+      return res.json({
+        success: true,
+        message: "Your review has been updated successfully!",
+        data: reviewData
+      });
+    } else {
+      // Insert new review
+      const revId = 'rev_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      await db.query(
+        `INSERT INTO reviews (id, order_number, customer_id, customer_name, rating, comment, is_visible, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, true, $7);`,
+        [revId, order_number, req.user.id, req.user.name, numRating, comment || '', nowFormatted]
+      );
+      reviewData = {
+        id: revId,
+        order_number: order_number,
+        customer_id: req.user.id,
+        customer_name: req.user.name,
+        rating: numRating,
+        comment: comment || '',
+        is_visible: true,
+        date_time: nowFormatted
+      };
+      return res.json({
+        success: true,
+        message: "Thank you for your feedback! Review submitted successfully.",
+        data: reviewData
+      });
+    }
   } catch (err) {
-    res.status(500).json({ success: false, message: "Failed to submit review." });
+    console.error('Error in POST /api/reviews:', err);
+    return res.status(500).json({ success: false, message: "Failed to submit review. Please try again." });
   }
 });
 

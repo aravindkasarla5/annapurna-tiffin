@@ -265,6 +265,7 @@ async function initDatabase() {
 
     `CREATE TABLE IF NOT EXISTS reviews (
       id VARCHAR(100) PRIMARY KEY,
+      order_number VARCHAR(100),
       customer_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
       customer_name VARCHAR(255) NOT NULL,
       rating INT NOT NULL DEFAULT 5,
@@ -318,6 +319,7 @@ async function initDatabase() {
     // PostgreSQL/SQLite schema column migration adjustments
     if (usePg) {
       try {
+        await query(`ALTER TABLE reviews ADD COLUMN IF NOT EXISTS order_number VARCHAR(100);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
@@ -340,6 +342,7 @@ async function initDatabase() {
       }
     } else {
       const safeAlter = async (sql) => { try { await query(sql); } catch(e) {} };
+      await safeAlter(`ALTER TABLE reviews ADD COLUMN order_number TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN cancellation_reason TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN cancelled_at TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN utr_number TEXT;`);
