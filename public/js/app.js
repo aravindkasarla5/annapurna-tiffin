@@ -2661,33 +2661,45 @@ class TiffinApp {
   }
 
   launchPhonePeIntent(redirectUrl, orderData = {}) {
-    if (!redirectUrl && !orderData) return;
-
     const vpa = (this.settings?.upi_id || '9392974900@ybl').trim();
     const amount = orderData.amount || orderData.net_amount || (this.calculateCartTotals ? this.calculateCartTotals().grandTotal : '');
     const orderNum = orderData.order_number || orderData.orderNumber || '';
     const merchantName = this.settings?.upi_name || 'Sri Lakshmi Annapurna Tiffin Center';
+
+    const encodedVpa = encodeURIComponent(vpa);
+    const encodedPn = encodeURIComponent(merchantName);
+    const encodedAm = encodeURIComponent(amount);
+    const encodedTn = encodeURIComponent('Order ' + (orderNum || 'Tiffin'));
 
     const isAndroid = /android/i.test(navigator.userAgent || '');
     let targetUrl = redirectUrl;
 
     if (typeof redirectUrl === 'string' && (redirectUrl.includes('phonepe.com') || redirectUrl.includes('mercury.phonepe.com'))) {
       targetUrl = redirectUrl;
-    } else if (isAndroid || (typeof redirectUrl === 'string' && (redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://')))) {
-      const encodedVpa = encodeURIComponent(vpa);
-      const encodedPn = encodeURIComponent(merchantName);
-      const encodedAm = encodeURIComponent(amount);
-      const encodedTn = encodeURIComponent('Order ' + orderNum);
+    } else {
+      const phonepeScheme = `phonepe://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
+      const intentScheme = `intent://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}#Intent;scheme=upi;end`;
+      const upiScheme = `upi://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
 
-      // Clean Android intent URI for universal UPI payment (PhonePe / GPay / Paytm)
-      targetUrl = `intent://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}#Intent;scheme=upi;end`;
+      targetUrl = isAndroid ? intentScheme : upiScheme;
+
+      // Attempt direct PhonePe scheme launch first on mobile devices
+      try {
+        window.location.href = phonepeScheme;
+        setTimeout(() => {
+          window.location.href = targetUrl;
+        }, 250);
+        return;
+      } catch (e) {
+        console.warn('[PhonePe Scheme Launch Warning]:', e);
+      }
     }
 
     try {
       window.location.href = targetUrl;
     } catch (err) {
       console.warn('[PhonePe Intent Launch Warning]: Fallback to upi:// URI', err);
-      const fallbackUpi = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(merchantName)}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent('Order ' + orderNum)}`;
+      const fallbackUpi = `upi://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
       window.location.href = fallbackUpi;
     }
   }
