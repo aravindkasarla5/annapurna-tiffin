@@ -1687,6 +1687,7 @@ async function updateDbOrderPaymentStatus(orderIdOrTxnId, newStatus, txnId = nul
 
   let mappedPayStatus = 'Processing';
   if (newStatus === 'Paid' || newStatus === 'SUCCESS' || newStatus === 'COMPLETED') mappedPayStatus = 'Paid';
+  else if (newStatus === 'Cancelled' || newStatus === 'CANCELLED' || newStatus === 'USER_CANCELLED') mappedPayStatus = 'Cancelled';
   else if (newStatus === 'Failed' || newStatus === 'FAILED' || newStatus === 'DECLINED') mappedPayStatus = 'Failed';
   else mappedPayStatus = 'Processing';
 
@@ -1727,13 +1728,22 @@ async function verifyPhonePeStatusWithApi(txnId) {
     });
 
     const apiJson = await apiRes.json();
-    const code = apiJson.code || apiJson.data?.responseCode;
-    const state = apiJson.data?.paymentState;
+    const rawCode = String(apiJson.code || apiJson.data?.responseCode || '').toUpperCase();
+    const rawState = String(apiJson.data?.paymentState || '').toUpperCase();
 
-    if (apiJson.success && (code === 'PAYMENT_SUCCESS' || state === 'COMPLETED')) {
+    if (apiJson.success && (rawCode === 'PAYMENT_SUCCESS' || rawState === 'COMPLETED')) {
       statusOutcome = 'SUCCESS';
       newPayStatus = 'Paid';
-    } else if (code === 'PAYMENT_ERROR' || code === 'PAYMENT_DECLINED' || state === 'FAILED') {
+    } else if (
+      rawCode.includes('CANCEL') || rawCode.includes('DECLINE') || rawCode.includes('EXPIRE') ||
+      rawState.includes('CANCEL') || rawState.includes('DECLINE') || rawState.includes('EXPIRE')
+    ) {
+      statusOutcome = 'CANCELLED';
+      newPayStatus = 'Cancelled';
+    } else if (
+      rawCode.includes('FAIL') || rawCode.includes('ERROR') || rawCode.includes('TIMED_OUT') ||
+      rawState.includes('FAIL')
+    ) {
       statusOutcome = 'FAILED';
       newPayStatus = 'Failed';
     } else {
@@ -1745,6 +1755,9 @@ async function verifyPhonePeStatusWithApi(txnId) {
     if (order.payment_status === 'Paid' || order.payment_status === 'Verified') {
       statusOutcome = 'SUCCESS';
       newPayStatus = 'Paid';
+    } else if (order.payment_status === 'Cancelled') {
+      statusOutcome = 'CANCELLED';
+      newPayStatus = 'Cancelled';
     } else if (order.payment_status === 'Failed') {
       statusOutcome = 'FAILED';
       newPayStatus = 'Failed';
@@ -2082,14 +2095,21 @@ app.all('/api/phonepe/redirect', async (req, res) => {
     }
 
     const verification = await verifyPhonePeStatusWithApi(txnId);
-    let finalStatus = verification.payment_status || 'Processing';
-    if (verification.status === 'SUCCESS') finalStatus = 'Paid';
-    else if (verification.status === 'FAILED') finalStatus = 'Failed';
+    let finalStatus = 'Processing';
+    if (verification.verified && verification.status === 'SUCCESS') {
+      finalStatus = 'Paid';
+    } else if (verification.status === 'CANCELLED') {
+      finalStatus = 'Cancelled';
+    } else if (verification.status === 'FAILED') {
+      finalStatus = 'Failed';
+    } else {
+      finalStatus = verification.payment_status || 'Processing';
+    }
 
     res.redirect(`/?phonepe_callback=1&txnId=${encodeURIComponent(txnId)}&status=${encodeURIComponent(finalStatus)}`);
   } catch (err) {
     console.error('PhonePe Redirect Route Error:', err);
-    res.redirect('/?phonepe_callback=1&status=FAILED');
+    res.redirect('/?phonepe_callback=1&status=Cancelled');
   }
 });
 

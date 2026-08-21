@@ -2785,7 +2785,7 @@ class TiffinApp {
       const res = await this.fetchWithAuth(`${API_BASE}/phonepe/status/${txnId}`);
       const json = await res.json();
 
-      if (json.verified && json.data) {
+      if (json.verified === true && json.status === 'SUCCESS' && json.data) {
         this.cart = [];
         this.tempPaymentScreenshot = null;
         this.updateCartUI();
@@ -2800,21 +2800,23 @@ class TiffinApp {
 
         await this.fetchOrders();
         await this.fetchNotifications();
-      } else if (json.status === 'FAILED' || statusParam === 'FAILED') {
+      } else if (json.status === 'CANCELLED' || statusParam === 'CANCELLED' || statusParam === 'Cancelled') {
+        this.cart = [];
+        this.updateCartUI();
+        this.switchView('secCustomerOrders');
+        this.showToast(`🔴 PAYMENT CANCELLED for Order #${json.data?.order_number || ''}. Click "Pay Again" on your order card to retry.`, 'warning');
+        await this.fetchOrders();
+      } else if (json.status === 'FAILED' || statusParam === 'FAILED' || statusParam === 'Failed') {
         this.cart = [];
         this.updateCartUI();
         this.switchView('secCustomerOrders');
         this.showToast(`🔴 PAYMENT FAILED for Order #${json.data?.order_number || ''}. Click "Pay Again" on your order card to retry.`, 'error');
         await this.fetchOrders();
-      } else if (json.status === 'PROCESSING' || statusParam === 'PROCESSING') {
+      } else {
         this.cart = [];
         this.updateCartUI();
         this.switchView('secCustomerOrders');
-        this.showToast(`🟠 PAYMENT PROCESSING for Order #${json.data?.order_number || ''}. You can upload a payment screenshot if needed.`, 'warning');
-        await this.fetchOrders();
-      } else {
-        this.switchView('secCustomerOrders');
-        this.showToast('PhonePe payment status updated.', 'info');
+        this.showToast(`🟠 PAYMENT PROCESSING for Order #${json.data?.order_number || ''}. You can retry payment anytime.`, 'info');
         await this.fetchOrders();
       }
     } catch (err) {
@@ -4166,9 +4168,10 @@ class TiffinApp {
     const payMethodStr = (order.payment_method || '').toLowerCase();
     const isPhonePe = payMethodStr.includes('phonepe');
     const rawPayStatus = (order.payment_status || '').toLowerCase();
-    const isPaid = order.payment_status === 'Paid' || order.payment_status === 'Cash Received' || order.payment_status.includes('Verified') || rawPayStatus.includes('success');
-    const isPhonePeFailed = isPhonePe && (rawPayStatus.includes('fail') || rawPayStatus.includes('reject'));
-    const isPhonePeProcessing = isPhonePe && !isPaid && !isPhonePeFailed;
+    const isPaid = order.payment_status === 'Paid' || order.payment_status === 'Cash Received' || order.payment_status.includes('Verified');
+    const isPhonePeCancelled = isPhonePe && (rawPayStatus.includes('cancel') || order.payment_status === 'Cancelled');
+    const isPhonePeFailed = isPhonePe && (rawPayStatus.includes('fail') || rawPayStatus.includes('reject') || order.payment_status === 'Failed');
+    const isPhonePeProcessing = isPhonePe && !isPaid && !isPhonePeFailed && !isPhonePeCancelled;
     const isPhonePeSuccess = isPhonePe && isPaid;
 
     let payPillHtml = '';
@@ -4176,6 +4179,8 @@ class TiffinApp {
       payPillHtml = `<span class="co-row-pay-pill referral"><i class="fa-solid fa-circle" style="color: #00E676;"></i> 🟢 REFERRAL</span>`;
     } else if (isPhonePeSuccess) {
       payPillHtml = `<span class="co-row-pay-pill paid" style="background: rgba(76, 175, 80, 0.18); color: #4CAF50; border: 1px solid #4CAF50;"><i class="fa-solid fa-circle-check"></i> 🟢 Payment Successful</span>`;
+    } else if (isPhonePeCancelled) {
+      payPillHtml = `<span class="co-row-pay-pill failed" style="background: rgba(239, 108, 0, 0.18); color: #FF9800; border: 1px solid #EF6C00;"><i class="fa-solid fa-ban"></i> 🔴 Payment Cancelled</span>`;
     } else if (isPhonePeFailed) {
       payPillHtml = `<span class="co-row-pay-pill failed" style="background: rgba(229, 57, 53, 0.18); color: #FF5252; border: 1px solid #E53935;"><i class="fa-solid fa-circle-xmark"></i> 🔴 Payment Failed</span>`;
     } else if (isPhonePeProcessing) {
