@@ -2653,6 +2653,28 @@ class TiffinApp {
     if (elBtnAmount) elBtnAmount.innerText = grandTotal;
   }
 
+  launchPhonePeIntent(redirectUrl) {
+    if (!redirectUrl) return;
+
+    const isAndroid = /android/i.test(navigator.userAgent || '');
+    let targetUrl = redirectUrl;
+
+    if (isAndroid && typeof redirectUrl === 'string') {
+      // If PhonePe returns an intent:// scheme, ensure S.browser_fallback_url is attached to prevent Android 'App not installed' errors
+      if (redirectUrl.startsWith('intent://') && !redirectUrl.includes('S.browser_fallback_url=')) {
+        const webFallback = window.location.href;
+        targetUrl = redirectUrl.replace(/;end$/, `;S.browser_fallback_url=${encodeURIComponent(webFallback)};end`);
+      }
+    }
+
+    try {
+      window.location.href = targetUrl;
+    } catch (err) {
+      console.warn('[PhonePe Intent Launch Warning]: Fallback to window.open', err);
+      window.open(targetUrl, '_system') || window.open(targetUrl, '_blank');
+    }
+  }
+
   async openPhonePePaymentApp() {
     const { grandTotal } = this.calculateCartTotals();
 
@@ -2724,7 +2746,7 @@ class TiffinApp {
       }
 
       if (res.ok && json.success && json.redirectUrl) {
-        window.location.href = json.redirectUrl;
+        this.launchPhonePeIntent(json.redirectUrl);
       } else {
         const errorMsg = json.message || (res.statusText ? `PhonePe Error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment.');
         console.error('[PhonePe Initiation Failed]:', json);
@@ -2831,7 +2853,7 @@ class TiffinApp {
       }
 
       if (res.ok && json.success && json.redirectUrl) {
-        window.location.href = json.redirectUrl;
+        this.launchPhonePeIntent(json.redirectUrl);
       } else {
         const errorMsg = json.message || (res.statusText ? `PhonePe Error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment retry.');
         console.error('[PhonePe Retry Failed]:', json);
