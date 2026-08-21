@@ -127,6 +127,7 @@ async function initDatabase() {
       blocked_at TIMESTAMPTZ,
       blocked_by VARCHAR(100),
       deleted_at TIMESTAMPTZ,
+      profile_photo TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
 
@@ -347,6 +348,7 @@ async function initDatabase() {
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by VARCHAR(100);`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;`);
         await query(`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS last_activity BIGINT;`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS balance_before NUMERIC(10, 2);`);
@@ -370,6 +372,7 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE users ADD COLUMN blocked_at TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN blocked_by TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN deleted_at TEXT;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN profile_photo TEXT;`);
       await safeAlter(`ALTER TABLE tokens ADD COLUMN last_activity INTEGER;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN balance_before REAL;`);

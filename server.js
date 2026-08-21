@@ -583,6 +583,70 @@ app.patch('/api/profile/sound-settings', authenticateToken, async (req, res) => 
   res.json({ success: true, sound_enabled: sound_enabled, message: `Notification sound ${sound_enabled ? 'enabled' : 'disabled'}.` });
 });
 
+// POST /api/profile/photo - Upload or update user profile photo
+app.post('/api/profile/photo', authenticateToken, async (req, res) => {
+  try {
+    const { photo } = req.body;
+    if (!photo || typeof photo !== 'string') {
+      return res.status(400).json({ success: false, message: "No image file provided." });
+    }
+
+    const trimmedPhoto = photo.trim();
+
+    // Validate image MIME type (JPG, JPEG, PNG, WEBP)
+    const validHeaderPattern = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
+    if (!validHeaderPattern.test(trimmedPhoto) && !trimmedPhoto.startsWith('/') && !trimmedPhoto.startsWith('http')) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid image format. Only JPG, JPEG, PNG, and WEBP formats are allowed."
+      });
+    }
+
+    // Validate maximum file size (~5MB raw image limit)
+    if (trimmedPhoto.length > 7 * 1024 * 1024) {
+      return res.status(400).json({
+        success: false,
+        message: "File size exceeds 5MB limit. Please choose a smaller image."
+      });
+    }
+
+    // Save profile photo to user DB record
+    await db.query('UPDATE users SET profile_photo = $1 WHERE id = $2;', [trimmedPhoto, req.user.id]);
+
+    const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1;', [req.user.id]);
+    const userSafe = sanitizeUser(updatedUserRes.rows[0]);
+
+    res.json({
+      success: true,
+      profile_photo: userSafe.profile_photo,
+      user: userSafe,
+      message: "Profile photo updated successfully!"
+    });
+  } catch (err) {
+    console.error('Error updating profile photo:', err);
+    res.status(500).json({ success: false, message: "Failed to update profile photo." });
+  }
+});
+
+// DELETE /api/profile/photo - Remove user profile photo
+app.delete('/api/profile/photo', authenticateToken, async (req, res) => {
+  try {
+    await db.query('UPDATE users SET profile_photo = NULL WHERE id = $1;', [req.user.id]);
+
+    const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1;', [req.user.id]);
+    const userSafe = sanitizeUser(updatedUserRes.rows[0]);
+
+    res.json({
+      success: true,
+      user: userSafe,
+      message: "Profile photo removed successfully!"
+    });
+  } catch (err) {
+    console.error('Error removing profile photo:', err);
+    res.status(500).json({ success: false, message: "Failed to remove profile photo." });
+  }
+});
+
 app.get('/api/cart', authenticateToken, async (req, res) => {
   const userRes = await db.query('SELECT cart FROM users WHERE id = $1;', [req.user.id]);
   let cart = [];

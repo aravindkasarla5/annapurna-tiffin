@@ -1146,14 +1146,31 @@ class TiffinApp {
         btnProfile.classList.remove('hidden');
         const elFullName = document.getElementById('headerProfileFullName');
         const elInitial = document.getElementById('headerProfileInitial');
+        const elImg = document.getElementById('headerProfileImg');
         const elRoleTag = document.getElementById('headerProfileRoleTag');
         const custName = this.getFormattedCustomerName();
         const displayName = this.currentUser.role === 'OWNER' ? 'Owner' : (custName || 'Customer');
 
         if (elFullName) elFullName.innerText = displayName;
-        if (elInitial) elInitial.innerText = displayName.charAt(0).toUpperCase();
         if (elRoleTag) {
           elRoleTag.innerText = this.currentUser.role === 'OWNER' ? '👑 Hotel Owner' : '⭐ Foodie Member';
+        }
+
+        if (this.currentUser.profile_photo) {
+          if (elImg) {
+            elImg.src = this.currentUser.profile_photo;
+            elImg.classList.remove('hidden');
+          }
+          if (elInitial) elInitial.classList.add('hidden');
+        } else {
+          if (elImg) {
+            elImg.src = '';
+            elImg.classList.add('hidden');
+          }
+          if (elInitial) {
+            elInitial.innerText = displayName.charAt(0).toUpperCase();
+            elInitial.classList.remove('hidden');
+          }
         }
       }
 
@@ -1688,8 +1705,8 @@ class TiffinApp {
 
       navContainer.innerHTML = `
         <div class="drawer-user-info-box customer">
-          <div class="drawer-avatar-circle">
-            ${initial}
+          <div class="drawer-avatar-circle" style="overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            ${u.profile_photo ? `<img src="${u.profile_photo}" alt="${u.name}" style="width: 100%; height: 100%; object-fit: cover;">` : initial}
           </div>
           <div class="drawer-user-details">
             <strong class="drawer-user-name">${u.name}</strong>
@@ -1831,8 +1848,8 @@ class TiffinApp {
 
       navContainer.innerHTML = `
         <div class="drawer-user-info-box owner">
-          <div class="drawer-avatar-circle owner">
-            <i class="fa-solid fa-user-shield"></i>
+          <div class="drawer-avatar-circle owner" style="overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            ${u.profile_photo ? `<img src="${u.profile_photo}" alt="${u.name}" style="width: 100%; height: 100%; object-fit: cover;">` : `<i class="fa-solid fa-user-shield"></i>`}
           </div>
           <div class="drawer-user-details">
             <strong class="drawer-user-name">${u.name}</strong>
@@ -2141,6 +2158,29 @@ class TiffinApp {
     if (addrInput) addrInput.value = this.currentUser.address || '';
     if (avatarInit) avatarInit.innerText = name.charAt(0).toUpperCase();
 
+    // Customer Profile Photo UI Update
+    const profImg = document.getElementById('profAvatarImg');
+    const custRemoveBtn = document.getElementById('btnCustRemovePhoto');
+    const custUploadBtnLabel = document.getElementById('lblCustPhotoBtn');
+
+    if (this.currentUser.profile_photo) {
+      if (profImg) {
+        profImg.src = this.currentUser.profile_photo;
+        profImg.classList.remove('hidden');
+      }
+      if (avatarInit) avatarInit.classList.add('hidden');
+      if (custRemoveBtn) custRemoveBtn.classList.remove('hidden');
+      if (custUploadBtnLabel) custUploadBtnLabel.innerText = 'Change Photo';
+    } else {
+      if (profImg) {
+        profImg.src = '';
+        profImg.classList.add('hidden');
+      }
+      if (avatarInit) avatarInit.classList.remove('hidden');
+      if (custRemoveBtn) custRemoveBtn.classList.add('hidden');
+      if (custUploadBtnLabel) custUploadBtnLabel.innerText = 'Upload Photo';
+    }
+
     if (statOrders) {
       statOrders.innerText = this.isLoadingOrders ? 'Loading...' : (this.orders || []).length;
     }
@@ -2177,6 +2217,147 @@ class TiffinApp {
     } catch (err) {
       console.error('Error saving profile:', err);
       this.showToast('Server communication error.', 'error');
+    }
+  }
+
+  // =========================================================================
+  // PROFILE PHOTO UPLOADER & MANAGEMENT
+  // =========================================================================
+
+  triggerPhotoUpload(role = 'CUSTOMER') {
+    const inputId = role === 'OWNER' ? 'ownerPhotoFileInput' : 'customerPhotoFileInput';
+    const inputEl = document.getElementById(inputId);
+    if (inputEl) inputEl.click();
+  }
+
+  async handlePhotoFileSelected(event, role = 'CUSTOMER') {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+
+    const statusId = role === 'OWNER' ? 'ownerPhotoUploadStatus' : 'custPhotoUploadStatus';
+    const statusEl = document.getElementById(statusId);
+
+    const setStatus = (msg, type = 'info') => {
+      if (!statusEl) return;
+      statusEl.classList.remove('hidden');
+      statusEl.style.color = type === 'error' ? 'var(--color-unavailable)' : (type === 'success' ? 'var(--color-available)' : 'var(--accent-gold)');
+      statusEl.innerText = msg;
+    };
+
+    // 1. Client-Side File Type Validation (JPG, JPEG, PNG, WEBP)
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type.toLowerCase())) {
+      setStatus('❌ Invalid file format. Only JPG, JPEG, PNG, and WEBP images are allowed.', 'error');
+      this.showToast('❌ Invalid file format. Allowed: JPG, JPEG, PNG, WEBP', 'danger');
+      event.target.value = '';
+      return;
+    }
+
+    // 2. Client-Side File Size Validation (Max 5MB)
+    const maxSizeInBytes = 5 * 1024 * 1024;
+    if (file.size > maxSizeInBytes) {
+      setStatus('❌ File size is too large. Maximum allowed size is 5MB.', 'error');
+      this.showToast('❌ File size exceeds 5MB limit.', 'danger');
+      event.target.value = '';
+      return;
+    }
+
+    setStatus('⏳ Processing and uploading profile photo...', 'info');
+
+    // 3. Read File as Base64 Data URL
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64Data = e.target.result;
+      try {
+        const response = await this.fetchWithAuth(`${API_BASE}/profile/photo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photo: base64Data })
+        });
+
+        const data = await response.json();
+        if (data.success && data.user) {
+          this.currentUser = data.user;
+          localStorage.setItem('tiffin_user', JSON.stringify(this.currentUser));
+          if (sessionStorage.getItem('tiffin_user')) {
+            sessionStorage.setItem('tiffin_user', JSON.stringify(this.currentUser));
+          }
+
+          setStatus('✅ Profile photo updated successfully!', 'success');
+          this.showToast('✅ Profile photo updated successfully!', 'success');
+
+          // Update UI across all components immediately
+          this.updateUserAuthBadgeUI();
+          this.renderMobileDrawerNav();
+          if (role === 'OWNER') {
+            this.populateSettingsForm();
+          } else {
+            this.renderCustomerProfile();
+          }
+
+          setTimeout(() => {
+            if (statusEl) statusEl.classList.add('hidden');
+          }, 3000);
+        } else {
+          setStatus(`❌ ${data.message || 'Failed to upload photo.'}`, 'error');
+          this.showToast(`❌ ${data.message || 'Upload failed'}`, 'danger');
+        }
+      } catch (err) {
+        console.error('Error uploading profile photo:', err);
+        setStatus('❌ Network error uploading photo. Please try again.', 'error');
+        this.showToast('❌ Failed to upload photo', 'danger');
+      } finally {
+        event.target.value = '';
+      }
+    };
+
+    reader.onerror = () => {
+      setStatus('❌ Error reading selected image file.', 'error');
+      this.showToast('❌ Error reading file', 'danger');
+      event.target.value = '';
+    };
+
+    reader.readAsDataURL(file);
+  }
+
+  async removeProfilePhoto(role = 'CUSTOMER') {
+    if (!this.currentUser) return;
+    if (!confirm('Are you sure you want to remove your profile photo?')) return;
+
+    const statusId = role === 'OWNER' ? 'ownerPhotoUploadStatus' : 'custPhotoUploadStatus';
+    const statusEl = document.getElementById(statusId);
+
+    try {
+      const response = await this.fetchWithAuth(`${API_BASE}/profile/photo`, {
+        method: 'DELETE'
+      });
+
+      const data = await response.json();
+      if (data.success && data.user) {
+        this.currentUser = data.user;
+        localStorage.setItem('tiffin_user', JSON.stringify(this.currentUser));
+        if (sessionStorage.getItem('tiffin_user')) {
+          sessionStorage.setItem('tiffin_user', JSON.stringify(this.currentUser));
+        }
+
+        this.showToast('✅ Profile photo removed successfully.', 'success');
+
+        // Update UI across all views
+        this.updateUserAuthBadgeUI();
+        this.renderMobileDrawerNav();
+        if (role === 'OWNER') {
+          this.populateSettingsForm();
+        } else {
+          this.renderCustomerProfile();
+        }
+
+        if (statusEl) statusEl.classList.add('hidden');
+      } else {
+        this.showToast(`❌ ${data.message || 'Failed to remove photo.'}`, 'danger');
+      }
+    } catch (err) {
+      console.error('Error removing profile photo:', err);
+      this.showToast('❌ Failed to remove profile photo', 'danger');
     }
   }
 
@@ -5668,6 +5849,34 @@ class TiffinApp {
     if (elHolidays && s.holidays !== undefined) elHolidays.value = s.holidays !== null ? s.holidays : '';
     if (elUpi && s.upi_id !== undefined) elUpi.value = s.upi_id !== null ? s.upi_id : '';
     if (elDesc && s.description !== undefined) elDesc.value = s.description !== null ? s.description : '';
+
+    // Populate Owner Profile Photo Display
+    const ownerImg = document.getElementById('ownerAvatarImg');
+    const ownerInitials = document.getElementById('ownerAvatarInitials');
+    const ownerRemoveBtn = document.getElementById('btnOwnerRemovePhoto');
+    const ownerUploadBtnLabel = document.getElementById('lblOwnerPhotoBtn');
+    const ownerNameDisp = document.getElementById('ownerProfileNameDisplay');
+
+    if (this.currentUser) {
+      if (ownerNameDisp) ownerNameDisp.innerText = this.currentUser.name || 'Hotel Owner / Admin';
+      if (this.currentUser.profile_photo) {
+        if (ownerImg) {
+          ownerImg.src = this.currentUser.profile_photo;
+          ownerImg.classList.remove('hidden');
+        }
+        if (ownerInitials) ownerInitials.classList.add('hidden');
+        if (ownerRemoveBtn) ownerRemoveBtn.classList.remove('hidden');
+        if (ownerUploadBtnLabel) ownerUploadBtnLabel.innerText = 'Change Photo';
+      } else {
+        if (ownerImg) {
+          ownerImg.src = '';
+          ownerImg.classList.add('hidden');
+        }
+        if (ownerInitials) ownerInitials.classList.remove('hidden');
+        if (ownerRemoveBtn) ownerRemoveBtn.classList.add('hidden');
+        if (ownerUploadBtnLabel) ownerUploadBtnLabel.innerText = 'Upload Photo';
+      }
+    }
 
     // Mark form as populated so background polling does not overwrite active user input while editing
     this.isSettingsFormPopulated = true;

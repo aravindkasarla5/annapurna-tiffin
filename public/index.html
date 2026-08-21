@@ -74,6 +74,7 @@
       <!-- 3. Profile Icon & Badge with Full Name (Visible ONLY after login, clicking switches to My Profile) -->
       <button class="header-profile-card hidden" id="btnHeaderProfile" onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerSettings' : 'secCustomerProfile')" title="Click to view My Profile">
         <div class="header-profile-avatar-ring" id="headerProfileAvatarRing">
+          <img id="headerProfileImg" class="header-profile-img hidden" src="" alt="Avatar">
           <span id="headerProfileInitial">A</span>
         </div>
         <div class="header-profile-text-group">
@@ -692,9 +693,13 @@
         <div class="profile-hero-card">
           <div class="profile-hero-content">
             <div class="profile-avatar-wrapper">
-              <div class="profile-avatar-ring">
+              <div class="profile-avatar-ring" id="profAvatarRing">
+                <img id="profAvatarImg" class="profile-avatar-img hidden" src="" alt="Profile Photo">
                 <span class="profile-avatar-text" id="profAvatarInitials">C</span>
               </div>
+              <button type="button" class="profile-avatar-camera-btn" onclick="app.triggerPhotoUpload('CUSTOMER')" title="Upload / Change Profile Photo">
+                <i class="fa-solid fa-camera"></i>
+              </button>
               <span class="profile-verified-badge" title="Verified Customer Account"><i class="fa-solid fa-circle-check"></i></span>
             </div>
             
@@ -704,6 +709,18 @@
                 <span class="profile-role-pill"><i class="fa-solid fa-crown" style="color: var(--accent-gold);"></i> Foodie Member</span>
               </div>
               <p class="profile-user-phone"><i class="fa-solid fa-mobile-screen-button"></i> <span id="profPhoneDisplay">---</span></p>
+
+              <!-- Customer Profile Photo Controls -->
+              <div class="profile-photo-actions-row" style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <input type="file" id="customerPhotoFileInput" class="hidden" accept="image/jpeg,image/png,image/webp,image/jpg" onchange="app.handlePhotoFileSelected(event, 'CUSTOMER')">
+                <button type="button" class="btn-profile-photo-upload" onclick="app.triggerPhotoUpload('CUSTOMER')">
+                  <i class="fa-solid fa-cloud-arrow-up"></i> <span id="lblCustPhotoBtn">Upload Photo</span>
+                </button>
+                <button type="button" class="btn-profile-photo-remove hidden" id="btnCustRemovePhoto" onclick="app.removeProfilePhoto('CUSTOMER')">
+                  <i class="fa-solid fa-trash-can"></i> Remove
+                </button>
+              </div>
+              <div id="custPhotoUploadStatus" class="photo-upload-status hidden" style="font-size: 0.8rem; margin-top: 4px;"></div>
             </div>
           </div>
 
@@ -1618,6 +1635,42 @@
                 </div>
                 <span id="setSoundLabel" class="status-pill-label">🟢 SOUND ON</span>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Owner Profile & Photo Management Panel -->
+        <div class="settings-card-panel owner-profile-panel" style="margin-bottom: 1.5rem;">
+          <div class="panel-header">
+            <div class="panel-title-icon gold"><i class="fa-solid fa-user-shield"></i></div>
+            <div>
+              <h3 class="panel-title">Owner Profile Photo</h3>
+              <p class="panel-subtitle">Upload and manage your account avatar across the platform</p>
+            </div>
+          </div>
+          <div class="owner-profile-body" style="display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; padding: 0.5rem 0;">
+            <div class="profile-avatar-wrapper owner" style="position: relative; width: 80px; height: 80px;">
+              <div class="profile-avatar-ring owner" id="ownerAvatarRing" style="width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(255, 179, 0, 0.15); border: 2px solid var(--accent-gold);">
+                <img id="ownerAvatarImg" class="profile-avatar-img hidden" src="" alt="Owner Photo" style="width: 100%; height: 100%; object-fit: cover;">
+                <span class="profile-avatar-text" id="ownerAvatarInitials" style="font-size: 1.8rem; color: var(--accent-gold);"><i class="fa-solid fa-user-shield"></i></span>
+              </div>
+              <button type="button" class="profile-avatar-camera-btn" onclick="app.triggerPhotoUpload('OWNER')" title="Upload / Change Owner Photo">
+                <i class="fa-solid fa-camera"></i>
+              </button>
+            </div>
+            <div class="owner-photo-controls" style="flex: 1; min-width: 220px;">
+              <h4 style="color: var(--text-main); font-size: 1rem; margin-bottom: 4px;" id="ownerProfileNameDisplay">Hotel Owner / Admin</h4>
+              <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 10px;">Allowed formats: JPG, JPEG, PNG, WEBP (Max 5MB)</p>
+              <div class="profile-photo-actions-row" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <input type="file" id="ownerPhotoFileInput" class="hidden" accept="image/jpeg,image/png,image/webp,image/jpg" onchange="app.handlePhotoFileSelected(event, 'OWNER')">
+                <button type="button" class="btn-profile-photo-upload" onclick="app.triggerPhotoUpload('OWNER')">
+                  <i class="fa-solid fa-cloud-arrow-up"></i> <span id="lblOwnerPhotoBtn">Upload Photo</span>
+                </button>
+                <button type="button" class="btn-profile-photo-remove hidden" id="btnOwnerRemovePhoto" onclick="app.removeProfilePhoto('OWNER')">
+                  <i class="fa-solid fa-trash-can"></i> Remove
+                </button>
+              </div>
+              <div id="ownerPhotoUploadStatus" class="photo-upload-status hidden" style="font-size: 0.8rem; margin-top: 4px;"></div>
             </div>
           </div>
         </div>
