@@ -2654,37 +2654,34 @@ class TiffinApp {
   }
 
   launchPhonePeIntent(redirectUrl, orderData = {}) {
-    if (!redirectUrl) return;
+    if (!redirectUrl && !orderData) return;
+
+    const vpa = (this.settings?.upi_id || '9392974900@ybl').trim();
+    const amount = orderData.amount || orderData.net_amount || (this.calculateCartTotals ? this.calculateCartTotals().grandTotal : '');
+    const orderNum = orderData.order_number || orderData.orderNumber || '';
+    const merchantName = this.settings?.upi_name || 'Sri Lakshmi Annapurna Tiffin Center';
 
     const isAndroid = /android/i.test(navigator.userAgent || '');
     let targetUrl = redirectUrl;
 
-    if (isAndroid && typeof redirectUrl === 'string') {
-      if (redirectUrl.startsWith('intent://') || redirectUrl.startsWith('phonepe://')) {
-        if (redirectUrl.startsWith('intent://') && !redirectUrl.includes('S.browser_fallback_url=')) {
-          const webFallback = window.location.href;
-          targetUrl = redirectUrl.replace(/;end$/, `;S.browser_fallback_url=${encodeURIComponent(webFallback)};end`);
-        } else {
-          targetUrl = redirectUrl;
-        }
-      } else if (redirectUrl.includes('phonepe.com') || redirectUrl.includes('mercury.phonepe.com')) {
-        // Direct PhonePe Gateway hosted page URL
-        targetUrl = redirectUrl;
-      } else if (redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://')) {
-        // Construct clean UPI URI for universal UPI payment (PhonePe/GPay/Paytm) without package-lock security restrictions
-        const vpa = (this.settings?.upi_id || '9392974900@ybl').trim();
-        const amount = orderData.amount || orderData.net_amount || (this.calculateCartTotals ? this.calculateCartTotals().grandTotal : '');
-        const orderNum = orderData.order_number || orderData.orderNumber || '';
-        
-        targetUrl = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent('Sri Lakshmi Annapurna Tiffin Center')}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent('Order ' + orderNum)}`;
-      }
+    if (typeof redirectUrl === 'string' && (redirectUrl.includes('phonepe.com') || redirectUrl.includes('mercury.phonepe.com'))) {
+      targetUrl = redirectUrl;
+    } else if (isAndroid || (typeof redirectUrl === 'string' && (redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://')))) {
+      const encodedVpa = encodeURIComponent(vpa);
+      const encodedPn = encodeURIComponent(merchantName);
+      const encodedAm = encodeURIComponent(amount);
+      const encodedTn = encodeURIComponent('Order ' + orderNum);
+
+      // Clean Android intent URI for universal UPI payment (PhonePe / GPay / Paytm)
+      targetUrl = `intent://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}#Intent;scheme=upi;end`;
     }
 
     try {
       window.location.href = targetUrl;
     } catch (err) {
-      console.warn('[PhonePe Intent Launch Warning]: Fallback to window.open', err);
-      window.open(redirectUrl, '_system') || window.open(redirectUrl, '_blank');
+      console.warn('[PhonePe Intent Launch Warning]: Fallback to upi:// URI', err);
+      const fallbackUpi = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(merchantName)}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent('Order ' + orderNum)}`;
+      window.location.href = fallbackUpi;
     }
   }
 
@@ -2761,23 +2758,18 @@ class TiffinApp {
       if (res.ok && json.success && json.redirectUrl) {
         this.launchPhonePeIntent(json.redirectUrl, json.data || { amount: grandTotal });
       } else {
-        const errorMsg = json.message || (res.statusText ? `PhonePe Error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment.');
-        console.error('[PhonePe Initiation Failed]:', json);
-        this.showToast(errorMsg, 'error');
-        payBtns.forEach(btn => {
-          btn.disabled = false;
-          btn.innerHTML = `<i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i> <span>Pay ₹<span id="phonePeBtnAmount">${grandTotal}</span> with PhonePe</span>`;
-        });
+        console.warn('[PhonePe PG Notice] Launching fallback intent:', json);
+        this.launchPhonePeIntent(json.redirectUrl || '/api/phonepe/redirect', json.data || { amount: grandTotal });
       }
     } catch (err) {
       console.error('Error initiating PhonePe payment:', err);
-      this.showToast(err.message || 'Network connection error while contacting PhonePe gateway. Please try again.', 'error');
+      this.launchPhonePeIntent('/api/phonepe/redirect', { amount: grandTotal });
+    } finally {
+      this.isSubmittingOrder = false;
       payBtns.forEach(btn => {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i> <span>Pay ₹<span id="phonePeBtnAmount">${grandTotal}</span> with PhonePe</span>`;
       });
-    } finally {
-      this.isSubmittingOrder = false;
     }
   }
 

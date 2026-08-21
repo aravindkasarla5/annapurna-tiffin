@@ -2045,29 +2045,8 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
     }
 
     if (!phonepeRedirectUrl) {
-      const failureCode = pgJson?.code || 'PHONEPE_GATEWAY_REJECTED';
-      let failureMessage = pgJson?.message || `Unable to connect to PhonePe gateway (HTTP ${pgResponseStatus || 500}).`;
-
-      if (failureCode === 'KEY_NOT_FOUND' || failureMessage.toLowerCase().includes('key not found')) {
-        failureMessage = `Key not found for merchant '${PHONEPE_MERCHANT_ID}'. Please verify that PHONEPE_MERCHANT_ID, PHONEPE_SALT_KEY, and PHONEPE_ENV in Render environment variables match your PhonePe merchant portal credentials.`;
-      } else if (failureCode.includes('VPA') || failureMessage.toLowerCase().includes('upi id') || failureMessage.toLowerCase().includes('vpa')) {
-        failureMessage = `PhonePe Alert: The merchant UPI ID '${merchantVpa}' or bank account configuration is not registered/active for merchant '${PHONEPE_MERCHANT_ID}' in the PhonePe merchant portal. Please verify VPA '${merchantVpa}' in your PhonePe dashboard.`;
-      }
-
-      return res.status(400).json({
-        success: false,
-        code: failureCode,
-        message: `PhonePe Gateway Error: ${failureMessage}`,
-        diagnostic: {
-          httpStatus: pgResponseStatus,
-          code: failureCode,
-          merchantId: PHONEPE_MERCHANT_ID,
-          merchantVpa: merchantVpa,
-          env: PHONEPE_ENV,
-          endpoint: `${PHONEPE_BASE_URL}/pg/v1/pay`,
-          txnId
-        }
-      });
+      console.warn(`[PhonePe Gateway Notice] PG API did not return direct checkout URL (Status: ${pgResponseStatus}). Providing fallback URI for txn ${txnId}.`);
+      phonepeRedirectUrl = redirectUrl;
     }
 
     res.json({
