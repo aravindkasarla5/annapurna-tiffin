@@ -1606,6 +1606,14 @@ if (process.env.PHONEPE_HOST_URL) {
 // In-memory transaction status cache for PhonePe gateway verification
 const phonePeTxnStore = new Map();
 
+// Helper: Generate compact unique PhonePe transaction ID (strictly 1-38 chars max)
+function generatePhonePeTxnId() {
+  const prefix = 'PPTXN_';
+  const timestamp = Date.now().toString();
+  const rand = crypto.randomBytes(3).toString('hex');
+  return `${prefix}${timestamp}_${rand}`; // Exact length: 26 chars (well below PhonePe's 38 char limit)
+}
+
 // Safe diagnostic logger for PhonePe integration (Zero secret leakage)
 function logPhonePeDiagnostic(category, details = {}) {
   const timestamp = new Date().toISOString();
@@ -1798,8 +1806,8 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
         return res.status(403).json({ success: false, message: "Unauthorized access to order." });
       }
 
-      // Generate a new unique PhonePe transaction ID for this payment attempt
-      txnId = 'PP_TXN_' + targetOrder.id + '_' + Date.now();
+      // Generate a new unique PhonePe transaction ID for this payment attempt (safely 26 chars <= 38)
+      txnId = generatePhonePeTxnId();
       amountToPay = Number(targetOrder.net_amount || targetOrder.total_amount || 0);
 
       // Update payment status to Processing for retry attempt
@@ -1828,7 +1836,7 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
       const orderSeq = await db.getNextCounter('order_counter');
       const orderNum = 'TF' + orderSeq;
       const newOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-      txnId = 'PP_TXN_' + newOrderId + '_' + Date.now();
+      txnId = generatePhonePeTxnId();
 
       // Fetch authoritative item pricing
       let grand_total = 0;
@@ -1922,6 +1930,11 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
         status: 'PROCESSING',
         updatedAt: Date.now()
       });
+    }
+
+    // Pre-flight validation guard for PhonePe merchantTransactionId (1 to 38 characters requirement)
+    if (!txnId || typeof txnId !== 'string' || txnId.length > 38 || txnId.length < 1) {
+      txnId = generatePhonePeTxnId();
     }
 
     // Determine domain host for callback & redirect
