@@ -18,6 +18,15 @@
 
   <!-- Custom Design System CSS -->
   <link rel="stylesheet" href="css/styles.css">
+
+  <!-- PWA Manifest & Theme -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#FF5722">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Annapurna Tiffin">
+  <link rel="apple-touch-icon" href="images/icon-192.png">
 </head>
 
 <body class="guest-mode">
@@ -143,6 +152,15 @@
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Support & FAQs</strong>
               <span class="drawer-item-sub">Instant answers & helpline</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item pwa-install-btn" id="btnStaticDrawerInstallApp" onclick="app.toggleMobileDrawer(false); app.triggerPwaInstall();">
+            <div class="drawer-icon-box purple"><i class="fa-solid fa-mobile-screen-button"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title" id="staticDrawerInstallTitle">📲 Install App</strong>
+              <span class="drawer-item-sub" id="staticDrawerInstallSub">Install app on Android phone</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
@@ -3275,6 +3293,39 @@
         </form>
       </div>
     </div>
+  <!-- PWA Install Manual Instructions Modal (Fallback for unsupported browsers/devices) -->
+  <div class="modal-backdrop" id="pwaInstallModal" onclick="app.closePwaInstallModal()">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 420px; text-align: center;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="drawer-icon-box purple" style="width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;">
+            <i class="fa-solid fa-mobile-screen-button"></i>
+          </div>
+          <h3 style="font-size: 1.05rem; color: #FFF; margin: 0; font-weight: 700;">Install Website as App</h3>
+        </div>
+        <button class="icon-btn" onclick="app.closePwaInstallModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body" style="padding: 1.5rem 1rem; text-align: center;">
+        <img src="images/tiffin_logo.png" alt="Logo" style="width: 72px; height: 72px; border-radius: 16px; margin: 0 auto 1rem auto; display: block; border: 2px solid var(--accent-gold); box-shadow: var(--shadow-sm);">
+        <h4 style="color: var(--text-main); font-size: 1.05rem; font-weight: 700; margin-bottom: 0.5rem;">Sri Lakshmi Annapurna Tiffin Center</h4>
+        <p style="color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; margin-bottom: 1.25rem;">
+          To install this app on your Android device:
+        </p>
+        <div style="background: rgba(255, 87, 34, 0.08); border: 1px dashed var(--primary); border-radius: 12px; padding: 1rem; text-align: left; margin-bottom: 1.25rem;">
+          <p style="font-size: 0.88rem; color: var(--text-main); margin-bottom: 8px;">
+            <strong style="color: var(--primary);">1.</strong> Open your browser menu (<i class="fa-solid fa-ellipsis-vertical"></i> or Share button).
+          </p>
+          <p style="font-size: 0.88rem; color: var(--text-main); margin: 0;">
+            <strong style="color: var(--primary);">2.</strong> Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.
+          </p>
+        </div>
+        <button class="btn-auth-primary" style="width: 100%; justify-content: center; padding: 0.75rem; border-radius: 10px;" onclick="app.closePwaInstallModal()">
+          <i class="fa-solid fa-check"></i> OK, Got It
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- JavaScript Entry Point -->
   <script src="/js/app.js?v=2"></script>
 </body>

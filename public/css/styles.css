@@ -5585,6 +5585,15 @@ body.guest-mode #btnMobileMenuToggle {
 .drawer-icon-box.grey { background: rgba(158, 158, 158, 0.18); color: #CFD8DC; border-color: rgba(158, 158, 158, 0.35); }
 .drawer-icon-box.danger { background: rgba(255, 23, 68, 0.2); color: #FF5252; border-color: rgba(255, 23, 68, 0.4); }
 
+.drawer-item.pwa-install-btn {
+  background: linear-gradient(135deg, rgba(171, 71, 188, 0.12), rgba(255, 87, 34, 0.12));
+  border: 1px solid rgba(171, 71, 188, 0.3);
+}
+.drawer-item.pwa-install-btn:hover {
+  background: linear-gradient(135deg, rgba(171, 71, 188, 0.22), rgba(255, 87, 34, 0.22));
+  border-color: rgba(171, 71, 188, 0.5);
+}
+
 .drawer-text-group {
   display: flex;
   flex-direction: column;

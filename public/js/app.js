@@ -164,6 +164,9 @@ class TiffinApp {
     // Initialize 20-minute customer inactivity auto-logout engine
     this.initCustomerInactivityEngine();
 
+    // Initialize PWA Progressive Web App installation & offline engine
+    this.initPwaInstall();
+
     // Bind Web Audio Context unlocking on user gesture
     ['mousedown', 'click', 'keydown', 'touchstart'].forEach(evt => {
       window.addEventListener(evt, () => this.initAudioContext(), { passive: true });
@@ -1599,6 +1602,26 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          ${this.isAppInstalled() ? `
+            <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.showToast('✅ Website is already installed on your home screen!', 'success');">
+              <div class="drawer-icon-box green"><i class="fa-solid fa-circle-check"></i></div>
+              <div class="drawer-text-group">
+                <strong class="drawer-item-title" style="color: var(--color-available);">✅ App Installed</strong>
+                <span class="drawer-item-sub">Running as home screen app</span>
+              </div>
+              <i class="fa-solid fa-check drawer-chevron" style="color: var(--color-available);"></i>
+            </a>
+          ` : `
+            <a class="drawer-item pwa-install-btn" onclick="app.toggleMobileDrawer(false); app.triggerPwaInstall();">
+              <div class="drawer-icon-box purple"><i class="fa-solid fa-mobile-screen-button"></i></div>
+              <div class="drawer-text-group">
+                <strong class="drawer-item-title">📲 Install App</strong>
+                <span class="drawer-item-sub">Install app on Android phone</span>
+              </div>
+              <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+            </a>
+          `}
+
           <a class="drawer-item" href="tel:+919392874900">
             <div class="drawer-icon-box green"><i class="fa-solid fa-phone-volume"></i></div>
             <div class="drawer-text-group">
@@ -1732,6 +1755,26 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          ${this.isAppInstalled() ? `
+            <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.showToast('✅ Website is already installed on your home screen!', 'success');">
+              <div class="drawer-icon-box green"><i class="fa-solid fa-circle-check"></i></div>
+              <div class="drawer-text-group">
+                <strong class="drawer-item-title" style="color: var(--color-available);">✅ App Installed</strong>
+                <span class="drawer-item-sub">Running as home screen app</span>
+              </div>
+              <i class="fa-solid fa-check drawer-chevron" style="color: var(--color-available);"></i>
+            </a>
+          ` : `
+            <a class="drawer-item pwa-install-btn" onclick="app.toggleMobileDrawer(false); app.triggerPwaInstall();">
+              <div class="drawer-icon-box purple"><i class="fa-solid fa-mobile-screen-button"></i></div>
+              <div class="drawer-text-group">
+                <strong class="drawer-item-title">📲 Install App</strong>
+                <span class="drawer-item-sub">Install app on Android phone</span>
+              </div>
+              <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+            </a>
+          `}
+
           <a class="drawer-item danger" onclick="app.toggleMobileDrawer(false); app.logout();">
             <div class="drawer-icon-box danger"><i class="fa-solid fa-power-off"></i></div>
             <div class="drawer-text-group">
@@ -1853,6 +1896,112 @@ class TiffinApp {
           </a>
         </div>
       `;
+    }
+  }
+
+  // =========================================================================
+  // PWA (PROGRESSIVE WEB APP) INSTALLATION & OFFLINE DETECTION
+  // =========================================================================
+
+  initPwaInstall() {
+    // 1. Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => {
+            console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+          })
+          .catch(err => {
+            console.warn('[PWA] ServiceWorker registration failed:', err);
+          });
+      });
+    }
+
+    // 2. Capture beforeinstallprompt Event
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredPwaPrompt = e;
+      console.log('[PWA] Captured beforeinstallprompt event ready');
+      this.updatePwaInstallStateUI();
+    });
+
+    // 3. Handle successful app installation
+    window.addEventListener('appinstalled', () => {
+      window.deferredPwaPrompt = null;
+      console.log('[PWA] Application was successfully installed!');
+      this.showToast('🎉 Thank you for installing Annapurna Tiffin App!', 'success');
+      this.updatePwaInstallStateUI();
+    });
+
+    // 4. Handle Network Online / Offline Status (Requirement 23)
+    window.addEventListener('offline', () => {
+      this.showToast("📡 You're Offline: Please reconnect to the internet to view latest menu, orders, and payment information.", 'warning');
+    });
+
+    window.addEventListener('online', () => {
+      this.showToast("🟢 Back Online: Reconnected to Annapurna Tiffin servers.", 'success');
+    });
+  }
+
+  isAppInstalled() {
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true ||
+      document.referrer.includes('android-app://')
+    );
+  }
+
+  updatePwaInstallStateUI() {
+    const staticBtnTitle = document.getElementById('staticDrawerInstallTitle');
+    const staticBtnSub = document.getElementById('staticDrawerInstallSub');
+    if (staticBtnTitle && staticBtnSub) {
+      if (this.isAppInstalled()) {
+        staticBtnTitle.innerText = '✅ App Installed';
+        staticBtnTitle.style.color = 'var(--color-available)';
+        staticBtnSub.innerText = 'Running as home screen app';
+      } else {
+        staticBtnTitle.innerText = '📲 Install App';
+        staticBtnSub.innerText = 'Install app on Android phone';
+      }
+    }
+    this.renderMobileDrawerNav();
+  }
+
+  triggerPwaInstall() {
+    if (this.isAppInstalled()) {
+      this.showToast('✅ App is already installed and running on your device!', 'success');
+      return;
+    }
+
+    if (window.deferredPwaPrompt) {
+      const promptEvent = window.deferredPwaPrompt;
+      promptEvent.prompt();
+      promptEvent.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          console.log('[PWA] User accepted the install prompt');
+          window.deferredPwaPrompt = null;
+          this.updatePwaInstallStateUI();
+        } else {
+          console.log('[PWA] User dismissed the install prompt');
+        }
+      });
+    } else {
+      // Browser or device does not support native prompt event or user already dismissed it
+      this.openPwaInstallModal();
+    }
+  }
+
+  openPwaInstallModal() {
+    const modal = document.getElementById('pwaInstallModal');
+    if (modal) {
+      modal.classList.add('open');
+    }
+  }
+
+  closePwaInstallModal() {
+    const modal = document.getElementById('pwaInstallModal');
+    if (modal) {
+      modal.classList.remove('open');
     }
   }
 
