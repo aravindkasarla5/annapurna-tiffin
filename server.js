@@ -1581,6 +1581,37 @@ if (process.env.PHONEPE_HOST_URL) {
 // In-memory transaction status cache for PhonePe gateway verification
 const phonePeTxnStore = new Map();
 
+// Safe diagnostic logger for PhonePe integration (Zero secret leakage)
+function logPhonePeDiagnostic(category, details = {}) {
+  const timestamp = new Date().toISOString();
+  console.error(`🚨 [PHONEPE DIAGNOSTIC] [${timestamp}] [${category}]`, {
+    environment: PHONEPE_ENV,
+    merchantId: PHONEPE_MERCHANT_ID,
+    txnId: details.txnId || 'N/A',
+    httpStatus: details.httpStatus || 'N/A',
+    phonePeCode: details.code || 'N/A',
+    phonePeMessage: details.message || 'N/A',
+    endpoint: details.endpoint || 'N/A',
+    exceptionType: details.exceptionType || 'N/A',
+    errorDetails: details.error || details.raw || 'N/A'
+  });
+}
+
+function validatePhonePeConfig() {
+  const missing = [];
+  if (!PHONEPE_MERCHANT_ID) missing.push('PHONEPE_MERCHANT_ID');
+  if (!PHONEPE_SALT_KEY) missing.push('PHONEPE_SALT_KEY');
+  if (!PHONEPE_SALT_INDEX) missing.push('PHONEPE_SALT_INDEX');
+
+  if (missing.length > 0) {
+    logPhonePeDiagnostic('CONFIGURATION_ERROR', {
+      error: `Missing required environment variables: ${missing.join(', ')}`
+    });
+    return { valid: false, message: `PHONEPE_CONFIGURATION_ERROR: ${missing.join(', ')} missing.` };
+  }
+  return { valid: true };
+}
+
 // Helper: Atomically update database status for order and payment record
 async function updateDbOrderPaymentStatus(orderIdOrTxnId, newStatus, txnId = null) {
   const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR utr_number = $1 OR order_number = $1;', [orderIdOrTxnId]);
@@ -1680,6 +1711,15 @@ async function verifyPhonePeStatusWithApi(txnId) {
 // POST /api/phonepe/initiate - Initiate REAL PhonePe payment (New Order or Pay Again Retry)
 app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
   try {
+    const configCheck = validatePhonePeConfig();
+    if (!configCheck.valid) {
+      return res.status(500).json({
+        success: false,
+        code: 'PHONEPE_CONFIG_ERROR',
+        message: configCheck.message
+      });
+    }
+
     const sRes = await db.query('SELECT is_open, is_phonepe_enabled, upi_id, upi_name FROM settings WHERE id = 1;');
     const settings = sRes.rows[0] || {};
 
@@ -1868,6 +1908,8 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
 
     let phonepeRedirectUrl = null;
     let pgMessage = "PhonePe payment gateway initiated.";
+    let pgResponseStatus = null;
+    let pgJson = null;
 
     try {
       const pgResponse = await fetch(`${PHONEPE_BASE_URL}/pg/v1/pay`, {
@@ -1880,25 +1922,52 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
         body: JSON.stringify({ request: base64Payload })
       });
 
-      const pgJson = await pgResponse.json();
+      pgResponseStatus = pgResponse.status;
+      pgJson = await pgResponse.json();
 
-      if (pgJson.success && pgJson.data?.instrumentResponse) {
+      if (pgResponse.ok && pgJson.success && pgJson.data?.instrumentResponse) {
         phonepeRedirectUrl = pgJson.data.instrumentResponse.redirectInfo?.url || pgJson.data.instrumentResponse.intentUrl || null;
         pgMessage = pgJson.message || pgMessage;
-        console.log('[PhonePe Gateway Success]:', pgMessage, phonepeRedirectUrl);
+        console.log(`[PhonePe Gateway Success] TxnId: ${txnId} | Message: ${pgMessage}`);
       } else {
-        console.warn('[PhonePe Gateway API Response Warning]:', pgJson);
-        if (pgJson.data?.instrumentResponse?.redirectInfo?.url) {
-          phonepeRedirectUrl = pgJson.data.instrumentResponse.redirectInfo.url;
-        }
+        logPhonePeDiagnostic('INITIATION_FAILURE', {
+          txnId,
+          httpStatus: pgResponseStatus,
+          code: pgJson.code || pgJson.data?.responseCode,
+          message: pgJson.message || 'PhonePe payment gateway initialization failed.',
+          endpoint: `${PHONEPE_BASE_URL}/pg/v1/pay`,
+          raw: pgJson
+        });
       }
     } catch (pgErr) {
-      console.warn('[PhonePe Gateway API Network Warning]:', pgErr.message);
+      logPhonePeDiagnostic('NETWORK_ERROR', {
+        txnId,
+        endpoint: `${PHONEPE_BASE_URL}/pg/v1/pay`,
+        exceptionType: pgErr.name || 'FetchError',
+        error: pgErr.message
+      });
+
+      return res.status(502).json({
+        success: false,
+        code: 'PHONEPE_NETWORK_ERROR',
+        message: `Unable to connect to PhonePe gateway (${pgErr.message}). Please verify network connection and try again.`
+      });
     }
 
-    // Fallback: If sandbox or preprod endpoint is offline or unavailable, fallback gracefully to redirect endpoint
     if (!phonepeRedirectUrl) {
-      phonepeRedirectUrl = redirectUrl;
+      const failureCode = pgJson?.code || 'PHONEPE_GATEWAY_REJECTED';
+      const failureMessage = pgJson?.message || `Unable to connect to PhonePe gateway (HTTP ${pgResponseStatus || 500}).`;
+
+      return res.status(400).json({
+        success: false,
+        code: failureCode,
+        message: `PhonePe Gateway Error: ${failureMessage}`,
+        diagnostic: {
+          httpStatus: pgResponseStatus,
+          code: failureCode,
+          txnId
+        }
+      });
     }
 
     res.json({
@@ -1909,7 +1978,10 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
       message: pgMessage
     });
   } catch (err) {
-    console.error('[PhonePe Gateway Exception]:', err);
+    logPhonePeDiagnostic('EXCEPTIONAL_FAILURE', {
+      exceptionType: err.name || 'Error',
+      error: err.message || err
+    });
     res.status(500).json({ success: false, message: err.message || "Failed to initiate PhonePe payment." });
   }
 });

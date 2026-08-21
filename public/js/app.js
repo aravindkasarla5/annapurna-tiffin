@@ -2702,7 +2702,8 @@ class TiffinApp {
       if (res.ok && json.success && json.redirectUrl) {
         window.location.href = json.redirectUrl;
       } else {
-        const errorMsg = json.message || (res.statusText ? `PhonePe error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment.');
+        const errorMsg = json.message || (res.statusText ? `PhonePe Error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment.');
+        console.error('[PhonePe Initiation Failed]:', json);
         this.showToast(errorMsg, 'error');
         payBtns.forEach(btn => {
           btn.disabled = false;
@@ -2711,7 +2712,7 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Error initiating PhonePe payment:', err);
-      this.showToast(err.message || 'Unable to connect to PhonePe gateway. Please try again.', 'error');
+      this.showToast(err.message || 'Network connection error while contacting PhonePe gateway. Please try again.', 'error');
       payBtns.forEach(btn => {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-bolt-lightning" style="color: #00E676; font-size: 1.2rem;"></i> <span>Pay ₹<span id="phonePeBtnAmount">${grandTotal}</span> with PhonePe</span>`;
@@ -2808,7 +2809,8 @@ class TiffinApp {
       if (res.ok && json.success && json.redirectUrl) {
         window.location.href = json.redirectUrl;
       } else {
-        const errorMsg = json.message || (res.statusText ? `PhonePe error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment retry.');
+        const errorMsg = json.message || (res.statusText ? `PhonePe Error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment retry.');
+        console.error('[PhonePe Retry Failed]:', json);
         this.showToast(errorMsg, 'error');
         if (btn) {
           btn.disabled = false;
@@ -2817,7 +2819,7 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Error initiating Pay Again:', err);
-      this.showToast('Failed to connect to PhonePe gateway. Please try again.', 'error');
+      this.showToast(err.message || 'Network connection error while contacting PhonePe gateway. Please try again.', 'error');
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-rotate-right" style="color: #00E676;"></i> Pay Again`;
