@@ -1156,12 +1156,14 @@ class TiffinApp {
           elRoleTag.innerText = this.currentUser.role === 'OWNER' ? '👑 Hotel Owner' : '⭐ Foodie Member';
         }
 
+        const ringEl = document.getElementById('headerProfileAvatarRing');
         if (this.currentUser.profile_photo) {
           if (elImg) {
             elImg.src = this.currentUser.profile_photo;
             elImg.classList.remove('hidden');
           }
           if (elInitial) elInitial.classList.add('hidden');
+          if (ringEl) ringEl.classList.add('has-photo');
         } else {
           if (elImg) {
             elImg.src = '';
@@ -1171,6 +1173,7 @@ class TiffinApp {
             elInitial.innerText = displayName.charAt(0).toUpperCase();
             elInitial.classList.remove('hidden');
           }
+          if (ringEl) ringEl.classList.remove('has-photo');
         }
       }
 
@@ -2161,11 +2164,13 @@ class TiffinApp {
     if (avatarInit) avatarInit.innerText = name.charAt(0).toUpperCase();
 
     // Customer Profile Photo UI Update
+    const profRing = document.getElementById('profAvatarRing');
     const profImg = document.getElementById('profAvatarImg');
     const custRemoveBtn = document.getElementById('btnCustRemovePhoto');
     const custUploadBtnLabel = document.getElementById('lblCustPhotoBtn');
 
     if (this.currentUser.profile_photo) {
+      if (profRing) profRing.classList.add('has-photo');
       if (profImg) {
         profImg.src = this.currentUser.profile_photo;
         profImg.classList.remove('hidden');
@@ -2174,6 +2179,7 @@ class TiffinApp {
       if (custRemoveBtn) custRemoveBtn.classList.remove('hidden');
       if (custUploadBtnLabel) custUploadBtnLabel.innerText = 'Change Photo';
     } else {
+      if (profRing) profRing.classList.remove('has-photo');
       if (profImg) {
         profImg.src = '';
         profImg.classList.add('hidden');
@@ -5855,6 +5861,7 @@ class TiffinApp {
     if (elDesc && s.description !== undefined) elDesc.value = s.description !== null ? s.description : '';
 
     // Populate Owner Profile Photo Display
+    const ownerRing = document.getElementById('ownerAvatarRing');
     const ownerImg = document.getElementById('ownerAvatarImg');
     const ownerInitials = document.getElementById('ownerAvatarInitials');
     const ownerRemoveBtn = document.getElementById('btnOwnerRemovePhoto');
@@ -5864,6 +5871,7 @@ class TiffinApp {
     if (this.currentUser) {
       if (ownerNameDisp) ownerNameDisp.innerText = this.currentUser.name || 'Hotel Owner / Admin';
       if (this.currentUser.profile_photo) {
+        if (ownerRing) ownerRing.classList.add('has-photo');
         if (ownerImg) {
           ownerImg.src = this.currentUser.profile_photo;
           ownerImg.classList.remove('hidden');
@@ -5872,6 +5880,7 @@ class TiffinApp {
         if (ownerRemoveBtn) ownerRemoveBtn.classList.remove('hidden');
         if (ownerUploadBtnLabel) ownerUploadBtnLabel.innerText = 'Change Photo';
       } else {
+        if (ownerRing) ownerRing.classList.remove('has-photo');
         if (ownerImg) {
           ownerImg.src = '';
           ownerImg.classList.add('hidden');
