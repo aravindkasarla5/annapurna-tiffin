@@ -5,6 +5,46 @@
 
 const API_BASE = '/api';
 
+// =========================================================================
+// GLOBAL EARLY PWA EVENT LISTENER & SERVICE WORKER REGISTRATION
+// Captures `beforeinstallprompt` IMMEDIATELY before any async app initialization!
+// =========================================================================
+window.deferredPwaPrompt = window.deferredPwaPrompt || null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.deferredPwaPrompt = e;
+  console.log('[PWA Early Capture] beforeinstallprompt event captured and saved!');
+  if (window.app && typeof window.app.updatePwaInstallStateUI === 'function') {
+    window.app.updatePwaInstallStateUI();
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  window.deferredPwaPrompt = null;
+  console.log('[PWA Early Capture] PWA installed successfully!');
+  if (window.app && typeof window.app.showToast === 'function') {
+    window.app.showToast('🎉 Thank you for installing Annapurna Tiffin App!', 'success');
+  }
+  if (window.app && typeof window.app.updatePwaInstallStateUI === 'function') {
+    window.app.updatePwaInstallStateUI();
+  }
+});
+
+// Immediate Service Worker Registration (registers immediately without waiting for late load event)
+if ('serviceWorker' in navigator) {
+  const registerSw = () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => console.log('[PWA SW] Registered successfully with scope:', reg.scope))
+      .catch(err => console.warn('[PWA SW] Registration failed:', err));
+  };
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    registerSw();
+  } else {
+    window.addEventListener('DOMContentLoaded', registerSw);
+  }
+}
+
 class TiffinApp {
   constructor() {
     this.currentRole = 'CUSTOMER'; // 'CUSTOMER' or 'OWNER'
@@ -1904,36 +1944,10 @@ class TiffinApp {
   // =========================================================================
 
   initPwaInstall() {
-    // 1. Register Service Worker
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(reg => {
-            console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
-          })
-          .catch(err => {
-            console.warn('[PWA] ServiceWorker registration failed:', err);
-          });
-      });
-    }
+    // Check initial installation state and update UI
+    this.updatePwaInstallStateUI();
 
-    // 2. Capture beforeinstallprompt Event
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      window.deferredPwaPrompt = e;
-      console.log('[PWA] Captured beforeinstallprompt event ready');
-      this.updatePwaInstallStateUI();
-    });
-
-    // 3. Handle successful app installation
-    window.addEventListener('appinstalled', () => {
-      window.deferredPwaPrompt = null;
-      console.log('[PWA] Application was successfully installed!');
-      this.showToast('🎉 Thank you for installing Annapurna Tiffin App!', 'success');
-      this.updatePwaInstallStateUI();
-    });
-
-    // 4. Handle Network Online / Offline Status (Requirement 23)
+    // Handle Network Online / Offline Status (Requirement 23)
     window.addEventListener('offline', () => {
       this.showToast("📡 You're Offline: Please reconnect to the internet to view latest menu, orders, and payment information.", 'warning');
     });
