@@ -1565,17 +1565,34 @@ app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) =>
 // =========================================================================
 
 // PhonePe Credentials & Environment Configuration
-const PHONEPE_MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || 'PGTESTPAYUAT';
-const PHONEPE_SALT_KEY = process.env.PHONEPE_SALT_KEY || '099eb0cd-02fe-4e2a-b15e-b02c97693ec2';
-const PHONEPE_SALT_INDEX = process.env.PHONEPE_SALT_INDEX || '1';
-const PHONEPE_ENV = (process.env.PHONEPE_ENV || process.env.PAYMENT_ENV || 'test').toLowerCase();
+const RAW_PHONEPE_MERCHANT_ID = (process.env.PHONEPE_MERCHANT_ID || '').trim();
+const RAW_PHONEPE_SALT_KEY = (process.env.PHONEPE_SALT_KEY || '').trim();
+const RAW_PHONEPE_SALT_INDEX = (process.env.PHONEPE_SALT_INDEX || '').trim();
+const RAW_PHONEPE_ENV = (process.env.PHONEPE_ENV || process.env.PAYMENT_ENV || '').trim().toLowerCase();
 
-let PHONEPE_BASE_URL = 'https://api-preprod.phonepe.com/apis/pg-sandbox';
-if (PHONEPE_ENV === 'production') {
-  PHONEPE_BASE_URL = 'https://api.phonepe.com/apis/hermes';
+// Default Sandbox Credentials (for PGTESTPAYUAT standard testing)
+const SANDBOX_MERCHANT_ID = 'PGTESTPAYUAT';
+const SANDBOX_SALT_KEY = '099eb0cd-02fe-4e2a-b15e-b02c97693ec2';
+const SANDBOX_SALT_INDEX = '1';
+const SANDBOX_BASE_URL = 'https://api-preprod.phonepe.com/apis/pg-sandbox';
+const PRODUCTION_BASE_URL = 'https://api.phonepe.com/apis/hermes';
+
+// Smart Resolution Logic to prevent Merchant ID / Salt Key / Endpoint mismatches
+let PHONEPE_MERCHANT_ID = RAW_PHONEPE_MERCHANT_ID || SANDBOX_MERCHANT_ID;
+let PHONEPE_SALT_KEY = RAW_PHONEPE_SALT_KEY || SANDBOX_SALT_KEY;
+let PHONEPE_SALT_INDEX = RAW_PHONEPE_SALT_INDEX || SANDBOX_SALT_INDEX;
+
+const isSandboxMerchant = (PHONEPE_MERCHANT_ID === SANDBOX_MERCHANT_ID || PHONEPE_MERCHANT_ID.startsWith('PGTESTPAY'));
+let PHONEPE_ENV = RAW_PHONEPE_ENV || (isSandboxMerchant ? 'test' : 'production');
+
+let PHONEPE_BASE_URL = isSandboxMerchant ? SANDBOX_BASE_URL : PRODUCTION_BASE_URL;
+if (RAW_PHONEPE_ENV === 'production' && !isSandboxMerchant) {
+  PHONEPE_BASE_URL = PRODUCTION_BASE_URL;
+} else if (RAW_PHONEPE_ENV === 'test' || RAW_PHONEPE_ENV === 'sandbox') {
+  PHONEPE_BASE_URL = SANDBOX_BASE_URL;
 }
 if (process.env.PHONEPE_HOST_URL) {
-  PHONEPE_BASE_URL = process.env.PHONEPE_HOST_URL;
+  PHONEPE_BASE_URL = process.env.PHONEPE_HOST_URL.trim();
 }
 
 // In-memory transaction status cache for PhonePe gateway verification
@@ -1587,11 +1604,12 @@ function logPhonePeDiagnostic(category, details = {}) {
   console.error(`🚨 [PHONEPE DIAGNOSTIC] [${timestamp}] [${category}]`, {
     environment: PHONEPE_ENV,
     merchantId: PHONEPE_MERCHANT_ID,
+    isSandboxMerchant,
     txnId: details.txnId || 'N/A',
     httpStatus: details.httpStatus || 'N/A',
     phonePeCode: details.code || 'N/A',
     phonePeMessage: details.message || 'N/A',
-    endpoint: details.endpoint || 'N/A',
+    endpoint: details.endpoint || PHONEPE_BASE_URL,
     exceptionType: details.exceptionType || 'N/A',
     errorDetails: details.error || details.raw || 'N/A'
   });
@@ -1609,6 +1627,28 @@ function validatePhonePeConfig() {
     });
     return { valid: false, message: `PHONEPE_CONFIGURATION_ERROR: ${missing.join(', ')} missing.` };
   }
+
+  // Detect credential/environment mismatch (e.g. Custom Merchant ID with default Sandbox Salt Key)
+  if (!isSandboxMerchant && PHONEPE_SALT_KEY === SANDBOX_SALT_KEY) {
+    logPhonePeDiagnostic('CREDENTIAL_MISMATCH_WARNING', {
+      error: `Custom merchant ID (${PHONEPE_MERCHANT_ID}) configured but PHONEPE_SALT_KEY is still default sandbox key. Please set PHONEPE_SALT_KEY in Render environment variables.`
+    });
+    return {
+      valid: false,
+      message: `PHONEPE_CONFIGURATION_MISMATCH: Custom Merchant ID '${PHONEPE_MERCHANT_ID}' detected, but PHONEPE_SALT_KEY environment variable is missing on server. Please configure your PhonePe merchant salt key in Render server environment variables.`
+    };
+  }
+
+  if (isSandboxMerchant && PHONEPE_BASE_URL.includes('api.phonepe.com/apis/hermes')) {
+    logPhonePeDiagnostic('ENDPOINT_MISMATCH_WARNING', {
+      error: `Sandbox test merchant ID (${SANDBOX_MERCHANT_ID}) cannot be called against Production host (hermes).`
+    });
+    return {
+      valid: false,
+      message: `PHONEPE_CONFIGURATION_MISMATCH: Test Merchant ID '${SANDBOX_MERCHANT_ID}' cannot be used with Production API endpoint. Set PHONEPE_ENV=test or provide your live PhonePe merchant credentials in Render environment variables.`
+    };
+  }
+
   return { valid: true };
 }
 
@@ -1899,7 +1939,7 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
       }
     };
 
-    console.log(`[PhonePe Gateway] Initiating transaction ${txnId} | Amount: ₹${amountToPay} (${amountInPaise} paise) | ENV: ${PHONEPE_ENV}`);
+    console.log(`[PhonePe Gateway] Initiating transaction ${txnId} | Amount: ₹${amountToPay} (${amountInPaise} paise) | MerchantID: ${PHONEPE_MERCHANT_ID} | ENV: ${PHONEPE_ENV}`);
 
     const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
     const stringToHash = base64Payload + '/pg/v1/pay' + PHONEPE_SALT_KEY;
@@ -1956,7 +1996,11 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
 
     if (!phonepeRedirectUrl) {
       const failureCode = pgJson?.code || 'PHONEPE_GATEWAY_REJECTED';
-      const failureMessage = pgJson?.message || `Unable to connect to PhonePe gateway (HTTP ${pgResponseStatus || 500}).`;
+      let failureMessage = pgJson?.message || `Unable to connect to PhonePe gateway (HTTP ${pgResponseStatus || 500}).`;
+
+      if (failureCode === 'KEY_NOT_FOUND' || failureMessage.toLowerCase().includes('key not found')) {
+        failureMessage = `Key not found for merchant '${PHONEPE_MERCHANT_ID}'. Please verify that PHONEPE_MERCHANT_ID, PHONEPE_SALT_KEY, and PHONEPE_ENV in Render environment variables match your PhonePe merchant portal credentials.`;
+      }
 
       return res.status(400).json({
         success: false,
@@ -1965,6 +2009,9 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
         diagnostic: {
           httpStatus: pgResponseStatus,
           code: failureCode,
+          merchantId: PHONEPE_MERCHANT_ID,
+          env: PHONEPE_ENV,
+          endpoint: `${PHONEPE_BASE_URL}/pg/v1/pay`,
           txnId
         }
       });
