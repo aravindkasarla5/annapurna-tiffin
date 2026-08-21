@@ -2667,13 +2667,16 @@ class TiffinApp {
         } else {
           targetUrl = redirectUrl;
         }
+      } else if (redirectUrl.includes('phonepe.com') || redirectUrl.includes('mercury.phonepe.com')) {
+        // Direct PhonePe Gateway hosted page URL
+        targetUrl = redirectUrl;
       } else if (redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://')) {
-        // Construct Android intent for PhonePe (com.phonepe.app) with fallback to HTTP gateway URL
+        // Construct clean UPI URI for universal UPI payment (PhonePe/GPay/Paytm) without package-lock security restrictions
         const vpa = (this.settings?.upi_id || '9392974900@ybl').trim();
         const amount = orderData.amount || orderData.net_amount || (this.calculateCartTotals ? this.calculateCartTotals().grandTotal : '');
         const orderNum = orderData.order_number || orderData.orderNumber || '';
         
-        targetUrl = `intent://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent('Sri Lakshmi Annapurna Tiffin Center')}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent('Order ' + orderNum)}#Intent;scheme=upi;package=com.phonepe.app;S.browser_fallback_url=${encodeURIComponent(redirectUrl)};end`;
+        targetUrl = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent('Sri Lakshmi Annapurna Tiffin Center')}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent('Order ' + orderNum)}`;
       }
     }
 
