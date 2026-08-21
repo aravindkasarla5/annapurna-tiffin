@@ -1937,6 +1937,11 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
       txnId = generatePhonePeTxnId();
     }
 
+    // Resolve Official Merchant UPI VPA (from environment, settings.upi_id, or default 9392974900@ybl)
+    const rawVpa = (process.env.PHONEPE_MERCHANT_VPA || settings.upi_id || '9392974900@ybl').trim();
+    const vpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+    const merchantVpa = vpaRegex.test(rawVpa) ? rawVpa : '9392974900@ybl';
+
     // Determine domain host for callback & redirect
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
@@ -1960,7 +1965,7 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
       }
     };
 
-    console.log(`[PhonePe Gateway] Initiating transaction ${txnId} | Amount: ₹${amountToPay} (${amountInPaise} paise) | MerchantID: ${PHONEPE_MERCHANT_ID} | ENV: ${PHONEPE_ENV}`);
+    console.log(`[PhonePe Gateway] Initiating transaction ${txnId} | Amount: ₹${amountToPay} (${amountInPaise} paise) | MerchantID: ${PHONEPE_MERCHANT_ID} | MerchantVPA: ${merchantVpa} | ENV: ${PHONEPE_ENV}`);
 
     const base64Payload = Buffer.from(JSON.stringify(payload)).toString('base64');
     const stringToHash = base64Payload + '/pg/v1/pay' + PHONEPE_SALT_KEY;
@@ -1989,7 +1994,7 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
       if (pgResponse.ok && pgJson.success && pgJson.data?.instrumentResponse) {
         phonepeRedirectUrl = pgJson.data.instrumentResponse.redirectInfo?.url || pgJson.data.instrumentResponse.intentUrl || null;
         pgMessage = pgJson.message || pgMessage;
-        console.log(`[PhonePe Gateway Success] TxnId: ${txnId} | Message: ${pgMessage}`);
+        console.log(`[PhonePe Gateway Success] TxnId: ${txnId} | MerchantVPA: ${merchantVpa} | Message: ${pgMessage}`);
       } else {
         logPhonePeDiagnostic('INITIATION_FAILURE', {
           txnId,
@@ -2021,6 +2026,8 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
 
       if (failureCode === 'KEY_NOT_FOUND' || failureMessage.toLowerCase().includes('key not found')) {
         failureMessage = `Key not found for merchant '${PHONEPE_MERCHANT_ID}'. Please verify that PHONEPE_MERCHANT_ID, PHONEPE_SALT_KEY, and PHONEPE_ENV in Render environment variables match your PhonePe merchant portal credentials.`;
+      } else if (failureCode.includes('VPA') || failureMessage.toLowerCase().includes('upi id') || failureMessage.toLowerCase().includes('vpa')) {
+        failureMessage = `PhonePe Alert: The merchant UPI ID '${merchantVpa}' or bank account configuration is not registered/active for merchant '${PHONEPE_MERCHANT_ID}' in the PhonePe merchant portal. Please verify VPA '${merchantVpa}' in your PhonePe dashboard.`;
       }
 
       return res.status(400).json({
@@ -2031,6 +2038,7 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
           httpStatus: pgResponseStatus,
           code: failureCode,
           merchantId: PHONEPE_MERCHANT_ID,
+          merchantVpa: merchantVpa,
           env: PHONEPE_ENV,
           endpoint: `${PHONEPE_BASE_URL}/pg/v1/pay`,
           txnId
