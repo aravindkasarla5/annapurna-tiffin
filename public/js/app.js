@@ -1490,36 +1490,38 @@ class TiffinApp {
     if (desktopNav) {
       document.getElementById('sidebarRoleLabel').innerText = isCustomer ? 'CUSTOMER DASHBOARD' : 'HOTEL OWNER / ADMIN';
 
-      if (isCustomer) {
-        desktopNav.innerHTML = `
-          <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')"><i class="fa-solid fa-house"></i> Customer Home</a>
-          <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.scrollToMenu()"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
-          <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
-          <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
-          <a class="nav-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.switchView('secCustomerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
-          <a class="nav-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.switchView('secCustomerReferral')"><i class="fa-solid fa-gift" style="color: var(--accent-gold);"></i> Refer & Earn</a>
-          <a class="nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')"><i class="fa-solid fa-headset"></i> Support & FAQs</a>
-          <a class="nav-item ${this.activeView === 'secCustomerProfile' ? 'active' : ''}" onclick="app.switchView('secCustomerProfile')"><i class="fa-solid fa-user-gear"></i> My Profile</a>
-        `;
-      } else {
-        const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read && n.target_role === 'OWNER').length;
-        desktopNav.innerHTML = `
-          <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
-          <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
-          <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders Management</a>
-          <a class="nav-item ${this.activeView === 'secOwnerCustomers' ? 'active' : ''}" onclick="app.switchView('secOwnerCustomers')"><i class="fa-solid fa-users-gear" style="color: var(--accent-gold);"></i> Customer Accounts</a>
-          <a class="nav-item" onclick="app.toggleNotificationsTray()"><i class="fa-solid fa-bell" style="color: var(--accent-gold);"></i> Notifications ${unreadNotifCount > 0 ? `<span class="sidebar-badge-count" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px;">${unreadNotifCount}</span>` : ''}</a>
-          <a class="nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews</a>
-          <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
-          <a class="nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')"><i class="fa-solid fa-headset"></i> Support Inbox</a>
-          <a class="nav-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.switchView('secOwnerSettings')"><i class="fa-solid fa-sliders"></i> Business Settings</a>
-        `;
-      }
+        const u = this.currentUser;
+        if (isCustomer) {
+          desktopNav.innerHTML = `
+            <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')"><i class="fa-solid fa-house"></i> Customer Home</a>
+            <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.scrollToMenu()"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
+            <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
+            <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
+            <a class="nav-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.switchView('secCustomerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
+            <a class="nav-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.switchView('secCustomerReferral')"><i class="fa-solid fa-gift" style="color: var(--accent-gold);"></i> Refer & Earn</a>
+            <a class="nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')"><i class="fa-solid fa-headset"></i> Support & FAQs</a>
+            <a class="nav-item ${this.activeView === 'secCustomerProfile' ? 'active' : ''}" onclick="app.switchView('secCustomerProfile')">${u && u.profile_photo ? `<img src="${u.profile_photo}" alt="Profile" style="width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px;">` : `<i class="fa-solid fa-user-gear"></i>`} My Profile</a>
+          `;
+        } else {
+          const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read && n.target_role === 'OWNER').length;
+          desktopNav.innerHTML = `
+            <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
+            <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
+            <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders Management</a>
+            <a class="nav-item ${this.activeView === 'secOwnerCustomers' ? 'active' : ''}" onclick="app.switchView('secOwnerCustomers')"><i class="fa-solid fa-users-gear" style="color: var(--accent-gold);"></i> Customer Accounts</a>
+            <a class="nav-item" onclick="app.toggleNotificationsTray()"><i class="fa-solid fa-bell" style="color: var(--accent-gold);"></i> Notifications ${unreadNotifCount > 0 ? `<span class="sidebar-badge-count" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px;">${unreadNotifCount}</span>` : ''}</a>
+            <a class="nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews</a>
+            <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')"><i class="fa-solid fa-headset"></i> Support Inbox</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.switchView('secOwnerSettings')">${u && u.profile_photo ? `<img src="${u.profile_photo}" alt="Settings" style="width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px;">` : `<i class="fa-solid fa-sliders"></i>`} Business Settings</a>
+          `;
+        }
     }
 
     // Update Mobile Bottom Navigation Bar
     if (mobileNav) {
       const cartCount = this.cart.reduce((acc, c) => acc + c.quantity, 0);
+      const u = this.currentUser;
       if (isCustomer) {
         mobileNav.innerHTML = `
           <a class="bottom-nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')">
@@ -1536,7 +1538,7 @@ class TiffinApp {
             <i class="fa-solid fa-wallet"></i> <span>Payments</span>
           </a>
           <a class="bottom-nav-item ${this.activeView === 'secCustomerProfile' ? 'active' : ''}" onclick="app.switchView('secCustomerProfile')">
-            <i class="fa-solid fa-user"></i> <span>Profile</span>
+            ${u && u.profile_photo ? `<img src="${u.profile_photo}" alt="Profile" style="width: 22px; height: 22px; border-radius: 50%; object-fit: cover;">` : `<i class="fa-solid fa-user"></i>`} <span>Profile</span>
           </a>
         `;
       } else {
@@ -1554,7 +1556,7 @@ class TiffinApp {
             <i class="fa-solid fa-wallet"></i> <span>Payments</span>
           </a>
           <a class="bottom-nav-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.switchView('secOwnerSettings')">
-            <i class="fa-solid fa-sliders"></i> <span>Settings</span>
+            ${u && u.profile_photo ? `<img src="${u.profile_photo}" alt="Settings" style="width: 22px; height: 22px; border-radius: 50%; object-fit: cover;">` : `<i class="fa-solid fa-sliders"></i>`} <span>Settings</span>
           </a>
         `;
       }
@@ -2288,6 +2290,7 @@ class TiffinApp {
 
           // Update UI across all components immediately
           this.updateUserAuthBadgeUI();
+          this.renderNavigation();
           this.renderMobileDrawerNav();
           if (role === 'OWNER') {
             this.populateSettingsForm();
@@ -2344,6 +2347,7 @@ class TiffinApp {
 
         // Update UI across all views
         this.updateUserAuthBadgeUI();
+        this.renderNavigation();
         this.renderMobileDrawerNav();
         if (role === 'OWNER') {
           this.populateSettingsForm();
