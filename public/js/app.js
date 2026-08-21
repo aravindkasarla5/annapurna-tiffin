@@ -2672,35 +2672,23 @@ class TiffinApp {
     const encodedTn = encodeURIComponent('Order ' + (orderNum || 'Tiffin'));
 
     const isAndroid = /android/i.test(navigator.userAgent || '');
-    let targetUrl = redirectUrl;
+    
+    // Direct PhonePe URI scheme & Android intent URI (Launches installed PhonePe Android App directly without intermediate web page navigation)
+    const phonepeScheme = `phonepe://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
+    const intentScheme = `intent://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}#Intent;scheme=upi;end`;
+    const upiScheme = `upi://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
 
-    if (typeof redirectUrl === 'string' && (redirectUrl.includes('phonepe.com') || redirectUrl.includes('mercury.phonepe.com'))) {
-      targetUrl = redirectUrl;
-    } else {
-      const phonepeScheme = `phonepe://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
-      const intentScheme = `intent://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}#Intent;scheme=upi;end`;
-      const upiScheme = `upi://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
+    const fallbackUrl = isAndroid ? intentScheme : upiScheme;
 
-      targetUrl = isAndroid ? intentScheme : upiScheme;
-
-      // Attempt direct PhonePe scheme launch first on mobile devices
-      try {
-        window.location.href = phonepeScheme;
-        setTimeout(() => {
-          window.location.href = targetUrl;
-        }, 250);
-        return;
-      } catch (e) {
-        console.warn('[PhonePe Scheme Launch Warning]:', e);
-      }
-    }
-
+    // Launch direct PhonePe app scheme first, with universal Android UPI intent fallback
     try {
-      window.location.href = targetUrl;
+      window.location.href = phonepeScheme;
+      setTimeout(() => {
+        window.location.href = fallbackUrl;
+      }, 250);
     } catch (err) {
-      console.warn('[PhonePe Intent Launch Warning]: Fallback to upi:// URI', err);
-      const fallbackUpi = `upi://pay?pa=${encodedVpa}&pn=${encodedPn}&am=${encodedAm}&cu=INR&tn=${encodedTn}`;
-      window.location.href = fallbackUpi;
+      console.warn('[PhonePe Direct App Launch Fallback]:', err);
+      window.location.href = fallbackUrl;
     }
   }
 
