@@ -2653,17 +2653,27 @@ class TiffinApp {
     if (elBtnAmount) elBtnAmount.innerText = grandTotal;
   }
 
-  launchPhonePeIntent(redirectUrl) {
+  launchPhonePeIntent(redirectUrl, orderData = {}) {
     if (!redirectUrl) return;
 
     const isAndroid = /android/i.test(navigator.userAgent || '');
     let targetUrl = redirectUrl;
 
     if (isAndroid && typeof redirectUrl === 'string') {
-      // If PhonePe returns an intent:// scheme, ensure S.browser_fallback_url is attached to prevent Android 'App not installed' errors
-      if (redirectUrl.startsWith('intent://') && !redirectUrl.includes('S.browser_fallback_url=')) {
-        const webFallback = window.location.href;
-        targetUrl = redirectUrl.replace(/;end$/, `;S.browser_fallback_url=${encodeURIComponent(webFallback)};end`);
+      if (redirectUrl.startsWith('intent://') || redirectUrl.startsWith('phonepe://')) {
+        if (redirectUrl.startsWith('intent://') && !redirectUrl.includes('S.browser_fallback_url=')) {
+          const webFallback = window.location.href;
+          targetUrl = redirectUrl.replace(/;end$/, `;S.browser_fallback_url=${encodeURIComponent(webFallback)};end`);
+        } else {
+          targetUrl = redirectUrl;
+        }
+      } else if (redirectUrl.startsWith('http://') || redirectUrl.startsWith('https://')) {
+        // Construct Android intent for PhonePe (com.phonepe.app) with fallback to HTTP gateway URL
+        const vpa = (this.settings?.upi_id || '9392974900@ybl').trim();
+        const amount = orderData.amount || orderData.net_amount || (this.calculateCartTotals ? this.calculateCartTotals().grandTotal : '');
+        const orderNum = orderData.order_number || orderData.orderNumber || '';
+        
+        targetUrl = `intent://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent('Sri Lakshmi Annapurna Tiffin Center')}&am=${encodeURIComponent(amount)}&cu=INR&tn=${encodeURIComponent('Order ' + orderNum)}#Intent;scheme=upi;package=com.phonepe.app;S.browser_fallback_url=${encodeURIComponent(redirectUrl)};end`;
       }
     }
 
@@ -2671,7 +2681,7 @@ class TiffinApp {
       window.location.href = targetUrl;
     } catch (err) {
       console.warn('[PhonePe Intent Launch Warning]: Fallback to window.open', err);
-      window.open(targetUrl, '_system') || window.open(targetUrl, '_blank');
+      window.open(redirectUrl, '_system') || window.open(redirectUrl, '_blank');
     }
   }
 
@@ -2746,7 +2756,7 @@ class TiffinApp {
       }
 
       if (res.ok && json.success && json.redirectUrl) {
-        this.launchPhonePeIntent(json.redirectUrl);
+        this.launchPhonePeIntent(json.redirectUrl, json.data || { amount: grandTotal });
       } else {
         const errorMsg = json.message || (res.statusText ? `PhonePe Error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment.');
         console.error('[PhonePe Initiation Failed]:', json);
@@ -2855,7 +2865,7 @@ class TiffinApp {
       }
 
       if (res.ok && json.success && json.redirectUrl) {
-        this.launchPhonePeIntent(json.redirectUrl);
+        this.launchPhonePeIntent(json.redirectUrl, json.data || {});
       } else {
         const errorMsg = json.message || (res.statusText ? `PhonePe Error (${res.status}: ${res.statusText})` : 'Unable to launch PhonePe payment retry.');
         console.error('[PhonePe Retry Failed]:', json);
