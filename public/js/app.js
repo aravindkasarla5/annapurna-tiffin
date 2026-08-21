@@ -1909,6 +1909,13 @@ class TiffinApp {
       footer.classList.toggle('hidden', this.activeView !== 'secCustomerHome');
     }
 
+    // Floating Support Help Widget is ONLY visible for Customers / Guests (Hidden on Owner side)
+    const floatingSupport = document.querySelector('.floating-support-container');
+    if (floatingSupport) {
+      const isOwnerView = (this.currentRole === 'OWNER') || (this.currentUser && this.currentUser.role === 'OWNER') || (this.activeView && this.activeView.startsWith('secOwner'));
+      floatingSupport.classList.toggle('hidden', isOwnerView);
+    }
+
     // Trigger render logic per view
     if (this.activeView === 'secCustomerHome') this.renderMenu();
     if (this.activeView === 'secCustomerOrders') this.renderOrders();
