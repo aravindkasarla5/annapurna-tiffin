@@ -1570,16 +1570,24 @@ const RAW_PHONEPE_SALT_KEY = (process.env.PHONEPE_SALT_KEY || '').trim();
 const RAW_PHONEPE_SALT_INDEX = (process.env.PHONEPE_SALT_INDEX || '').trim();
 const RAW_PHONEPE_ENV = (process.env.PHONEPE_ENV || process.env.PAYMENT_ENV || '').trim().toLowerCase();
 
-// Default Sandbox Credentials (for PGTESTPAYUAT standard testing)
-const SANDBOX_MERCHANT_ID = 'PGTESTPAYUAT';
-const SANDBOX_SALT_KEY = '099eb0cd-02fe-4e2a-b15e-b02c97693ec2';
+// Default Sandbox Credentials (PhonePe Active Preprod Merchant)
+const SANDBOX_MERCHANT_ID = 'PGTESTPAYUAT86';
+const SANDBOX_SALT_KEY = '96434309-7796-489d-8924-ab56988a6076';
 const SANDBOX_SALT_INDEX = '1';
 const SANDBOX_BASE_URL = 'https://api-preprod.phonepe.com/apis/pg-sandbox';
 const PRODUCTION_BASE_URL = 'https://api.phonepe.com/apis/hermes';
 
-// Smart Resolution Logic to prevent Merchant ID / Salt Key / Endpoint mismatches
-let PHONEPE_MERCHANT_ID = RAW_PHONEPE_MERCHANT_ID || SANDBOX_MERCHANT_ID;
-let PHONEPE_SALT_KEY = RAW_PHONEPE_SALT_KEY || SANDBOX_SALT_KEY;
+// Smart Resolution Logic: Auto-map deprecated PGTESTPAYUAT to active PGTESTPAYUAT86
+let PHONEPE_MERCHANT_ID = RAW_PHONEPE_MERCHANT_ID;
+if (!PHONEPE_MERCHANT_ID || PHONEPE_MERCHANT_ID === 'PGTESTPAYUAT') {
+  PHONEPE_MERCHANT_ID = SANDBOX_MERCHANT_ID;
+}
+
+let PHONEPE_SALT_KEY = RAW_PHONEPE_SALT_KEY;
+if (!PHONEPE_SALT_KEY || (PHONEPE_MERCHANT_ID === SANDBOX_MERCHANT_ID && PHONEPE_SALT_KEY === '099eb0cd-02fe-4e2a-b15e-b02c97693ec2')) {
+  PHONEPE_SALT_KEY = SANDBOX_SALT_KEY;
+}
+
 let PHONEPE_SALT_INDEX = RAW_PHONEPE_SALT_INDEX || SANDBOX_SALT_INDEX;
 
 const isSandboxMerchant = (PHONEPE_MERCHANT_ID === SANDBOX_MERCHANT_ID || PHONEPE_MERCHANT_ID.startsWith('PGTESTPAY'));
