@@ -2375,8 +2375,32 @@ class TiffinApp {
         }
       }
       const upiDisplay = document.getElementById('checkoutUpiIdDisplay');
-      if (upiDisplay && this.settings.upi_id) {
-        upiDisplay.innerText = this.settings.upi_id;
+      if (upiDisplay) {
+        upiDisplay.innerText = this.settings.upi_id || '9392974900@ybl';
+      }
+
+      const elHolder = document.getElementById('displayBankHolder');
+      const elBank = document.getElementById('displayBankName');
+      const elAcc = document.getElementById('displayBankAccount');
+      const elIfsc = document.getElementById('displayBankIfsc');
+      const elBox = document.getElementById('checkoutBankDetailsDisplay');
+
+      const bankHolder = this.settings.account_holder || this.settings.upi_name || this.settings.hotel_name || '';
+      const bankName = this.settings.bank_name || '';
+      const bankAcc = this.settings.bank_account || '';
+      const bankIfsc = this.settings.bank_ifsc || '';
+
+      if (elHolder) elHolder.innerText = bankHolder || '-';
+      if (elBank) elBank.innerText = bankName || '-';
+      if (elAcc) elAcc.innerText = bankAcc || '-';
+      if (elIfsc) elIfsc.innerText = bankIfsc || '-';
+
+      if (elBox) {
+        if (bankAcc || bankIfsc || bankName) {
+          elBox.classList.remove('hidden');
+        } else {
+          elBox.classList.add('hidden');
+        }
       }
     }
 
@@ -2948,7 +2972,7 @@ class TiffinApp {
   }
 
   copyUpiId() {
-    const upiId = document.getElementById('checkoutUpiIdDisplay')?.innerText || 'annapurna.tiffin@upi';
+    const upiId = document.getElementById('checkoutUpiIdDisplay')?.innerText || '9392974900@ybl';
     navigator.clipboard.writeText(upiId).then(() => {
       this.showToast(`UPI ID "${upiId}" copied to clipboard!`, 'success');
     }).catch(() => {
@@ -5644,7 +5668,7 @@ class TiffinApp {
   async saveUpiVpaSetting() {
     const upiInput = document.getElementById('setUpiId')?.value;
     const upiIdTrim = (upiInput || '').trim();
-    const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+    const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z0-9.\-_]{2,64}$/i;
 
     if (upiIdTrim !== '' && !upiVpaRegex.test(upiIdTrim)) {
       this.showToast("❌ Unable to update Business Settings. Please enter a valid UPI VPA address.", "error");

@@ -2347,11 +2347,24 @@
                 style="display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(255,255,255,0.05); padding: 8px 14px; border-radius: var(--radius-full); margin-bottom: 1rem; border: 1px solid var(--border-color);">
                 <span style="font-size: 0.82rem; font-weight: 700; color: #FFF;"><i class="fa-solid fa-at"
                     style="color: var(--accent-gold);"></i> <span
-                    id="checkoutUpiIdDisplay">annapurna.tiffin@upi</span></span>
+                    id="checkoutUpiIdDisplay">9392974900@ybl</span></span>
                 <button type="button" class="btn-sm-status" onclick="app.copyUpiId()"
                   style="background: var(--accent-gold); color: #000; font-weight: 800; border: none; padding: 3px 10px; border-radius: 12px; font-size: 0.74rem; cursor: pointer;">
                   <i class="fa-regular fa-copy"></i> Copy
                 </button>
+              </div>
+
+              <!-- Bank Details Card (Displayed when bank details exist in settings) -->
+              <div id="checkoutBankDetailsDisplay" class="hidden" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.15); padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 1rem; text-align: left; font-size: 0.8rem; color: var(--text-muted);">
+                <div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--accent-gold); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-building-columns"></i> <span>Hotel Bank Account Details</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px 12px;">
+                  <div><span style="color: #AAA;">A/C Holder:</span> <strong id="displayBankHolder" style="color: #FFF;">-</strong></div>
+                  <div><span style="color: #AAA;">Bank Name:</span> <strong id="displayBankName" style="color: #FFF;">-</strong></div>
+                  <div><span style="color: #AAA;">A/C No:</span> <strong id="displayBankAccount" style="color: #FFF; font-family: monospace;">-</strong></div>
+                  <div><span style="color: #AAA;">IFSC Code:</span> <strong id="displayBankIfsc" style="color: #FFF; font-family: monospace;">-</strong></div>
+                </div>
               </div>
             </div>
 

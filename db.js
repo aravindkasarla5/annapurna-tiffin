@@ -139,13 +139,17 @@ async function initDatabase() {
       open_time VARCHAR(50) DEFAULT '06:30 AM',
       close_time VARCHAR(50) DEFAULT '10:30 PM',
       holidays VARCHAR(255) DEFAULT 'None (Open 7 Days)',
-      upi_id VARCHAR(100) DEFAULT 'annapurna.tiffin@upi',
+      upi_id VARCHAR(100) DEFAULT '9392974900@ybl',
       upi_name VARCHAR(100) DEFAULT 'Sri Lakshmi Annapurna Tiffin Center',
       upi_qr_code TEXT DEFAULT '/images/tiffin_logo.png',
       is_open BOOLEAN DEFAULT true,
       is_qr_pay_enabled BOOLEAN DEFAULT true,
       is_phonepe_enabled BOOLEAN DEFAULT true,
       description TEXT,
+      bank_name VARCHAR(255) DEFAULT '',
+      bank_account VARCHAR(100) DEFAULT '',
+      bank_ifsc VARCHAR(50) DEFAULT '',
+      account_holder VARCHAR(255) DEFAULT '',
       referral JSONB DEFAULT '{"enabled": true, "referrer_reward": 30, "new_customer_discount": 30, "min_order_value": 150, "monthly_limit": 500, "milestones": [{"count": 1, "bonus": 0}, {"count": 5, "bonus": 100}, {"count": 10, "bonus": 250}]}'::jsonb,
       upi_qr_updated_at BIGINT
     );`,
@@ -164,9 +168,9 @@ async function initDatabase() {
     `CREATE TABLE IF NOT EXISTS orders (
       id VARCHAR(100) PRIMARY KEY,
       order_number VARCHAR(100) NOT NULL UNIQUE,
-      customer_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
-      customer_name VARCHAR(255),
-      customer_mobile VARCHAR(50),
+      customer_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+      customer_name VARCHAR(255) NOT NULL,
+      customer_mobile VARCHAR(50) NOT NULL,
       order_type VARCHAR(50) DEFAULT 'Takeaway',
       delivery_address TEXT,
       notes TEXT,
@@ -178,6 +182,8 @@ async function initDatabase() {
       order_status VARCHAR(50) DEFAULT 'Received',
       items JSONB DEFAULT '[]'::jsonb,
       cancellation_reason TEXT,
+      rejection_reason TEXT,
+      cancelled_at TIMESTAMPTZ,
       utr_number VARCHAR(100),
       payment_screenshot TEXT,
       screenshot_url TEXT,
@@ -208,9 +214,9 @@ async function initDatabase() {
       referred_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
       referred_mobile VARCHAR(50),
       referred_name VARCHAR(255),
-      order_number VARCHAR(100),
-      status VARCHAR(50) DEFAULT 'Pending',
+      order_id VARCHAR(100),
       reward_amount NUMERIC(10, 2) DEFAULT 30.00,
+      status VARCHAR(50) DEFAULT 'Pending',
       date_time VARCHAR(100),
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
@@ -219,9 +225,13 @@ async function initDatabase() {
       id VARCHAR(100) PRIMARY KEY,
       user_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
       amount NUMERIC(10, 2) NOT NULL,
-      type VARCHAR(50) NOT NULL,
+      type VARCHAR(20) NOT NULL,
       description TEXT,
       date_time VARCHAR(100),
+      order_id VARCHAR(100),
+      balance_before NUMERIC(10, 2) DEFAULT 0.00,
+      balance_after NUMERIC(10, 2) DEFAULT 0.00,
+      status VARCHAR(50) DEFAULT 'SUCCESS',
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
 
@@ -323,6 +333,10 @@ async function initDatabase() {
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejection_reason TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255) DEFAULT '';`);
+        await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_account VARCHAR(100) DEFAULT '';`);
+        await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(50) DEFAULT '';`);
+        await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS account_holder VARCHAR(255) DEFAULT '';`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);

@@ -648,7 +648,8 @@ const handleSaveSettings = async (req, res) => {
     const {
       hotel_name, hotel_logo, phone, address, open_time, close_time,
       holidays, upi_id, upi_name, upi_qr_code, is_open, is_qr_pay_enabled,
-      is_phonepe_enabled, description, referral
+      is_phonepe_enabled, description, referral,
+      bank_name, bank_account, bank_ifsc, account_holder
     } = req.body;
 
     // Validate format of non-empty fields if provided
@@ -669,7 +670,7 @@ const handleSaveSettings = async (req, res) => {
     // Validate Official Hotel UPI VPA Address if provided non-empty
     if (upi_id !== undefined && upi_id !== null) {
       const upiStr = String(upi_id).trim();
-      const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+      const upiVpaRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z0-9.\-_]{2,64}$/i;
       if (upiStr !== '' && !upiVpaRegex.test(upiStr)) {
         return res.status(400).json({ success: false, message: "Please enter a valid UPI VPA address." });
       }
@@ -682,8 +683,13 @@ const handleSaveSettings = async (req, res) => {
     const newOpenTime = open_time !== undefined && open_time !== null ? open_time : (s.open_time || '');
     const newCloseTime = close_time !== undefined && close_time !== null ? close_time : (s.close_time || '');
     const newHolidays = holidays !== undefined && holidays !== null ? holidays : (s.holidays || '');
-    const newUpiId = upi_id !== undefined && upi_id !== null ? upi_id : (s.upi_id || '');
+    const newUpiId = upi_id !== undefined && upi_id !== null ? upi_id : (s.upi_id || '9392974900@ybl');
     const newUpiName = upi_name !== undefined ? upi_name : (s.upi_name || newHotelName);
+
+    const newBankName = bank_name !== undefined && bank_name !== null ? String(bank_name).trim() : (s.bank_name || '');
+    const newBankAccount = bank_account !== undefined && bank_account !== null ? String(bank_account).trim() : (s.bank_account || '');
+    const newBankIfsc = bank_ifsc !== undefined && bank_ifsc !== null ? String(bank_ifsc).trim().toUpperCase() : (s.bank_ifsc || '');
+    const newAccountHolder = account_holder !== undefined && account_holder !== null ? String(account_holder).trim() : (s.account_holder || newUpiName);
 
     // QR scanner image is stored directly as a base64 data URL inside PostgreSQL
     // (never as an ephemeral file path). This guarantees the scanner remains visible
@@ -742,8 +748,9 @@ const handleSaveSettings = async (req, res) => {
       `INSERT INTO settings (
         id, hotel_name, hotel_logo, phone, address, open_time, close_time, 
         holidays, upi_id, upi_name, upi_qr_code, is_open, is_qr_pay_enabled, 
-        is_phonepe_enabled, description, referral, upi_qr_updated_at
-      ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        is_phonepe_enabled, description, referral, upi_qr_updated_at,
+        bank_name, bank_account, bank_ifsc, account_holder
+      ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       ON CONFLICT (id) DO UPDATE SET
         hotel_name = EXCLUDED.hotel_name,
         hotel_logo = EXCLUDED.hotel_logo,
@@ -760,12 +767,16 @@ const handleSaveSettings = async (req, res) => {
         is_phonepe_enabled = EXCLUDED.is_phonepe_enabled,
         description = EXCLUDED.description,
         referral = EXCLUDED.referral,
-        upi_qr_updated_at = EXCLUDED.upi_qr_updated_at;`,
+        upi_qr_updated_at = EXCLUDED.upi_qr_updated_at,
+        bank_name = EXCLUDED.bank_name,
+        bank_account = EXCLUDED.bank_account,
+        bank_ifsc = EXCLUDED.bank_ifsc,
+        account_holder = EXCLUDED.account_holder;`,
       [
         newHotelName, newHotelLogo, newPhone, newAddress, newOpenTime, newCloseTime,
         newHolidays, newUpiId, newUpiName, newUpiQrCode, newIsOpen, newIsQrPay,
         newIsPhonepe, newDesc, typeof newRef === 'object' ? JSON.stringify(newRef) : newRef,
-        newQrUpdatedAt
+        newQrUpdatedAt, newBankName, newBankAccount, newBankIfsc, newAccountHolder
       ]
     );
 
