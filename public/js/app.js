@@ -5156,19 +5156,22 @@ class TiffinApp {
       hour: '2-digit', minute: '2-digit'
     });
 
-    const isReceived = order.order_status === 'Received';
+    const isRejected = order.order_status === 'Rejected';
     const isPreparing = order.order_status === 'Preparing';
     const isReady = order.order_status === 'Ready';
     const isCompleted = order.order_status === 'Completed';
-    let statusColor = '#EAA221';
-    if (isPreparing) statusColor = '#29B6F6';
-    if (isReady) statusColor = '#66BB6A';
-    if (isCompleted) statusColor = '#4CAF50';
+
+    let statusColor = '#FF9800';
+    let statusIcon = 'fa-clock';
+    if (isPreparing) { statusColor = '#29B6F6'; statusIcon = 'fa-fire-burner'; }
+    if (isReady) { statusColor = '#66BB6A'; statusIcon = 'fa-bell-concierge'; }
+    if (isCompleted) { statusColor = '#4CAF50'; statusIcon = 'fa-circle-check'; }
 
     let stepIdx = 0;
     if (isPreparing) stepIdx = 1;
     if (isReady) stepIdx = 2;
     if (isCompleted) stepIdx = 3;
+    const progressPct = stepIdx * 33.33;
 
     const subtotal = order.items.reduce((s, i) => s + (i.price * i.quantity), 0);
 
@@ -5249,21 +5252,46 @@ class TiffinApp {
         </tbody>
       </table>
 
-      <div class="od-total-bar">
+      <div class="od-total-bar" style="margin-bottom: 1.2rem;">
         <span>Grand Total</span>
         <span class="od-grand">₹${order.net_amount ?? order.total_amount ?? order.grand_total ?? 0}</span>
       </div>
 
-      <!-- Progress -->
-      <h4 class="od-section-title">Order Progress</h4>
-      <div class="od-progress">
-        ${['Received', 'Preparing', 'Ready', 'Completed'].map((label, idx) => `
-          <div class="od-prog-step ${idx <= stepIdx ? 'active' : ''}">
-            <div class="od-prog-dot">${idx <= stepIdx ? '✓' : idx + 1}</div>
-            <span>${label}</span>
+      <!-- LIVE ORDER TRACKING STEPPER IN ORDER DETAILS MODAL -->
+      <div class="co-bottom-tracking" style="margin-top: 1rem; margin-bottom: 1.25rem;">
+        <div class="co-track-head-bar">
+          <span><i class="fa-solid fa-route" style="color: var(--accent-gold);"></i> ${isRejected ? 'Kitchen Status' : 'ORDER PROGRESS & TRACKING'}</span>
+          <span style="color: ${statusColor}; font-weight: 800;"><i class="fa-solid ${statusIcon}"></i> ${order.order_status}</span>
+        </div>
+        ${isRejected ? `
+          <div style="margin-top: 10px; background: rgba(229, 57, 53, 0.1); border: 1px dashed rgba(229, 57, 53, 0.4); padding: 10px; border-radius: 8px; text-align: center; color: #E53935; font-weight: 700; font-size: 0.84rem;">
+            <i class="fa-solid fa-ban"></i> Order Rejected • Discontinued from Kitchen Queue
           </div>
-          ${idx < 3 ? `<div class="od-prog-line ${idx < stepIdx ? 'active' : ''}"></div>` : ''}
-        `).join('')}
+        ` : `
+          <div class="co-bottom-stepper">
+            <div class="co-bottom-track-bar">
+              <div class="co-bottom-track-fill" style="width: ${progressPct}%;"></div>
+            </div>
+            <div class="co-bottom-steps">
+              <div class="co-bottom-step ${stepIdx >= 0 ? 'active' : ''}">
+                <div class="co-bottom-dot"><i class="fa-solid fa-receipt"></i></div>
+                <span>Received</span>
+              </div>
+              <div class="co-bottom-step ${stepIdx >= 1 ? 'active' : ''}">
+                <div class="co-bottom-dot"><i class="fa-solid fa-fire-burner"></i></div>
+                <span>Preparing</span>
+              </div>
+              <div class="co-bottom-step ${stepIdx >= 2 ? 'active' : ''}">
+                <div class="co-bottom-dot"><i class="fa-solid fa-bell-concierge"></i></div>
+                <span>Ready</span>
+              </div>
+              <div class="co-bottom-step ${stepIdx >= 3 ? 'active' : ''}">
+                <div class="co-bottom-dot"><i class="fa-solid fa-circle-check"></i></div>
+                <span>Completed</span>
+              </div>
+            </div>
+          </div>
+        `}
       </div>
 
       ${(isCompleted || order.pickup_pin_verified) ? `
