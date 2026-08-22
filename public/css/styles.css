@@ -2356,13 +2356,28 @@ textarea.form-control {
 
 .od-close {
   position: absolute;
-  top: 12px;
+  top: 14px;
   right: 14px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1.1rem;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+  font-size: 1.05rem;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.2s ease;
+}
+
+.od-close:hover,
+.od-close:active {
+  background: rgba(255, 82, 82, 0.3);
+  color: #FF5252;
+  border-color: #FF5252;
 }
 
 .od-header {

@@ -5081,7 +5081,7 @@ class TiffinApp {
           <h2 class="od-title">Order #${order.order_number}</h2>
           <p class="od-date"><i class="fa-regular fa-calendar"></i> ${dateFormatted}</p>
         </div>
-        <span class="od-status" style="background: ${statusColor}22; border: 1px solid ${statusColor}; color: ${statusColor};">
+        <span class="od-status" style="background: ${statusColor}22; border: 1px solid ${statusColor}; color: ${statusColor}; margin-right: 36px;">
           ${order.order_status}
         </span>
       </div>
@@ -5176,6 +5176,13 @@ class TiffinApp {
     `;
 
     document.getElementById('orderDetailBackdrop').classList.add('open');
+  }
+
+  closeOrderDetail() {
+    const backdrop = document.getElementById('orderDetailBackdrop');
+    if (backdrop) {
+      backdrop.classList.remove('open');
+    }
   }
 
   async downloadInvoice(orderNum) {
