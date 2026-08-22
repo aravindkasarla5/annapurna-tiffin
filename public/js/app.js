@@ -5394,53 +5394,95 @@ class TiffinApp {
         </div>
       `;
 
-      // Render to DOM temporarily for html2pdf rendering
+      // Render to DOM temporarily with valid layout bounds (z-index: -99999 so invisible to user)
       let tempDiv = document.getElementById('tempInvoicePdfWrapper');
       if (!tempDiv) {
         tempDiv = document.createElement('div');
         tempDiv.id = 'tempInvoicePdfWrapper';
         tempDiv.style.position = 'fixed';
-        tempDiv.style.left = '-9999px';
+        tempDiv.style.left = '0';
         tempDiv.style.top = '0';
+        tempDiv.style.width = '750px';
+        tempDiv.style.zIndex = '-99999';
+        tempDiv.style.opacity = '1';
+        tempDiv.style.visibility = 'visible';
+        tempDiv.style.pointerEvents = 'none';
+        tempDiv.style.background = '#FFFFFF';
         document.body.appendChild(tempDiv);
       }
       tempDiv.innerHTML = invoiceHTML;
 
+      // Wait for layout rendering and font loading completion
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      const element = document.getElementById('pdfInvoiceContainer');
+      if (!element || element.offsetWidth === 0 || element.offsetHeight === 0) {
+        console.error('Invoice element invalid or has zero dimensions!');
+        this.showToast('Unable to generate invoice. Please try again.', 'error');
+        if (tempDiv) tempDiv.remove();
+        return;
+      }
+
       // Check html2pdf library
       if (window.html2pdf) {
-        const element = document.getElementById('pdfInvoiceContainer');
         const opt = {
-          margin: [8, 8, 8, 8],
+          margin: [10, 10, 10, 10],
           filename: filename,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, logging: false },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: 800,
+            width: element.offsetWidth,
+            height: element.offsetHeight
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
-        await window.html2pdf().set(opt).from(element).save();
+
+        const worker = window.html2pdf().set(opt).from(element);
+        const pdfBlob = await worker.output('blob');
+
+        if (!pdfBlob || pdfBlob.size < 1000) {
+          console.error('Invoice PDF generation resulted in blank file:', pdfBlob);
+          this.showToast('Unable to generate invoice. Please try again.', 'error');
+          if (tempDiv) tempDiv.remove();
+          return;
+        }
+
+        await worker.save();
         this.showToast(`✅ Invoice ${filename} downloaded successfully!`, 'success');
       } else {
         // Fallback print/download window if html2pdf is offline
         const printWin = window.open('', '_blank');
-        printWin.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>${filename}</title>
-              <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-              <style>
-                @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-              </style>
-            </head>
-            <body onload="window.print();">
-              ${invoiceHTML}
-            </body>
-          </html>
-        `);
-        printWin.document.close();
+        if (printWin) {
+          printWin.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>${filename}</title>
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+                <style>
+                  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                </style>
+              </head>
+              <body onload="window.print();">
+                ${invoiceHTML}
+              </body>
+            </html>
+          `);
+          printWin.document.close();
+        }
       }
+
+      if (tempDiv) tempDiv.remove();
     } catch (err) {
       console.error('Error downloading invoice:', err);
       this.showToast('Failed to download invoice. Please try again.', 'error');
+      const tempDiv = document.getElementById('tempInvoicePdfWrapper');
+      if (tempDiv) tempDiv.remove();
     }
   }
 
