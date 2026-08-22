@@ -5283,26 +5283,39 @@ class TiffinApp {
     }
   }
 
-  async downloadInvoice(orderNum) {
+  async downloadInvoice(orderNum, autoView = false) {
     if (!this.currentUser) {
       this.showToast('Please log in to download invoice', 'warning');
       return;
     }
 
+    if (this.isGeneratingInvoice) return;
+    this.isGeneratingInvoice = true;
+
+    // Find target buttons to update state across cards & modals
+    const buttons = document.querySelectorAll(`[onclick*="downloadInvoice('${orderNum}')"]`);
+    buttons.forEach(btn => {
+      btn.disabled = true;
+      btn.setAttribute('data-orig-html', btn.innerHTML);
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Downloading invoice...`;
+    });
+
+    this.showToast('⏳ Downloading invoice...', 'info');
+
     try {
-      this.showToast('Generating Digital Invoice PDF...', 'info');
       const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderNum}/invoice`);
       const json = await res.json();
 
       if (!json.success || !json.data) {
-        this.showToast(json.message || '❌ Invoice is available ONLY AFTER order is completed.', 'error');
+        this.showToast(json.message || '❌ Unable to generate invoice. Please try again.', 'error');
+        this.resetInvoiceButtons(orderNum);
         return;
       }
 
       const inv = json.data;
       const filename = `Sri-Lakshmi-Annapurna-Invoice-${inv.order_number}.pdf`;
 
-      // Build invoice HTML DOM element for PDF generation
+      // Build invoice HTML DOM element with clean text & Emojis for 100% reliable canvas rendering
       const itemsRowsHtml = (inv.items || []).map((item, idx) => `
         <tr style="border-bottom: 1px solid #EEEEEE;">
           <td style="padding: 10px 12px; font-weight: 600; color: #222;">${idx + 1}. ${item.name}</td>
@@ -5318,36 +5331,36 @@ class TiffinApp {
       });
 
       const invoiceHTML = `
-        <div id="pdfInvoiceContainer" style="width: 100%; max-width: 750px; margin: 0 auto; padding: 30px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #222; background: #FFFFFF;">
+        <div id="pdfInvoiceContainer" style="width: 750px; padding: 32px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111111; background: #FFFFFF; box-sizing: border-box;">
           <!-- INVOICE HEADER -->
           <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #D9531E; padding-bottom: 18px; margin-bottom: 20px;">
             <div>
               <h1 style="font-size: 1.45rem; font-weight: 900; color: #D9531E; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;">${inv.hotel_name}</h1>
-              <p style="font-size: 0.84rem; color: #555; margin: 2px 0;"><i class="fa-solid fa-location-dot" style="color: #D9531E;"></i> ${inv.hotel_address}</p>
-              <p style="font-size: 0.84rem; color: #555; margin: 2px 0;"><i class="fa-solid fa-phone" style="color: #4CAF50;"></i> Phone: ${inv.hotel_phone}</p>
+              <p style="font-size: 0.84rem; color: #444; margin: 2px 0;">📍 ${inv.hotel_address}</p>
+              <p style="font-size: 0.84rem; color: #444; margin: 2px 0;">📞 Phone: ${inv.hotel_phone}</p>
             </div>
             <div style="text-align: right;">
               <span style="background: #E8F5E9; color: #2E7D32; border: 1.5px solid #4CAF50; font-weight: 800; font-size: 0.82rem; padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 8px;">
                 ✅ TAX INVOICE
               </span>
-              <h2 style="font-size: 1.1rem; font-weight: 800; color: #333; margin: 0;">${inv.invoice_number}</h2>
-              <p style="font-size: 0.82rem; color: #666; margin: 4px 0 0 0;">Order #${inv.order_number}</p>
+              <h2 style="font-size: 1.1rem; font-weight: 800; color: #222; margin: 0;">${inv.invoice_number}</h2>
+              <p style="font-size: 0.82rem; color: #555; margin: 4px 0 0 0;">Order #${inv.order_number}</p>
             </div>
           </div>
 
           <!-- META DETAILS GRID -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; font-size: 0.85rem;">
             <div>
-              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Customer Name:</strong> ${inv.customer_name}</p>
-              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Mobile Number:</strong> ${inv.customer_mobile}</p>
-              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Order Type:</strong> ${inv.order_type}</p>
-              ${inv.delivery_address ? `<p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Delivery Address:</strong> ${inv.delivery_address}</p>` : ''}
+              <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Customer Name:</strong> ${inv.customer_name}</p>
+              <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Mobile Number:</strong> ${inv.customer_mobile}</p>
+              <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Order Type:</strong> ${inv.order_type}</p>
+              ${inv.delivery_address ? `<p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Delivery Address:</strong> ${inv.delivery_address}</p>` : ''}
             </div>
             <div style="text-align: right;">
-              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Invoice Date:</strong> ${formattedDate}</p>
-              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Payment Method:</strong> ${inv.payment_method}</p>
-              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Payment Status:</strong> <span style="color: #2E7D32; font-weight: 700;">${inv.payment_status}</span></p>
-              ${inv.utr_number ? `<p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Transaction UTR:</strong> ${inv.utr_number}</p>` : ''}
+              <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Invoice Date:</strong> ${formattedDate}</p>
+              <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Payment Method:</strong> ${inv.payment_method}</p>
+              <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Payment Status:</strong> <span style="color: #2E7D32; font-weight: 700;">${inv.payment_status}</span></p>
+              ${inv.utr_number ? `<p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Transaction UTR:</strong> ${inv.utr_number}</p>` : ''}
             </div>
           </div>
 
@@ -5394,7 +5407,7 @@ class TiffinApp {
         </div>
       `;
 
-      // Render to DOM temporarily with valid layout bounds (z-index: -99999 so invisible to user)
+      // Render to DOM temporarily in an isolated foreground container (opacity 0.02 so human-invisible, but foreground z-index 999999 for html2canvas)
       let tempDiv = document.getElementById('tempInvoicePdfWrapper');
       if (!tempDiv) {
         tempDiv = document.createElement('div');
@@ -5403,8 +5416,9 @@ class TiffinApp {
         tempDiv.style.left = '0';
         tempDiv.style.top = '0';
         tempDiv.style.width = '750px';
-        tempDiv.style.zIndex = '-99999';
-        tempDiv.style.opacity = '1';
+        tempDiv.style.minHeight = '1000px';
+        tempDiv.style.zIndex = '999999';
+        tempDiv.style.opacity = '0.02';
         tempDiv.style.visibility = 'visible';
         tempDiv.style.pointerEvents = 'none';
         tempDiv.style.background = '#FFFFFF';
@@ -5413,76 +5427,134 @@ class TiffinApp {
       tempDiv.innerHTML = invoiceHTML;
 
       // Wait for layout rendering and font loading completion
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise(resolve => setTimeout(resolve, 250));
 
       const element = document.getElementById('pdfInvoiceContainer');
       if (!element || element.offsetWidth === 0 || element.offsetHeight === 0) {
         console.error('Invoice element invalid or has zero dimensions!');
-        this.showToast('Unable to generate invoice. Please try again.', 'error');
+        this.showToast('❌ Unable to generate invoice. Please try again.', 'error');
+        this.resetInvoiceButtons(orderNum);
         if (tempDiv) tempDiv.remove();
         return;
       }
 
-      // Check html2pdf library
-      if (window.html2pdf) {
-        const opt = {
-          margin: [10, 10, 10, 10],
-          filename: filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            scrollX: 0,
-            scrollY: 0,
-            windowWidth: 800,
-            width: element.offsetWidth,
-            height: element.offsetHeight
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
-
-        const worker = window.html2pdf().set(opt).from(element);
-        const pdfBlob = await worker.output('blob');
-
-        if (!pdfBlob || pdfBlob.size < 1000) {
-          console.error('Invoice PDF generation resulted in blank file:', pdfBlob);
-          this.showToast('Unable to generate invoice. Please try again.', 'error');
-          if (tempDiv) tempDiv.remove();
-          return;
-        }
-
-        await worker.save();
-        this.showToast(`✅ Invoice ${filename} downloaded successfully!`, 'success');
-      } else {
-        // Fallback print/download window if html2pdf is offline
-        const printWin = window.open('', '_blank');
-        if (printWin) {
-          printWin.document.write(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <title>${filename}</title>
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-                <style>
-                  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                </style>
-              </head>
-              <body onload="window.print();">
-                ${invoiceHTML}
-              </body>
-            </html>
-          `);
-          printWin.document.close();
-        }
+      if (!window.html2pdf) {
+        this.showToast('❌ Unable to generate invoice. Please try again.', 'error');
+        this.resetInvoiceButtons(orderNum);
+        if (tempDiv) tempDiv.remove();
+        return;
       }
 
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 800,
+          windowHeight: 1200,
+          backgroundColor: '#FFFFFF',
+          width: element.offsetWidth || 750,
+          height: element.offsetHeight || 1000
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      const worker = window.html2pdf().set(opt).from(element);
+      const pdfBlob = await worker.output('blob');
+
+      if (!pdfBlob || pdfBlob.size < 2000) {
+        console.error('Invoice PDF generation resulted in blank/empty file:', pdfBlob);
+        this.showToast('❌ Unable to generate invoice. Please try again.', 'error');
+        this.resetInvoiceButtons(orderNum);
+        if (tempDiv) tempDiv.remove();
+        return;
+      }
+
+      // Store Blob URL for View Invoice button
+      if (!this.lastGeneratedInvoices) this.lastGeneratedInvoices = {};
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      this.lastGeneratedInvoices[orderNum] = blobUrl;
+
+      // Trigger File Download
+      await worker.save();
+
       if (tempDiv) tempDiv.remove();
+
+      this.showToast('✅ Invoice downloaded successfully!', 'success');
+
+      // Update button UI to: ✅ Invoice Downloaded
+      buttons.forEach(btn => {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-check"></i> ✅ Invoice Downloaded`;
+        btn.style.background = 'rgba(76, 175, 80, 0.3)';
+        btn.style.color = '#4CAF50';
+      });
+
+      // Show/insert "👁️ View Invoice" action button next to download button
+      this.renderViewInvoiceAction(orderNum, blobUrl);
+
+      if (autoView) {
+        this.viewInvoice(orderNum);
+      }
     } catch (err) {
       console.error('Error downloading invoice:', err);
-      this.showToast('Failed to download invoice. Please try again.', 'error');
+      this.showToast('❌ Unable to generate invoice. Please try again.', 'error');
+      this.resetInvoiceButtons(orderNum);
       const tempDiv = document.getElementById('tempInvoicePdfWrapper');
       if (tempDiv) tempDiv.remove();
+    } finally {
+      this.isGeneratingInvoice = false;
+    }
+  }
+
+  resetInvoiceButtons(orderNum) {
+    const buttons = document.querySelectorAll(`[onclick*="downloadInvoice('${orderNum}')"]`);
+    buttons.forEach(btn => {
+      btn.disabled = false;
+      const orig = btn.getAttribute('data-orig-html');
+      if (orig) btn.innerHTML = orig;
+      else btn.innerHTML = `<i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice`;
+    });
+  }
+
+  renderViewInvoiceAction(orderNum, blobUrl) {
+    const buttons = document.querySelectorAll(`[onclick*="downloadInvoice('${orderNum}')"]`);
+    buttons.forEach(btn => {
+      const parent = btn.parentElement;
+      if (parent && !parent.querySelector(`.btn-view-invoice_${orderNum}`)) {
+        const viewBtn = document.createElement('button');
+        viewBtn.className = `co-row-btn view-invoice-btn btn-view-invoice_${orderNum}`;
+        viewBtn.type = 'button';
+        viewBtn.setAttribute('onclick', `app.viewInvoice('${orderNum}')`);
+        viewBtn.style.background = 'rgba(41, 182, 246, 0.2)';
+        viewBtn.style.color = '#29B6F6';
+        viewBtn.style.border = '1.5px solid #29B6F6';
+        viewBtn.style.fontWeight = '800';
+        viewBtn.style.marginLeft = '6px';
+        viewBtn.style.padding = '6px 12px';
+        viewBtn.style.borderRadius = '6px';
+        viewBtn.style.cursor = 'pointer';
+        viewBtn.innerHTML = `<i class="fa-solid fa-eye"></i> 👁️ View Invoice`;
+        parent.insertBefore(viewBtn, btn.nextSibling);
+      }
+    });
+  }
+
+  viewInvoice(orderNum) {
+    const blobUrl = this.lastGeneratedInvoices ? this.lastGeneratedInvoices[orderNum] : null;
+    if (blobUrl) {
+      const win = window.open(blobUrl, '_blank');
+      if (!win) {
+        window.location.href = blobUrl;
+      }
+    } else {
+      this.downloadInvoice(orderNum, true);
     }
   }
 
