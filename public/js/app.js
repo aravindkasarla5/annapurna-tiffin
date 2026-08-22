@@ -1394,22 +1394,24 @@ class TiffinApp {
       const notifId = n.id || idx;
 
       return `
-        <div style="background: ${isRead ? 'rgba(255,255,255,0.02)' : 'rgba(234, 162, 33, 0.1)'}; border: 1px solid ${isRead ? 'var(--border-color)' : 'var(--accent-gold)'}; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer;" onclick="app.handleNotifClick('${notifId}')">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <i class="fa-solid ${this.getNotifIcon(n)}" style="color: var(--accent-gold); font-size: 1.1rem;"></i>
-            <div>
-              <div style="font-size: 0.85rem; font-weight: 700; color: #FFF;">${n.message || ''}</div>
-              <span style="font-size: 0.72rem; color: var(--text-muted);">${timeStr} ${n.order_number ? `• Order #${n.order_number}` : ''}</span>
+        <div class="notif-item-card ${isRead ? 'is-read' : 'is-unread'}" style="background: ${isRead ? 'rgba(255,255,255,0.02)' : 'rgba(234, 162, 33, 0.1)'}; border: 1px solid ${isRead ? 'var(--border-color)' : 'var(--accent-gold)'};" onclick="app.handleNotifClick('${notifId}')">
+          <div class="notif-icon-circle info">
+            <i class="fa-solid ${this.getNotifIcon(n)}"></i>
+          </div>
+          <div class="notif-content-body">
+            <div class="notif-header-line">
+              <strong class="notif-title-text">${n.message || ''}</strong>
+              <span class="notif-time-text">${timeStr} ${n.order_number ? `• Order #${n.order_number}` : ''}</span>
+            </div>
+            <div style="margin-top: 6px; display: flex; align-items: center; justify-content: flex-end;">
+              <button class="btn-secondary-outline" onclick="event.stopPropagation(); app.handleNotifClick('${notifId}')" style="padding: 3px 10px; font-size: 0.75rem; white-space: nowrap;">
+                Open <i class="fa-solid fa-arrow-right"></i>
+              </button>
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <button class="btn-secondary-outline" onclick="event.stopPropagation(); app.handleNotifClick('${notifId}')" style="padding: 4px 10px; font-size: 0.75rem; white-space: nowrap;">
-              Open <i class="fa-solid fa-arrow-right"></i>
-            </button>
-            <button type="button" class="btn-del-single-notif" onclick="event.stopPropagation(); app.deleteSingleNotification('${notifId}')" title="Delete notification" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-muted); width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
+          <button type="button" class="btn-del-single-notif" onclick="event.stopPropagation(); app.deleteSingleNotification('${notifId}')" title="Delete notification">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
       `;
     }).join('');
