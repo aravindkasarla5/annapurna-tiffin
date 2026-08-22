@@ -5072,12 +5072,6 @@ class TiffinApp {
                 <i class="fa-solid fa-eye"></i> View Full Details
               </button>
 
-              ${(isCompleted || order.pickup_pin_verified) ? `
-                <button class="co-row-btn receipt" onclick="app.downloadInvoice('${order.order_number}')" style="background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1.5px solid #4CAF50; font-weight: 800;">
-                  <i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice
-                </button>
-              ` : ''}
-
               ${order.review ? `
                 <button class="co-row-btn review reviewed" onclick="app.openOrderReviewModal('${order.order_number}')" style="background: rgba(255, 179, 0, 0.22); color: var(--accent-gold); border: 1.5px solid var(--accent-gold); font-weight: 800;" title="Click to view or edit your review">
                   <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rated ${order.review.rating}/5 • Edit Review
