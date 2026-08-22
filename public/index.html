@@ -1498,10 +1498,16 @@
           <p style="font-size: 0.85rem; color: var(--text-muted);">Track customer payments, UPI verification statements,
             and download financial reports</p>
         </div>
-        <button class="btn-primary-block" onclick="app.downloadPaymentStatementCSV()"
-          style="width: auto; padding: 9px 20px; background: linear-gradient(135deg, #4CAF50, #2E7D32);">
-          <i class="fa-solid fa-file-csv"></i> Download Statement (CSV)
-        </button>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button class="btn-primary-block" onclick="app.confirmDeleteAllPaymentsOwner()"
+            style="width: auto; padding: 9px 18px; background: rgba(229, 57, 53, 0.16); color: #FF5252; border: 1.5px solid rgba(229, 57, 53, 0.4); font-weight: 800; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-trash-can"></i> 🗑️ Delete All Payments
+          </button>
+          <button class="btn-primary-block" onclick="app.downloadPaymentStatementCSV()"
+            style="width: auto; padding: 9px 20px; background: linear-gradient(135deg, #4CAF50, #2E7D32);">
+            <i class="fa-solid fa-file-csv"></i> Download Statement (CSV)
+          </button>
+        </div>
       </div>
 
       <!-- Financial Metrics Summary Grid -->

@@ -2615,6 +2615,27 @@ app.patch('/api/payments/:id/status', authenticateToken, requireRole('OWNER'), a
   res.json({ success: true, data: pRes.rows[0], message: "Payment status updated." });
 });
 
+app.delete('/api/payments/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM payments WHERE id = $1;', [id]);
+    res.json({ success: true, message: "Payment record deleted successfully." });
+  } catch (err) {
+    console.error("Error deleting payment record:", err);
+    res.status(500).json({ success: false, message: "Failed to delete payment record." });
+  }
+});
+
+app.delete('/api/payments', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    await db.query('DELETE FROM payments;');
+    res.json({ success: true, message: "All payment records deleted successfully." });
+  } catch (err) {
+    console.error("Error deleting all payment records:", err);
+    res.status(500).json({ success: false, message: "Failed to delete all payment records." });
+  }
+});
+
 // =========================================================================
 // STATS & ANALYTICS
 // =========================================================================

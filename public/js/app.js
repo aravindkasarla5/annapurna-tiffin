@@ -6480,14 +6480,186 @@ class TiffinApp {
           </div>
         </td>
 
-        <!-- 5. Action (Bill) Column -->
+        <!-- 5. Action Column (Bill & Delete) -->
         <td style="padding: 14px 16px; vertical-align: middle; text-align: center;">
-          <button type="button" class="btn-sm-status" onclick="app.downloadSinglePaymentVoucher('${p.order_number}')" style="background: linear-gradient(135deg, #EAA221, #D9531E); color: #FFFFFF; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(217, 83, 30, 0.35); transition: transform 0.15s ease;" title="Print or Download Invoice / Bill">
-            <i class="fa-solid fa-file-invoice"></i> Action (Bill)
-          </button>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn-sm-status" onclick="app.downloadSinglePaymentVoucher('${p.order_number}')" style="background: linear-gradient(135deg, #EAA221, #D9531E); color: #FFFFFF; border: none; padding: 7px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(217, 83, 30, 0.35); transition: transform 0.15s ease;" title="Print or Download Invoice / Bill">
+              <i class="fa-solid fa-file-invoice"></i> Action (Bill)
+            </button>
+            <button type="button" class="btn-sm-status btn-del-pay-${p.id}" onclick="app.confirmDeleteSinglePaymentOwner('${p.id}', '${p.order_number}')" style="background: rgba(229, 57, 53, 0.16); color: #FF5252; border: 1.5px solid rgba(229, 57, 53, 0.4); padding: 7px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s ease;" title="Delete this payment record from Financial Ledger">
+              <i class="fa-solid fa-trash-can"></i> 🗑️ Delete
+            </button>
+          </div>
         </td>
       </tr>
     `;
+  }
+
+  confirmDeleteSinglePaymentOwner(paymentId, orderNum) {
+    if (!this.currentUser || this.currentUser.role !== 'OWNER') {
+      this.showToast('Unauthorized action', 'error');
+      return;
+    }
+
+    const modalBackdrop = document.createElement('div');
+    modalBackdrop.className = 'confirm-modal-backdrop';
+    modalBackdrop.id = 'ownerDeleteSinglePayModal';
+    modalBackdrop.style.position = 'fixed';
+    modalBackdrop.style.inset = '0';
+    modalBackdrop.style.background = 'rgba(0, 0, 0, 0.75)';
+    modalBackdrop.style.backdropFilter = 'blur(4px)';
+    modalBackdrop.style.zIndex = '99999';
+    modalBackdrop.style.display = 'flex';
+    modalBackdrop.style.alignItems = 'center';
+    modalBackdrop.style.justifyContent = 'center';
+    modalBackdrop.style.padding = '1rem';
+
+    modalBackdrop.innerHTML = `
+      <div style="background: var(--bg-surface-elevated, #1A1A24); border: 1.5px solid rgba(229, 57, 53, 0.5); border-radius: 16px; max-width: 440px; width: 100%; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); text-align: center; color: #FFF;">
+        <div style="width: 56px; height: 56px; background: rgba(229, 57, 53, 0.15); color: #FF5252; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; margin: 0 auto 16px auto;">
+          ⚠️
+        </div>
+        <h3 style="font-size: 1.25rem; font-weight: 900; color: #FFF; margin: 0 0 10px 0;">Delete Payment Record?</h3>
+        <p style="font-size: 0.88rem; color: #DDD; line-height: 1.5; margin: 0 0 14px 0;">
+          Are you sure you want to delete this payment record for <strong>Order #${orderNum}</strong> from the Financial Ledger & Payment History?
+        </p>
+        <div style="background: rgba(255, 152, 0, 0.1); border: 1px dashed rgba(255, 152, 0, 0.4); padding: 10px; border-radius: 8px; font-size: 0.8rem; color: #FFB74D; margin-bottom: 20px; text-align: left;">
+          ℹ️ <strong>IMPORTANT:</strong> The order record (Order #${orderNum}) and customer data will <strong>NOT</strong> be deleted.
+        </div>
+        <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 20px;">This action cannot be undone.</p>
+        <div style="display: flex; gap: 12px;">
+          <button type="button" onclick="document.getElementById('ownerDeleteSinglePayModal').remove()" style="flex: 1; padding: 10px; background: rgba(255,255,255,0.08); color: #FFF; border: 1px solid var(--border-color); border-radius: 8px; font-weight: 700; cursor: pointer;">
+            Cancel
+          </button>
+          <button type="button" id="btnConfirmDelSinglePay" onclick="app.executeDeleteSinglePaymentOwner('${paymentId}', '${orderNum}')" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #E53935, #C62828); color: #FFF; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(229,57,53,0.4);">
+            Delete
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modalBackdrop);
+  }
+
+  async executeDeleteSinglePaymentOwner(paymentId, orderNum) {
+    const btn = document.getElementById('btnConfirmDelSinglePay');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Deleting...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/payments/${paymentId}`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('✅ Payment record deleted successfully.', 'success');
+        const modal = document.getElementById('ownerDeleteSinglePayModal');
+        if (modal) modal.remove();
+        await this.fetchPayments(true);
+      } else {
+        this.showToast(json.message || '❌ Payment could not be deleted. Please try again.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = 'Delete';
+        }
+      }
+    } catch (err) {
+      console.error('Error executing payment deletion:', err);
+      this.showToast('❌ Payment could not be deleted. Please try again.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = 'Delete';
+      }
+    }
+  }
+
+  confirmDeleteAllPaymentsOwner() {
+    if (!this.currentUser || this.currentUser.role !== 'OWNER') {
+      this.showToast('Unauthorized action', 'error');
+      return;
+    }
+
+    if (!this.payments || !this.payments.length) {
+      this.showToast('No payment records to delete.', 'info');
+      return;
+    }
+
+    const modalBackdrop = document.createElement('div');
+    modalBackdrop.className = 'confirm-modal-backdrop';
+    modalBackdrop.id = 'ownerDeleteAllPayModal';
+    modalBackdrop.style.position = 'fixed';
+    modalBackdrop.style.inset = '0';
+    modalBackdrop.style.background = 'rgba(0, 0, 0, 0.8)';
+    modalBackdrop.style.backdropFilter = 'blur(5px)';
+    modalBackdrop.style.zIndex = '99999';
+    modalBackdrop.style.display = 'flex';
+    modalBackdrop.style.alignItems = 'center';
+    modalBackdrop.style.justifyContent = 'center';
+    modalBackdrop.style.padding = '1rem';
+
+    modalBackdrop.innerHTML = `
+      <div style="background: var(--bg-surface-elevated, #1A1A24); border: 2px solid #E53935; border-radius: 16px; max-width: 450px; width: 100%; padding: 24px; box-shadow: 0 12px 36px rgba(0,0,0,0.9); text-align: center; color: #FFF;">
+        <div style="width: 60px; height: 60px; background: rgba(229, 57, 53, 0.2); color: #FF5252; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 16px auto;">
+          ⚠️
+        </div>
+        <h3 style="font-size: 1.3rem; font-weight: 900; color: #FF5252; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">DELETE ALL PAYMENTS?</h3>
+        <p style="font-size: 0.9rem; color: #DDD; line-height: 1.5; margin: 0 0 14px 0;">
+          This will permanently delete all <strong>${this.payments.length}</strong> payment records from the Financial Ledger & Payment History.
+        </p>
+        <div style="background: rgba(76, 175, 80, 0.12); border: 1.5px solid #4CAF50; padding: 12px; border-radius: 10px; font-size: 0.84rem; color: #81C784; margin-bottom: 20px; text-align: left;">
+          ✅ <strong>IMPORTANT:</strong> Orders will <strong>NOT</strong> be deleted or modified in any way.
+        </div>
+        <p style="font-size: 0.8rem; color: #FF5252; font-weight: 700; margin-bottom: 20px;">This action cannot be undone.</p>
+        <div style="display: flex; gap: 12px;">
+          <button type="button" onclick="document.getElementById('ownerDeleteAllPayModal').remove()" style="flex: 1; padding: 11px; background: rgba(255,255,255,0.08); color: #FFF; border: 1px solid var(--border-color); border-radius: 8px; font-weight: 700; cursor: pointer;">
+            Cancel
+          </button>
+          <button type="button" id="btnConfirmDelAllPay" onclick="app.executeDeleteAllPaymentsOwner()" style="flex: 1; padding: 11px; background: linear-gradient(135deg, #D32F2F, #B71C1C); color: #FFF; border: none; border-radius: 8px; font-weight: 900; cursor: pointer; box-shadow: 0 4px 14px rgba(211,47,47,0.5);">
+            DELETE ALL
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modalBackdrop);
+  }
+
+  async executeDeleteAllPaymentsOwner() {
+    const btn = document.getElementById('btnConfirmDelAllPay');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Deleting...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/payments`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('✅ All payment records deleted successfully.', 'success');
+        const modal = document.getElementById('ownerDeleteAllPayModal');
+        if (modal) modal.remove();
+        await this.fetchPayments(true);
+      } else {
+        this.showToast(json.message || '❌ Payments could not be deleted. Please try again.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = 'DELETE ALL';
+        }
+      }
+    } catch (err) {
+      console.error('Error executing delete all payments:', err);
+      this.showToast('❌ Payments could not be deleted. Please try again.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = 'DELETE ALL';
+      }
+    }
   }
 
   downloadPaymentStatementCSV() {
