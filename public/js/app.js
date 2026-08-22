@@ -5556,24 +5556,26 @@ class TiffinApp {
     buttons.forEach(btn => {
       const parent = btn.parentElement;
       if (parent) {
-        // Ensure flex wrapper with clean 12px gap and top margin
+        // Enforce vertical column layout (one below another, NEVER side-by-side)
+        parent.classList.add('invoice-btn-group');
         parent.style.display = 'flex';
-        parent.style.alignItems = 'center';
-        parent.style.flexWrap = 'wrap';
-        parent.style.gap = '12px';
+        parent.style.flexDirection = 'column';
+        parent.style.alignItems = 'stretch';
+        parent.style.gap = '10px';
         parent.style.marginTop = '10px';
         parent.style.marginBottom = '6px';
+        parent.style.width = '100%';
 
-        btn.style.flex = '1';
-        btn.style.minWidth = '140px';
+        btn.style.width = '100%';
+        btn.style.flex = 'none';
 
         if (!parent.querySelector(`.btn-view-invoice_${orderNum}`)) {
           const viewBtn = document.createElement('button');
           viewBtn.className = `co-row-btn view-invoice-btn btn-view-invoice_${orderNum}`;
           viewBtn.type = 'button';
           viewBtn.setAttribute('onclick', `app.viewInvoice('${orderNum}')`);
-          viewBtn.style.flex = '1';
-          viewBtn.style.minWidth = '140px';
+          viewBtn.style.width = '100%';
+          viewBtn.style.flex = 'none';
           viewBtn.style.background = 'rgba(41, 182, 246, 0.2)';
           viewBtn.style.color = '#29B6F6';
           viewBtn.style.border = '1.5px solid #29B6F6';
@@ -5588,7 +5590,7 @@ class TiffinApp {
           viewBtn.style.fontSize = '0.82rem';
           viewBtn.style.boxShadow = '0 2px 8px rgba(41, 182, 246, 0.2)';
           viewBtn.innerHTML = `<i class="fa-solid fa-eye"></i> 👁️ View Invoice`;
-          parent.insertBefore(viewBtn, btn.nextSibling);
+          parent.appendChild(viewBtn);
         }
       }
     });

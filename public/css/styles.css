@@ -2579,6 +2579,23 @@ textarea.form-control {
   box-shadow: 0 6px 20px rgba(217,83,30,0.6);
 }
 
+/* Strict Vertical Layout: Download Invoice & View Invoice buttons MUST stack ONE BELOW ANOTHER on ALL screens */
+.invoice-btn-group {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 10px !important;
+  width: 100% !important;
+  margin-top: 10px !important;
+}
+
+.invoice-btn-group button,
+.view-invoice-btn {
+  width: 100% !important;
+  flex: none !important;
+  box-sizing: border-box !important;
+}
+
 .footer-bottom {
   max-width: 1200px;
   margin: 0 auto;
