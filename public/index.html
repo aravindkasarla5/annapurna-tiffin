@@ -2789,6 +2789,41 @@
     </div>
   </div>
 
+  <!-- Owner Pickup PIN Completion Modal Backdrop -->
+  <div class="modal-backdrop" id="verifyPinModalBackdrop" onclick="app.closeVerifyPinModal()">
+    <div class="modal-card" style="max-width: 440px;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1.5px solid var(--accent-gold); padding-bottom: 10px;">
+        <h3 style="color: var(--accent-gold); font-size: 1.1rem;"><i class="fa-solid fa-key" style="color: var(--accent-gold);"></i> 🔐 Pickup PIN Verification</h3>
+        <button class="icon-btn" onclick="app.closeVerifyPinModal()" style="width: 32px; height: 32px; color: #FFF;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <div id="verifyPinModalOrderInfo" style="text-align: center; margin-bottom: 14px;">
+          <strong id="verifyPinModalOrderNum" style="font-size: 1.15rem; color: #FFF; display: block;">Order #----</strong>
+          <span style="font-size: 0.84rem; color: var(--text-muted);">Please ask the customer to provide their 4-digit Pickup PIN to complete this order.</span>
+        </div>
+
+        <form id="verifyPinModalForm" onsubmit="app.submitModalVerifyPin(event)">
+          <input type="hidden" id="verifyPinModalOrderId" value="" />
+          <div style="margin-bottom: 16px; text-align: center;">
+            <label style="font-size: 0.8rem; font-weight: 800; color: var(--accent-gold); display: block; margin-bottom: 8px;">CUSTOMER 4-DIGIT PICKUP PIN</label>
+            <input type="text" id="verifyPinModalInput" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="[ 4 8 2 7 ]" required autocomplete="off" style="width: 100%; max-width: 220px; margin: 0 auto; background: rgba(0,0,0,0.5); border: 2px solid var(--accent-gold); color: #00E676; font-family: monospace; font-size: 1.6rem; font-weight: 900; text-align: center; letter-spacing: 8px; padding: 10px 14px; border-radius: 10px; display: block; box-shadow: 0 0 15px rgba(234, 162, 33, 0.25);">
+          </div>
+
+          <div id="verifyPinModalFeedback" style="margin-bottom: 14px; font-size: 0.84rem; font-weight: 700; text-align: center; display: none;"></div>
+
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn-auth-secondary" onclick="app.closeVerifyPinModal()" style="flex: 1; justify-content: center; padding: 10px;">
+              Cancel
+            </button>
+            <button type="submit" id="btnSubmitModalPin" class="btn-auth-primary" style="flex: 1; justify-content: center; padding: 10px; background: linear-gradient(135deg, var(--accent-gold), #D9531E); color: #000; font-weight: 900;">
+              <i class="fa-solid fa-shield-check"></i> Verify & Complete
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Raise Support Ticket Modal -->
   <div class="modal-backdrop" id="raiseTicketModalBackdrop" onclick="app.toggleRaiseTicketModal(false)">
     <div class="modal-card" style="max-width: 520px;" onclick="event.stopPropagation()">

@@ -2298,10 +2298,39 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
   }
 
   const newOrderStatus = order_status || order.order_status;
-  const newPaymentStatus = payment_status || order.payment_status;
+  let newPaymentStatus = payment_status || order.payment_status;
   const newRejectionReason = rejection_reason !== undefined ? rejection_reason : order.rejection_reason;
+  let pinVerified = Boolean(order.pickup_pin_verified);
 
-  await db.query('UPDATE orders SET order_status = $1, payment_status = $2, rejection_reason = $3 WHERE id = $4;', [newOrderStatus, newPaymentStatus, newRejectionReason, order.id]);
+  // 🚨 CRITICAL PIN ENFORCEMENT: Completing an order requires valid Pickup PIN verification!
+  if (newOrderStatus === 'Completed') {
+    if (!pinVerified) {
+      const inputPin = String(req.body.pin || '').trim();
+      if (!inputPin) {
+        return res.status(400).json({
+          success: false,
+          require_pin: true,
+          message: "❌ Pickup PIN verification required! Please enter the customer's 4-digit Pickup PIN to complete this order."
+        });
+      }
+
+      if (inputPin !== String(order.pickup_pin || '').trim()) {
+        return res.status(400).json({
+          success: false,
+          require_pin: true,
+          message: "❌ Incorrect Pickup PIN. Please ask the customer to provide the correct PIN."
+        });
+      }
+
+      // PIN is correct! Mark verified
+      pinVerified = true;
+      if (newPaymentStatus === 'Pending' || newPaymentStatus === 'Cash Pending') {
+        newPaymentStatus = (order.payment_method || '').toLowerCase().includes('cash') ? 'Cash Received' : 'Paid';
+      }
+    }
+  }
+
+  await db.query('UPDATE orders SET order_status = $1, payment_status = $2, rejection_reason = $3, pickup_pin_verified = $4 WHERE id = $5;', [newOrderStatus, newPaymentStatus, newRejectionReason, pinVerified, order.id]);
   await db.query('UPDATE payments SET payment_status = $1 WHERE order_number = $2;', [newPaymentStatus, order.order_number]);
 
   // Dispatch Customer Notification on Status Update

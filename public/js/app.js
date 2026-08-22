@@ -3680,6 +3680,110 @@ class TiffinApp {
     }
   }
 
+  openVerifyPinModal(orderId) {
+    const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) return;
+
+    const backdrop = document.getElementById('verifyPinModalBackdrop');
+    const orderIdInput = document.getElementById('verifyPinModalOrderId');
+    const orderNumEl = document.getElementById('verifyPinModalOrderNum');
+    const pinInput = document.getElementById('verifyPinModalInput');
+    const feedbackBox = document.getElementById('verifyPinModalFeedback');
+
+    if (orderIdInput) orderIdInput.value = order.id;
+    if (orderNumEl) orderNumEl.innerText = `Order #${order.order_number}`;
+    if (pinInput) {
+      pinInput.value = '';
+      pinInput.style.borderColor = 'var(--accent-gold)';
+    }
+    if (feedbackBox) {
+      feedbackBox.style.display = 'none';
+      feedbackBox.innerHTML = '';
+    }
+
+    if (backdrop) {
+      backdrop.classList.add('open');
+      setTimeout(() => {
+        if (pinInput) pinInput.focus();
+      }, 100);
+    }
+  }
+
+  closeVerifyPinModal() {
+    const backdrop = document.getElementById('verifyPinModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  async submitModalVerifyPin(e) {
+    if (e) e.preventDefault();
+
+    const orderIdInput = document.getElementById('verifyPinModalOrderId');
+    const pinInput = document.getElementById('verifyPinModalInput');
+    const feedbackBox = document.getElementById('verifyPinModalFeedback');
+    const btnSubmit = document.getElementById('btnSubmitModalPin');
+
+    const orderId = orderIdInput ? orderIdInput.value : '';
+    const pinVal = pinInput ? pinInput.value.trim() : '';
+
+    if (!pinVal || pinVal.length !== 4 || !/^\d{4}$/.test(pinVal)) {
+      const errorMsg = "❌ Incorrect Pickup PIN. Please enter customer's 4-digit Pickup PIN.";
+      this.showToast(errorMsg, 'error');
+      if (feedbackBox) {
+        feedbackBox.style.display = 'block';
+        feedbackBox.style.color = '#FF5252';
+        feedbackBox.innerHTML = `❌ Incorrect Pickup PIN.<br><span style="font-weight: normal; font-size: 0.78rem;">Please ask the customer to provide the correct 4-digit PIN.</span>`;
+      }
+      if (pinInput) pinInput.focus();
+      return;
+    }
+
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/verify-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinVal })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || '✅ Pickup PIN Verified & Order Completed!', 'success');
+        this.closeVerifyPinModal();
+        this.closeOrderDetail();
+        await this.fetchOrders();
+      } else {
+        const errorMsg = json.message || '❌ Incorrect Pickup PIN. Please ask the customer to provide the correct PIN.';
+        this.showToast(errorMsg, 'error');
+        if (feedbackBox) {
+          feedbackBox.style.display = 'block';
+          feedbackBox.style.color = '#FF5252';
+          feedbackBox.innerHTML = `❌ Incorrect Pickup PIN.<br><span style="font-weight: normal; font-size: 0.78rem;">Please ask the customer to provide the correct PIN.</span>`;
+        }
+        if (pinInput) {
+          pinInput.value = '';
+          pinInput.focus();
+        }
+      }
+    } catch (err) {
+      console.error('Error verifying pickup PIN:', err);
+      this.showToast('Server error verifying pickup PIN.', 'error');
+      if (feedbackBox) {
+        feedbackBox.style.display = 'block';
+        feedbackBox.style.color = '#FF5252';
+        feedbackBox.innerHTML = `Server error verifying pickup PIN. Please try again.`;
+      }
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-shield-check"></i> Verify & Complete`;
+      }
+    }
+  }
+
   async submitCustomerOrder(e) {
     e.preventDefault();
 
@@ -5638,6 +5742,12 @@ class TiffinApp {
   async updateOrderStatus(orderId, newStatus, targetBtn = null) {
     const order = this.orders.find(o => o.id === orderId || o.order_number === orderId);
     if (!order) return;
+
+    // 🚨 CRITICAL PIN REQUIREMENT: Intercept "Completed" status on unverified orders!
+    if (newStatus === 'Completed' && !order.pickup_pin_verified) {
+      this.openVerifyPinModal(order.id);
+      return;
+    }
 
     const key = `status_${order.id}`;
     if (this.processingOrders.has(key)) return;
