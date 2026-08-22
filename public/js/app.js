@@ -6387,6 +6387,29 @@ class TiffinApp {
     tableBody.innerHTML = list.map(p => this.createPaymentTableRowHTML(p)).join('');
   }
 
+  formatPaymentDateTime(p) {
+    let raw = p.created_at || p.order_date || p.date_time || p.timestamp;
+    if (!raw && this.orders && p.order_number) {
+      const matchingOrder = this.orders.find(o => o.order_number === p.order_number);
+      if (matchingOrder) raw = matchingOrder.created_at || matchingOrder.order_date;
+    }
+    if (!raw) return 'Today';
+    try {
+      const d = new Date(raw);
+      if (isNaN(d.getTime())) return String(raw);
+      return d.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      return String(raw);
+    }
+  }
+
   createPaymentTableRowHTML(p) {
     const isPaid = (p.payment_status || '').includes('Paid') || (p.payment_status || '').includes('Verified') || (p.payment_status || '').includes('Cash Received');
     const isPending = (p.payment_status || '').includes('Pending') || (p.payment_status || '').includes('Verification');
@@ -6398,16 +6421,16 @@ class TiffinApp {
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color); transition: background 0.2s ease;">
-        <!-- 1. Order ID Column -->
+        <!-- 1. Order ID Column (OWNER SIDE: Order ID, Customer Name, Date & Time) -->
         <td style="padding: 14px 16px; vertical-align: middle;">
           <div style="font-weight: 800; font-size: 0.95rem; color: var(--accent-gold);">
             <i class="fa-solid fa-receipt"></i> #${p.order_number}
           </div>
           <div style="font-size: 0.82rem; color: #FFF; font-weight: 600; margin-top: 3px;">
-            <i class="fa-solid fa-user" style="color: var(--primary);"></i> ${p.customer_name}
+            <i class="fa-solid fa-user" style="color: var(--primary);"></i> ${p.customer_name || 'Customer'}
           </div>
-          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;">
-            <i class="fa-regular fa-clock"></i> ${p.date_time || 'Today'}
+          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 3px;">
+            <i class="fa-regular fa-clock"></i> ${this.formatPaymentDateTime(p)}
           </div>
         </td>
 
@@ -7146,13 +7169,13 @@ class TiffinApp {
 
     return `
       <tr style="border-bottom: 1px solid var(--border-color); transition: background 0.2s ease;">
-        <!-- 1. Order ID & Date -->
+        <!-- 1. Order ID & Date (CUSTOMER SIDE: Order ID, Date & Time) -->
         <td style="padding: 14px 16px; vertical-align: middle;">
           <div style="font-weight: 800; font-size: 0.95rem; color: var(--accent-gold);">
             <i class="fa-solid fa-receipt"></i> #${p.order_number}
           </div>
-          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 3px;">
-            <i class="fa-regular fa-clock"></i> ${p.date_time || 'Today'}
+          <div style="font-size: 0.76rem; color: #E0E0E0; font-weight: 600; margin-top: 3px;">
+            <i class="fa-regular fa-clock"></i> ${this.formatPaymentDateTime(p)}
           </div>
         </td>
 
