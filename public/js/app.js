@@ -208,7 +208,7 @@ class TiffinApp {
     this.initPwaInstall();
 
     // Bind Web Audio Context unlocking on user gesture
-    ['mousedown', 'click', 'keydown', 'touchstart'].forEach(evt => {
+    ['mousedown', 'click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
       window.addEventListener(evt, () => this.initAudioContext(), { passive: true });
     });
   }
@@ -398,11 +398,13 @@ class TiffinApp {
         }
       }
       if (this.audioCtx && this.audioCtx.state === 'suspended') {
-        this.audioCtx.resume().catch(() => {});
+        this.audioCtx.resume().then(() => {
+          this._audioUnlocked = true;
+        }).catch(() => {});
       }
 
       // Warm up / unlock AudioContext during a user gesture tick by playing a 0.001s silent audio frame
-      if (this.audioCtx && !this._audioUnlocked) {
+      if (this.audioCtx && !this._audioUnlocked && this.audioCtx.state === 'running') {
         const osc = this.audioCtx.createOscillator();
         const gain = this.audioCtx.createGain();
         gain.gain.value = 0.00001; // virtually silent
@@ -498,51 +500,66 @@ class TiffinApp {
   playNotificationChime() {
     if (!this.isSoundEnabled()) return;
 
-    let webAudioPlayed = false;
+    const playWebAudioNotes = () => {
+      try {
+        if (!this.audioCtx) return false;
+        const now = this.audioCtx.currentTime;
+
+        // Harmonic 3-Note Chime: C5 (523.25 Hz) -> E5 (659.25 Hz) -> G5 (783.99 Hz)
+        const notes = [
+          { freq: 523.25, start: now, duration: 0.15 },
+          { freq: 659.25, start: now + 0.08, duration: 0.2 },
+          { freq: 783.99, start: now + 0.18, duration: 0.35 }
+        ];
+
+        notes.forEach(note => {
+          const osc = this.audioCtx.createOscillator();
+          const gain = this.audioCtx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(note.freq, note.start);
+
+          gain.gain.setValueAtTime(0, note.start);
+          gain.gain.linearRampToValueAtTime(1.0, note.start + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.001, note.start + note.duration);
+
+          osc.connect(gain);
+          gain.connect(this.audioCtx.destination);
+
+          osc.start(note.start);
+          osc.stop(note.start + note.duration);
+        });
+        return true;
+      } catch (e) {
+        console.warn('Audio chime play warning:', e);
+        return false;
+      }
+    };
+
     try {
       this.initAudioContext();
       if (this.audioCtx) {
-        if (this.audioCtx.state === 'suspended') {
-          this.audioCtx.resume().catch(() => {});
-        }
-
         if (this.audioCtx.state === 'running') {
-          const now = this.audioCtx.currentTime;
-
-          // Harmonic 3-Note Chime: C5 (523.25 Hz) -> E5 (659.25 Hz) -> G5 (783.99 Hz)
-          const notes = [
-            { freq: 523.25, start: now, duration: 0.15 },
-            { freq: 659.25, start: now + 0.08, duration: 0.2 },
-            { freq: 783.99, start: now + 0.18, duration: 0.35 }
-          ];
-
-          notes.forEach(note => {
-            const osc = this.audioCtx.createOscillator();
-            const gain = this.audioCtx.createGain();
-
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(note.freq, note.start);
-
-            gain.gain.setValueAtTime(0, note.start);
-            gain.gain.linearRampToValueAtTime(1.0, note.start + 0.015);
-            gain.gain.exponentialRampToValueAtTime(0.001, note.start + note.duration);
-
-            osc.connect(gain);
-            gain.connect(this.audioCtx.destination);
-
-            osc.start(note.start);
-            osc.stop(note.start + note.duration);
+          playWebAudioNotes();
+          return;
+        } else if (this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume().then(() => {
+            if (this.audioCtx && this.audioCtx.state === 'running') {
+              playWebAudioNotes();
+            } else {
+              this.playFallbackAudioChime();
+            }
+          }).catch(() => {
+            this.playFallbackAudioChime();
           });
-          webAudioPlayed = true;
+          return;
         }
       }
     } catch (e) {
       console.warn('Audio chime play warning:', e);
     }
 
-    if (!webAudioPlayed) {
-      this.playFallbackAudioChime();
-    }
+    this.playFallbackAudioChime();
   }
 
   isSoundEnabled() {
