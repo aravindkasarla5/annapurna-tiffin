@@ -181,10 +181,15 @@
 
   <!-- Notifications Dropdown Tray Modal -->
   <div class="modal-backdrop" id="notifBackdrop" onclick="app.toggleNotificationsTray(false)">
-    <div class="modal-card" style="max-width: 440px;" onclick="event.stopPropagation()">
+    <div class="modal-card" style="max-width: 440px; position: relative;" onclick="event.stopPropagation()">
       
+      <!-- Modal Top-Right Close Button -->
+      <button type="button" class="icon-btn notif-modal-close-btn" onclick="app.toggleNotificationsTray(false)" title="Close Notifications" style="position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; font-size: 0.9rem; z-index: 10; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
       <!-- Tray Header -->
-      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem; padding-right: 40px;">
         <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
           <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">
             <i class="fa-solid fa-bell"></i>
@@ -201,9 +206,6 @@
           </button>
           <button type="button" class="btn-clear-notif" onclick="app.clearAllNotifications()" title="Clear all notifications" style="padding: 4px 8px; font-size: 0.72rem;">
             <i class="fa-solid fa-trash-can"></i> Clear All
-          </button>
-          <button class="icon-btn" onclick="app.toggleNotificationsTray(false)" style="width: 28px; height: 28px; font-size: 0.8rem;">
-            <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
       </div>
