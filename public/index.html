@@ -184,25 +184,25 @@
     <div class="modal-card" style="max-width: 440px;" onclick="event.stopPropagation()">
       
       <!-- Tray Header -->
-      <div class="modal-header" style="justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+      <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem;">
+        <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+          <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">
             <i class="fa-solid fa-bell"></i>
           </div>
-          <div>
-            <h3 style="font-size: 1.05rem; color: #FFF; margin: 0;">Notifications</h3>
-            <span style="font-size: 0.74rem; color: var(--text-muted);" id="notifSubCountText">0 new alerts</span>
+          <div style="min-width: 0;">
+            <h3 style="font-size: 1rem; color: #FFF; margin: 0;">Notifications</h3>
+            <span style="font-size: 0.72rem; color: var(--text-muted);" id="notifSubCountText">0 new alerts</span>
           </div>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button type="button" class="btn-tray-sound-toggle" id="btnTraySoundToggle" onclick="app.toggleSoundPreference()" title="Toggle Notification Sound" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="btn-tray-sound-toggle" id="btnTraySoundToggle" onclick="app.toggleSoundPreference()" title="Toggle Notification Sound" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 8px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px;">
             <i class="fa-solid fa-volume-high" style="color: var(--accent-gold);"></i> <span>Sound ON</span>
           </button>
-          <button type="button" class="btn-clear-notif" onclick="app.clearAllNotifications()" title="Clear all notifications">
+          <button type="button" class="btn-clear-notif" onclick="app.clearAllNotifications()" title="Clear all notifications" style="padding: 4px 8px; font-size: 0.72rem;">
             <i class="fa-solid fa-trash-can"></i> Clear All
           </button>
-          <button class="icon-btn" onclick="app.toggleNotificationsTray(false)" style="width: 30px; height: 30px; font-size: 0.85rem;">
+          <button class="icon-btn" onclick="app.toggleNotificationsTray(false)" style="width: 28px; height: 28px; font-size: 0.8rem;">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
@@ -1162,24 +1162,24 @@
 
       <!-- Live Real-Time Notifications Feed Card for Hotel Owner -->
       <div id="ownerDashboardNotifCard" style="background: var(--bg-surface-elevated); border: 1px solid var(--accent-gold); border-radius: var(--radius-lg); padding: 1.2rem; margin-bottom: 1.5rem; box-shadow: 0 8px 24px rgba(0,0,0,0.3);">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.65rem;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.65rem;">
+          <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+            <div style="width: 34px; height: 34px; border-radius: 50%; background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">
               <i class="fa-solid fa-bell"></i>
             </div>
-            <div>
-              <h3 style="font-size: 1rem; color: #FFF; margin: 0; display: flex; align-items: center; gap: 8px;">
+            <div style="min-width: 0;">
+              <h3 style="font-size: 0.98rem; color: #FFF; margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
                 Live Activity & Notifications <span class="inline-badge" id="ownerDashUnreadBadge" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; position: static; display: inline-block; width: auto; height: auto;">0 Unread</span>
               </h3>
-              <p style="font-size: 0.76rem; color: var(--text-muted); margin: 0;">Real-time customer orders, payment receipts, and alert updates</p>
+              <p style="font-size: 0.74rem; color: var(--text-muted); margin: 0;">Real-time customer orders, payment receipts, and alert updates</p>
             </div>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <button type="button" class="btn-tray-sound-toggle" id="btnDashSoundToggle" onclick="app.toggleSoundPreference()" title="Toggle Notification Sound" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn-tray-sound-toggle" id="btnDashSoundToggle" onclick="app.toggleSoundPreference()" title="Toggle Notification Sound" style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 8px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px;">
               <i class="fa-solid fa-volume-high" style="color: var(--accent-gold);"></i> <span>Sound ON</span>
             </button>
-            <button type="button" class="btn-secondary-outline" onclick="app.toggleNotificationsTray()" style="padding: 4px 12px; font-size: 0.78rem;">
+            <button type="button" class="btn-secondary-outline" onclick="app.toggleNotificationsTray()" style="padding: 4px 10px; font-size: 0.75rem;">
               <i class="fa-solid fa-expand"></i> View All
             </button>
           </div>
