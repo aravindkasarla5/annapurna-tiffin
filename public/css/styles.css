@@ -400,6 +400,19 @@ h1, h2, h3, h4, h5, h6 {
   border: 2px solid var(--bg-app);
 }
 
+.inline-badge,
+#ownerDashUnreadBadge {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  height: auto !important;
+  border: none !important;
+}
+
 /* Desktop Sidebar Nav - VISIBLE ONLY ON 1200px+ DESKTOP SCREENS */
 .desktop-sidebar {
   display: none !important;
