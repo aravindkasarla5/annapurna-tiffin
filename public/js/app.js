@@ -5318,10 +5318,10 @@ class TiffinApp {
       // Build invoice HTML DOM element with clean text & Emojis for 100% reliable canvas rendering
       const itemsRowsHtml = (inv.items || []).map((item, idx) => `
         <tr style="border-bottom: 1px solid #EEEEEE;">
-          <td style="padding: 10px 12px; font-weight: 600; color: #222;">${idx + 1}. ${item.name}</td>
-          <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: #444;">${item.quantity}</td>
-          <td style="padding: 10px 12px; text-align: right; color: #555;">₹${item.price}</td>
-          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #222;">₹${item.price * item.quantity}</td>
+          <td style="padding: 10px 8px; font-weight: 600; color: #222; word-break: break-word;">${idx + 1}. ${item.name}</td>
+          <td style="padding: 10px 8px; text-align: center; font-weight: 700; color: #444;">${item.quantity}</td>
+          <td style="padding: 10px 8px; text-align: right; color: #555;">₹${item.price}</td>
+          <td style="padding: 10px 8px; text-align: right; font-weight: 700; color: #222;">₹${item.price * item.quantity}</td>
         </tr>
       `).join('');
 
@@ -5331,47 +5331,47 @@ class TiffinApp {
       });
 
       const invoiceHTML = `
-        <div id="pdfInvoiceContainer" style="width: 750px; padding: 32px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111111; background: #FFFFFF; box-sizing: border-box;">
+        <div id="pdfInvoiceContainer" style="width: 680px; padding: 28px 32px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #111111; background: #FFFFFF; box-sizing: border-box; word-wrap: break-word; overflow-wrap: break-word;">
           <!-- INVOICE HEADER -->
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #D9531E; padding-bottom: 18px; margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #D9531E; padding-bottom: 16px; margin-bottom: 18px;">
             <div>
-              <h1 style="font-size: 1.45rem; font-weight: 900; color: #D9531E; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;">${inv.hotel_name}</h1>
-              <p style="font-size: 0.84rem; color: #444; margin: 2px 0;">📍 ${inv.hotel_address}</p>
+              <h1 style="font-size: 1.4rem; font-weight: 900; color: #D9531E; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px; word-break: break-word;">${inv.hotel_name}</h1>
+              <p style="font-size: 0.84rem; color: #444; margin: 2px 0; word-break: break-word;">📍 ${inv.hotel_address}</p>
               <p style="font-size: 0.84rem; color: #444; margin: 2px 0;">📞 Phone: ${inv.hotel_phone}</p>
             </div>
             <div style="text-align: right;">
               <span style="background: #E8F5E9; color: #2E7D32; border: 1.5px solid #4CAF50; font-weight: 800; font-size: 0.82rem; padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 8px;">
                 ✅ TAX INVOICE
               </span>
-              <h2 style="font-size: 1.1rem; font-weight: 800; color: #222; margin: 0;">${inv.invoice_number}</h2>
+              <h2 style="font-size: 1.05rem; font-weight: 800; color: #222; margin: 0;">${inv.invoice_number}</h2>
               <p style="font-size: 0.82rem; color: #555; margin: 4px 0 0 0;">Order #${inv.order_number}</p>
             </div>
           </div>
 
           <!-- META DETAILS GRID -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; font-size: 0.85rem;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 16px; margin-bottom: 22px; font-size: 0.84rem;">
             <div>
-              <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Customer Name:</strong> ${inv.customer_name}</p>
+              <p style="margin: 3px 0; color: #555; word-break: break-word;"><strong style="color: #222;">Customer Name:</strong> ${inv.customer_name}</p>
               <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Mobile Number:</strong> ${inv.customer_mobile}</p>
               <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Order Type:</strong> ${inv.order_type}</p>
-              ${inv.delivery_address ? `<p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Delivery Address:</strong> ${inv.delivery_address}</p>` : ''}
+              ${inv.delivery_address ? `<p style="margin: 3px 0; color: #555; word-break: break-word;"><strong style="color: #222;">Delivery Address:</strong> ${inv.delivery_address}</p>` : ''}
             </div>
             <div style="text-align: right;">
               <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Invoice Date:</strong> ${formattedDate}</p>
               <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Payment Method:</strong> ${inv.payment_method}</p>
               <p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Payment Status:</strong> <span style="color: #2E7D32; font-weight: 700;">${inv.payment_status}</span></p>
-              ${inv.utr_number ? `<p style="margin: 3px 0; color: #555;"><strong style="color: #222;">Transaction UTR:</strong> ${inv.utr_number}</p>` : ''}
+              ${inv.utr_number ? `<p style="margin: 3px 0; color: #555; word-break: break-all;"><strong style="color: #222;">Transaction UTR:</strong> ${inv.utr_number}</p>` : ''}
             </div>
           </div>
 
           <!-- ITEMS TABLE -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 0.88rem;">
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 0.86rem; table-layout: fixed;">
             <thead>
-              <tr style="background: #F3F4F6; color: #374151; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #E5E7EB;">
-                <th style="padding: 10px 12px; text-align: left;">Item Description</th>
-                <th style="padding: 10px 12px; text-align: center;">Qty</th>
-                <th style="padding: 10px 12px; text-align: right;">Rate</th>
-                <th style="padding: 10px 12px; text-align: right;">Amount</th>
+              <tr style="background: #F3F4F6; color: #374151; font-size: 0.80rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #E5E7EB;">
+                <th style="padding: 10px 8px; text-align: left; width: 50%; word-break: break-word;">Item Description</th>
+                <th style="padding: 10px 8px; text-align: center; width: 14%;">Qty</th>
+                <th style="padding: 10px 8px; text-align: right; width: 18%;">Rate</th>
+                <th style="padding: 10px 8px; text-align: right; width: 18%;">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -5380,19 +5380,19 @@ class TiffinApp {
           </table>
 
           <!-- TOTALS SUMMARY -->
-          <div style="display: flex; justify-content: flex-end; margin-bottom: 30px;">
-            <div style="width: 280px; font-size: 0.88rem;">
-              <div style="display: flex; justify-content: space-between; padding: 6px 0; color: #555;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 28px;">
+            <div style="width: 260px; font-size: 0.86rem;">
+              <div style="display: flex; justify-content: space-between; padding: 5px 0; color: #555;">
                 <span>Subtotal:</span>
                 <span style="font-weight: 600;">₹${inv.total_amount}</span>
               </div>
               ${inv.used_wallet_amount > 0 ? `
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; color: #E65100;">
+                <div style="display: flex; justify-content: space-between; padding: 5px 0; color: #E65100;">
                   <span>Wallet / Reward Discount:</span>
                   <span style="font-weight: 700;">-₹${inv.used_wallet_amount}</span>
                 </div>
               ` : ''}
-              <div style="display: flex; justify-content: space-between; padding: 10px 0; border-top: 2.5px solid #222; font-size: 1.05rem; font-weight: 900; color: #111;">
+              <div style="display: flex; justify-content: space-between; padding: 10px 0; border-top: 2.5px solid #222; font-size: 1.02rem; font-weight: 900; color: #111;">
                 <span>Net Total Paid:</span>
                 <span style="color: #D9531E;">₹${inv.net_amount}</span>
               </div>
@@ -5400,7 +5400,7 @@ class TiffinApp {
           </div>
 
           <!-- FOOTER STAMP & THANKS -->
-          <div style="border-top: 1.5px dashed #D1D5DB; padding-top: 16px; text-align: center; font-size: 0.82rem; color: #6B7280;">
+          <div style="border-top: 1.5px dashed #D1D5DB; padding-top: 14px; text-align: center; font-size: 0.80rem; color: #6B7280;">
             <p style="font-weight: 700; color: #374151; margin-bottom: 4px;">🎉 Thank you for ordering from Sri Lakshmi Annapurna Tiffin Center!</p>
             <p style="margin: 0;">This is an official digital tax invoice for completed Order #${inv.order_number}.</p>
           </div>
@@ -5415,8 +5415,8 @@ class TiffinApp {
         tempDiv.style.position = 'fixed';
         tempDiv.style.left = '0';
         tempDiv.style.top = '0';
-        tempDiv.style.width = '750px';
-        tempDiv.style.minHeight = '1000px';
+        tempDiv.style.width = '680px';
+        tempDiv.style.minHeight = '960px';
         tempDiv.style.zIndex = '999999';
         tempDiv.style.opacity = '0.02';
         tempDiv.style.visibility = 'visible';
@@ -5446,7 +5446,7 @@ class TiffinApp {
       }
 
       const opt = {
-        margin: [10, 10, 10, 10],
+        margin: [10, 12, 10, 12],
         filename: filename,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: {
@@ -5456,11 +5456,11 @@ class TiffinApp {
           logging: false,
           scrollX: 0,
           scrollY: 0,
-          windowWidth: 800,
-          windowHeight: 1200,
+          windowWidth: 700,
+          windowHeight: 1100,
           backgroundColor: '#FFFFFF',
-          width: element.offsetWidth || 750,
-          height: element.offsetHeight || 1000
+          width: element.offsetWidth || 680,
+          height: element.offsetHeight || 960
         },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
@@ -5527,21 +5527,41 @@ class TiffinApp {
     const buttons = document.querySelectorAll(`[onclick*="downloadInvoice('${orderNum}')"]`);
     buttons.forEach(btn => {
       const parent = btn.parentElement;
-      if (parent && !parent.querySelector(`.btn-view-invoice_${orderNum}`)) {
-        const viewBtn = document.createElement('button');
-        viewBtn.className = `co-row-btn view-invoice-btn btn-view-invoice_${orderNum}`;
-        viewBtn.type = 'button';
-        viewBtn.setAttribute('onclick', `app.viewInvoice('${orderNum}')`);
-        viewBtn.style.background = 'rgba(41, 182, 246, 0.2)';
-        viewBtn.style.color = '#29B6F6';
-        viewBtn.style.border = '1.5px solid #29B6F6';
-        viewBtn.style.fontWeight = '800';
-        viewBtn.style.marginLeft = '6px';
-        viewBtn.style.padding = '6px 12px';
-        viewBtn.style.borderRadius = '6px';
-        viewBtn.style.cursor = 'pointer';
-        viewBtn.innerHTML = `<i class="fa-solid fa-eye"></i> 👁️ View Invoice`;
-        parent.insertBefore(viewBtn, btn.nextSibling);
+      if (parent) {
+        // Ensure flex wrapper with clean 12px gap and top margin
+        parent.style.display = 'flex';
+        parent.style.alignItems = 'center';
+        parent.style.flexWrap = 'wrap';
+        parent.style.gap = '12px';
+        parent.style.marginTop = '10px';
+        parent.style.marginBottom = '6px';
+
+        btn.style.flex = '1';
+        btn.style.minWidth = '140px';
+
+        if (!parent.querySelector(`.btn-view-invoice_${orderNum}`)) {
+          const viewBtn = document.createElement('button');
+          viewBtn.className = `co-row-btn view-invoice-btn btn-view-invoice_${orderNum}`;
+          viewBtn.type = 'button';
+          viewBtn.setAttribute('onclick', `app.viewInvoice('${orderNum}')`);
+          viewBtn.style.flex = '1';
+          viewBtn.style.minWidth = '140px';
+          viewBtn.style.background = 'rgba(41, 182, 246, 0.2)';
+          viewBtn.style.color = '#29B6F6';
+          viewBtn.style.border = '1.5px solid #29B6F6';
+          viewBtn.style.fontWeight = '800';
+          viewBtn.style.padding = '8px 16px';
+          viewBtn.style.borderRadius = '8px';
+          viewBtn.style.cursor = 'pointer';
+          viewBtn.style.display = 'inline-flex';
+          viewBtn.style.alignItems = 'center';
+          viewBtn.style.justifyContent = 'center';
+          viewBtn.style.gap = '6px';
+          viewBtn.style.fontSize = '0.82rem';
+          viewBtn.style.boxShadow = '0 2px 8px rgba(41, 182, 246, 0.2)';
+          viewBtn.innerHTML = `<i class="fa-solid fa-eye"></i> 👁️ View Invoice`;
+          parent.insertBefore(viewBtn, btn.nextSibling);
+        }
       }
     });
   }
