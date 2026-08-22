@@ -108,7 +108,9 @@ async function authenticateToken(req, res, next) {
     // AUTO-HEAL Token matching
     if (!tokenEntry && typeof token === 'string' && token.startsWith('tok_')) {
       const usersRes = await db.query('SELECT id, role FROM users;');
-      const matchingUser = usersRes.rows.find(u => token.startsWith('tok_' + u.id + '_'));
+      const matchingUser = usersRes.rows
+        .sort((a, b) => b.id.length - a.id.length)
+        .find(u => token.startsWith('tok_' + u.id + '_'));
       if (matchingUser) {
         const now = Date.now();
         await db.query(
@@ -139,7 +141,13 @@ async function authenticateToken(req, res, next) {
     // Customer-Only 20-minute inactivity check
     if (user.role === 'CUSTOMER') {
       const now = Date.now();
-      const lastActivity = Number(tokenEntry.last_activity || tokenEntry.created_at || now);
+      let lastActivity = Number(tokenEntry.last_activity);
+      if (!lastActivity || isNaN(lastActivity) || lastActivity <= 0) {
+        lastActivity = Number(tokenEntry.created_at);
+      }
+      if (!lastActivity || isNaN(lastActivity) || lastActivity <= 0) {
+        lastActivity = now;
+      }
       const inactivityTimeoutMs = 20 * 60 * 1000; // 20 minutes
 
       if (now - lastActivity > inactivityTimeoutMs) {
@@ -214,18 +222,6 @@ async function findUserByIdentifier(rawIdentifier) {
   if (!rawIdentifier) return null;
   const str = rawIdentifier.toString().trim();
   if (!str) return null;
-
-  try {
-    const ownerRes = await db.query("SELECT * FROM users WHERE mobile = '9392874900' OR id = 'usr_owner_1';");
-    if (!ownerRes.rows || ownerRes.rows.length === 0) {
-      console.log('Owner user missing — seeding owner account...');
-      await seedOwnerUser();
-      try {
-        const migrate = require('./migrate_to_postgres');
-        await migrate();
-      } catch(e) {}
-    }
-  } catch (e) {}
 
   const normPhone = normalizePhone(str);
   const cleanStr = str.toLowerCase();
@@ -992,6 +988,12 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       o.payment_screenshot = screenshot;
       o.screenshot_url = screenshot;
       o.review = revMap.get(o.order_number) || null;
+      if (!o.pickup_pin) {
+        const legacyPin = String(Math.floor(1000 + Math.random() * 9000));
+        o.pickup_pin = legacyPin;
+        db.query('UPDATE orders SET pickup_pin = $1 WHERE id = $2 AND (pickup_pin IS NULL OR pickup_pin = \'\');', [legacyPin, o.id]).catch(() => {});
+      }
+      o.pickup_pin_verified = Boolean(o.pickup_pin_verified);
       return o;
     });
     res.json({ success: true, data: parsedOrders });
@@ -1130,19 +1132,20 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
 
       // Create Order Record
       const nowIso = new Date().toISOString();
+      const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
       await tx.query(
         `INSERT INTO orders (
           id, order_number, customer_id, customer_name, customer_mobile, 
           order_type, delivery_address, notes, total_amount, used_wallet_amount, 
           net_amount, payment_method, payment_status, order_status, items,
-          utr_number, payment_screenshot, screenshot_url, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);`,
+          utr_number, payment_screenshot, screenshot_url, pickup_pin, pickup_pin_verified, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21);`,
         [
           newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
           order_type || 'Takeaway', delivery_address || null, notes || null,
           grand_total, walletDeducted, netAmount, finalPayMethod,
           finalPayStatus, 'Received', JSON.stringify(formattedItems),
-          cleanUtr, savedScreenshotUrl, savedScreenshotUrl, nowIso
+          cleanUtr, savedScreenshotUrl, savedScreenshotUrl, pickupPin, false, nowIso
         ]
       );
 
@@ -1163,6 +1166,13 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
         ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Order Received', notifMsg, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+      );
+
+      // Notify Customer with Pickup PIN
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        ['notif_c_' + Date.now(), 'CUSTOMER', req.user.id, 'Order Placed Successfully', `🔐 Your Pickup PIN for Order #${orderNum} is ${pickupPin}. Show this PIN when collecting your order.`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
       );
 
       // Fetch created order object
@@ -1974,20 +1984,21 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
         const netAmount = Math.max(0, grand_total - walletDeducted);
         amountToPay = netAmount;
         const nowIso = new Date().toISOString();
+        const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
 
         await tx.query(
           `INSERT INTO orders (
             id, order_number, customer_id, customer_name, customer_mobile,
             order_type, delivery_address, notes, total_amount, used_wallet_amount,
             net_amount, payment_method, payment_status, order_status, items,
-            utr_number, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);`,
+            utr_number, pickup_pin, pickup_pin_verified, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);`,
           [
             newOrderId, orderNum, customerId, customerName, customerMobile,
             order_type || 'Takeaway', delivery_address || null, notes || null,
             grand_total, walletDeducted, netAmount, 'UPI (PhonePe)',
             'Processing', 'Received', JSON.stringify(formattedItems),
-            txnId, nowIso
+            txnId, pickupPin, false, nowIso
           ]
         );
 
@@ -2362,6 +2373,100 @@ app.patch('/api/orders/:id/payment-verify', authenticateToken, requireRole('OWNE
   res.json({ success: true, data: updatedOrder, message: `Order #${order.order_number} payment status updated to ${newPaymentStatus}.` });
 });
 
+// POST /api/orders/:id/verify-pin - Owner Pickup PIN Verification
+app.post('/api/orders/:id/verify-pin', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const inputPin = String(req.body.pin || '').trim();
+
+    if (!inputPin || inputPin.length !== 4 || !/^\d{4}$/.test(inputPin)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Incorrect Pickup PIN. Please enter customer's 4-digit Pickup PIN."
+      });
+    }
+
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+    const order = oRes.rows[0];
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+
+    const currentStatus = (order.order_status || '').toLowerCase();
+    const isCancelledOrRejected = ['cancelled', 'rejected', 'customer_cancelled', 'owner_rejected'].includes(currentStatus);
+    const isAlreadyCompleted = ['completed', 'delivered'].includes(currentStatus) || Boolean(order.pickup_pin_verified);
+
+    if (isCancelledOrRejected) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot verify PIN for cancelled or rejected orders."
+      });
+    }
+
+    if (isAlreadyCompleted) {
+      return res.status(400).json({
+        success: false,
+        message: "This order has already been completed and verified."
+      });
+    }
+
+    const orderPin = String(order.pickup_pin || '').trim();
+    if (!orderPin || inputPin !== orderPin) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Incorrect Pickup PIN. Please ask the customer to provide the correct PIN."
+      });
+    }
+
+    // PIN Verification Succeeds: Update order status atomically
+    await db.query(
+      "UPDATE orders SET pickup_pin_verified = true, order_status = 'Completed' WHERE id = $1;",
+      [order.id]
+    );
+
+    // If payment status is Pending, update payment status to Paid
+    const currentPayStatus = (order.payment_status || '').toLowerCase();
+    if (currentPayStatus.includes('pending')) {
+      await db.query("UPDATE orders SET payment_status = 'Paid' WHERE id = $1;", [order.id]);
+      await db.query("UPDATE payments SET payment_status = 'Paid' WHERE order_number = $1;", [order.order_number]);
+    }
+
+    // Notify Customer
+    if (order.customer_id) {
+      await db.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        [
+          'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          'CUSTOMER',
+          order.customer_id,
+          `Order #${order.order_number} Completed`,
+          `Your order #${order.order_number} has been verified with Pickup PIN and marked completed!`,
+          'ORDER',
+          false,
+          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        ]
+      );
+    }
+
+    const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
+    const updatedOrder = updatedRes.rows[0];
+    if (updatedOrder) {
+      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+      updatedOrder.pickup_pin_verified = true;
+    }
+
+    res.json({
+      success: true,
+      data: updatedOrder,
+      message: `✅ Pickup PIN Verified. Order #${order.order_number} marked completed!`
+    });
+  } catch (err) {
+    console.error('Error verifying pickup PIN:', err);
+    res.status(500).json({ success: false, message: "Server error verifying pickup PIN." });
+  }
+});
+
 app.delete('/api/orders/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
   const { id } = req.params;
   const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
@@ -2372,6 +2477,82 @@ app.delete('/api/orders/:id', authenticateToken, requireRole('OWNER'), async (re
   await db.query('DELETE FROM orders WHERE id = $1;', [order.id]);
   await db.query('DELETE FROM payments WHERE order_number = $1;', [order.order_number]);
   res.json({ success: true, message: `Order #${order.order_number} deleted successfully.` });
+});
+
+// GET /api/orders/:id/invoice - Secure Digital Invoice Endpoint (Completed Orders Only)
+app.get('/api/orders/:id/invoice', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+    const order = oRes.rows[0];
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found." });
+    }
+
+    // Security Check 1: Owner or Order Customer Ownership
+    if (req.user.role === 'CUSTOMER' && order.customer_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. You can only download invoices for your own orders."
+      });
+    }
+
+    // Security Check 2: Completed / Delivered Status Only
+    const statusClean = (order.order_status || '').toLowerCase();
+    const isCompleted = ['completed', 'delivered'].includes(statusClean) || Boolean(order.pickup_pin_verified);
+
+    if (!isCompleted) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ Digital Invoice is available ONLY AFTER the order is completed."
+      });
+    }
+
+    // Retrieve business settings for invoice header
+    const sRes = await db.query('SELECT * FROM settings LIMIT 1;');
+    const settings = sRes.rows[0] || {};
+
+    let parsedItems = [];
+    try {
+      parsedItems = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+    } catch (e) {
+      parsedItems = [];
+    }
+
+    const invoiceData = {
+      invoice_number: `INV-${order.order_number}`,
+      order_number: order.order_number,
+      order_id: order.id,
+      order_date: order.created_at || new Date().toISOString(),
+      order_type: order.order_type || 'Takeaway',
+      delivery_address: order.delivery_address || '',
+      hotel_name: settings.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center',
+      hotel_phone: settings.phone || '+91 9392874900',
+      hotel_address: settings.address || '#42, Temple Road, Near Gandhi Circle, Bengaluru, KA',
+      customer_name: order.customer_name || 'Valued Customer',
+      customer_mobile: order.customer_mobile || '',
+      items: parsedItems,
+      total_amount: order.total_amount || 0,
+      used_wallet_amount: order.used_wallet_amount || 0,
+      net_amount: order.net_amount || order.total_amount || 0,
+      payment_method: order.payment_method || 'Cash',
+      payment_status: order.payment_status || 'Paid',
+      utr_number: order.utr_number || '',
+      pickup_pin: order.pickup_pin || '',
+      pickup_pin_verified: Boolean(order.pickup_pin_verified),
+      order_status: order.order_status || 'Completed'
+    };
+
+    res.json({
+      success: true,
+      data: invoiceData,
+      filename: `Sri-Lakshmi-Annapurna-Invoice-${order.order_number}.pdf`
+    });
+  } catch (err) {
+    console.error('Error generating digital invoice:', err);
+    res.status(500).json({ success: false, message: "Server error generating invoice." });
+  }
 });
 
 // =========================================================================

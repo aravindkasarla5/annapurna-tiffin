@@ -390,50 +390,158 @@ class TiffinApp {
   // =========================================================================
 
   initAudioContext() {
-    if (!this.audioCtx) {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioContextClass) {
-        this.audioCtx = new AudioContextClass();
+    try {
+      if (!this.audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          this.audioCtx = new AudioContextClass({ latencyHint: 'interactive' });
+        }
       }
+      if (this.audioCtx && this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => {});
+      }
+
+      // Warm up / unlock AudioContext during a user gesture tick by playing a 0.001s silent audio frame
+      if (this.audioCtx && !this._audioUnlocked) {
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        gain.gain.value = 0.00001; // virtually silent
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(0);
+        osc.stop(this.audioCtx.currentTime + 0.001);
+        this._audioUnlocked = true;
+      }
+    } catch (e) {
+      console.warn('AudioContext unlock notice:', e);
     }
-    if (this.audioCtx && this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+  }
+
+  getChimeWavDataUri() {
+    if (this._cachedChimeWavUri) return this._cachedChimeWavUri;
+    try {
+      const sampleRate = 8000;
+      const numSamples = Math.floor(sampleRate * 0.45);
+      const buffer = new Uint8Array(44 + numSamples);
+
+      const writeString = (offset, str) => {
+        for (let i = 0; i < str.length; i++) buffer[offset + i] = str.charCodeAt(i);
+      };
+      const writeUint32 = (offset, val) => {
+        buffer[offset] = val & 0xff;
+        buffer[offset + 1] = (val >> 8) & 0xff;
+        buffer[offset + 2] = (val >> 16) & 0xff;
+        buffer[offset + 3] = (val >> 24) & 0xff;
+      };
+      const writeUint16 = (offset, val) => {
+        buffer[offset] = val & 0xff;
+        buffer[offset + 1] = (val >> 8) & 0xff;
+      };
+
+      writeString(0, 'RIFF');
+      writeUint32(4, 36 + numSamples);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      writeUint32(16, 16);
+      writeUint16(20, 1); // PCM
+      writeUint16(22, 1); // Mono
+      writeUint32(24, sampleRate);
+      writeUint32(28, sampleRate);
+      writeUint16(32, 1);
+      writeUint16(34, 8); // 8-bit
+      writeString(36, 'data');
+      writeUint32(40, numSamples);
+
+      // Synthesize 3-note harmonic chime (C5 -> E5 -> G5)
+      for (let i = 0; i < numSamples; i++) {
+        const t = i / sampleRate;
+        let freq = 523.25;
+        let env = 1.0;
+        if (t < 0.15) {
+          freq = 523.25;
+          env = Math.max(0, 1 - (t / 0.15));
+        } else if (t < 0.30) {
+          freq = 659.25;
+          env = Math.max(0, 1 - ((t - 0.15) / 0.15));
+        } else {
+          freq = 783.99;
+          env = Math.max(0, 1 - ((t - 0.30) / 0.15));
+        }
+        const val = Math.sin(2 * Math.PI * freq * t) * env;
+        buffer[44 + i] = Math.floor(128 + val * 120);
+      }
+
+      let binary = '';
+      for (let i = 0; i < buffer.length; i++) binary += String.fromCharCode(buffer[i]);
+      this._cachedChimeWavUri = 'data:audio/wav;base64,' + btoa(binary);
+      return this._cachedChimeWavUri;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  playFallbackAudioChime() {
+    try {
+      const dataUri = this.getChimeWavDataUri();
+      if (!dataUri) return;
+      const audio = new Audio(dataUri);
+      audio.volume = 0.8;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {});
+      }
+    } catch (e) {
+      console.warn('Fallback audio chime play notice:', e);
     }
   }
 
   playNotificationChime() {
+    if (!this.isSoundEnabled()) return;
+
+    let webAudioPlayed = false;
     try {
       this.initAudioContext();
-      if (!this.audioCtx) return;
+      if (this.audioCtx) {
+        if (this.audioCtx.state === 'suspended') {
+          this.audioCtx.resume().catch(() => {});
+        }
 
-      const now = this.audioCtx.currentTime;
+        if (this.audioCtx.state === 'running') {
+          const now = this.audioCtx.currentTime;
 
-      // Harmonic 3-Note Chime: C5 (523.25 Hz) -> E5 (659.25 Hz) -> G5 (783.99 Hz)
-      const notes = [
-        { freq: 523.25, start: now, duration: 0.15 },
-        { freq: 659.25, start: now + 0.08, duration: 0.2 },
-        { freq: 783.99, start: now + 0.18, duration: 0.35 }
-      ];
+          // Harmonic 3-Note Chime: C5 (523.25 Hz) -> E5 (659.25 Hz) -> G5 (783.99 Hz)
+          const notes = [
+            { freq: 523.25, start: now, duration: 0.15 },
+            { freq: 659.25, start: now + 0.08, duration: 0.2 },
+            { freq: 783.99, start: now + 0.18, duration: 0.35 }
+          ];
 
-      notes.forEach(note => {
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
+          notes.forEach(note => {
+            const osc = this.audioCtx.createOscillator();
+            const gain = this.audioCtx.createGain();
 
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(note.freq, note.start);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(note.freq, note.start);
 
-        gain.gain.setValueAtTime(0, note.start);
-        gain.gain.linearRampToValueAtTime(1.0, note.start + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.001, note.start + note.duration);
+            gain.gain.setValueAtTime(0, note.start);
+            gain.gain.linearRampToValueAtTime(1.0, note.start + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, note.start + note.duration);
 
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
+            osc.connect(gain);
+            gain.connect(this.audioCtx.destination);
 
-        osc.start(note.start);
-        osc.stop(note.start + note.duration);
-      });
+            osc.start(note.start);
+            osc.stop(note.start + note.duration);
+          });
+          webAudioPlayed = true;
+        }
+      }
     } catch (e) {
       console.warn('Audio chime play warning:', e);
+    }
+
+    if (!webAudioPlayed) {
+      this.playFallbackAudioChime();
     }
   }
 
@@ -3507,6 +3615,71 @@ class TiffinApp {
     }
   }
 
+  async verifyPickupPin(orderId, e) {
+    if (e) e.preventDefault();
+    const pinInput = document.getElementById(`inputPin_${orderId}`);
+    const feedbackBox = document.getElementById(`pinFeedback_${orderId}`);
+    const btnSubmit = document.getElementById(`btnVerifyPin_${orderId}`);
+
+    const pinVal = pinInput ? pinInput.value.trim() : '';
+
+    if (!pinVal || pinVal.length !== 4 || !/^\d{4}$/.test(pinVal)) {
+      const msg = "❌ Incorrect Pickup PIN. Please enter customer's 4-digit Pickup PIN.";
+      this.showToast(msg, "error");
+      if (feedbackBox) {
+        feedbackBox.style.display = 'block';
+        feedbackBox.style.color = '#FF5252';
+        feedbackBox.innerHTML = `❌ Incorrect Pickup PIN.<br><span style="font-weight: normal; font-size: 0.76rem;">Please ask the customer to provide the correct PIN.</span>`;
+      }
+      return;
+    }
+
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Verifying...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/verify-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinVal })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || '✅ Pickup PIN Verified', 'success');
+        if (feedbackBox) {
+          feedbackBox.style.display = 'block';
+          feedbackBox.style.color = '#4CAF50';
+          feedbackBox.innerHTML = `✅ Pickup PIN Verified • Order Completed`;
+        }
+        await this.fetchOrders();
+      } else {
+        const errorMsg = json.message || '❌ Incorrect Pickup PIN. Please ask the customer to provide the correct PIN.';
+        this.showToast(errorMsg, 'error');
+        if (feedbackBox) {
+          feedbackBox.style.display = 'block';
+          feedbackBox.style.color = '#FF5252';
+          feedbackBox.innerHTML = `❌ Incorrect Pickup PIN.<br><span style="font-weight: normal; font-size: 0.76rem; color: #FFE0B2;">Please ask the customer to provide the correct PIN.</span>`;
+        }
+      }
+    } catch (err) {
+      console.error('Error verifying pickup PIN:', err);
+      this.showToast('Server error verifying pickup PIN.', 'error');
+      if (feedbackBox) {
+        feedbackBox.style.display = 'block';
+        feedbackBox.style.color = '#FF5252';
+        feedbackBox.innerHTML = '❌ Server error verifying pickup PIN.';
+      }
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-shield-check"></i> Verify PIN`;
+      }
+    }
+  }
+
   async submitCustomerOrder(e) {
     e.preventDefault();
 
@@ -3595,8 +3768,12 @@ class TiffinApp {
         this.updateCartUI();
         this.toggleCheckoutModal(false);
 
-        // Show Celebration Modal with Order Number
+        // Show Celebration Modal with Order Number and Pickup PIN
         document.getElementById('confirmedOrderNumDisplay').innerText = `#${json.data.order_number}`;
+        const pinDisp = document.getElementById('confirmedPickupPinDisplay');
+        if (pinDisp && json.data.pickup_pin) {
+          pinDisp.innerText = json.data.pickup_pin;
+        }
         document.getElementById('confirmationModalBackdrop').classList.add('open');
 
         await this.fetchOrders();
@@ -4449,13 +4626,37 @@ class TiffinApp {
                 </div>
               ` : ''}
 
+              ${(order.pickup_pin_verified || isCompleted) ? `
+                <div style="background: rgba(76, 175, 80, 0.15); border: 1.5px solid #4CAF50; border-radius: 8px; padding: 8px 10px; margin-top: 4px; text-align: center; color: #4CAF50; font-weight: 800; font-size: 0.82rem;">
+                  <i class="fa-solid fa-circle-check"></i> ✅ Pickup PIN Verified • Order Completed
+                </div>
+              ` : (!isCancelled && !isRejected) ? `
+                <!-- OWNER PICKUP PIN VERIFICATION BOX -->
+                <div class="owner-pin-verify-card" style="background: rgba(234, 162, 33, 0.08); border: 1.5px solid var(--accent-gold); border-radius: 8px; padding: 10px; margin-top: 4px;">
+                  <div style="font-weight: 800; font-size: 0.82rem; color: var(--accent-gold); display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                    <span><i class="fa-solid fa-key" style="color: var(--accent-gold);"></i> 🔐 Verify Pickup PIN</span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">Customer 4-digit PIN</span>
+                  </div>
+                  
+                  <form onsubmit="app.verifyPickupPin('${order.id}', event)" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="inputPin_${order.id}" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="[ 4 8 2 7 ]" required autocomplete="off" style="flex: 1; min-width: 110px; background: rgba(0,0,0,0.4); border: 1.5px solid var(--accent-gold); color: #00E676; font-family: monospace; font-size: 1.1rem; font-weight: 900; text-align: center; letter-spacing: 4px; padding: 5px 8px; border-radius: 6px;">
+                    <button type="submit" id="btnVerifyPin_${order.id}" class="btn-primary-block" style="width: auto; padding: 6px 12px; background: var(--accent-gold); color: #000; font-weight: 900; font-size: 0.78rem; border: none; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                      <i class="fa-solid fa-shield-check"></i> Verify PIN
+                    </button>
+                  </form>
+                  <div id="pinFeedback_${order.id}" style="margin-top: 6px; font-size: 0.8rem; font-weight: 700; display: none;"></div>
+                </div>
+              ` : ''}
+
               <div style="display: flex; gap: 6px; margin-top: 4px;">
                 <button class="co-row-btn view" onclick="app.showOrderDetail('${order.order_number}')" style="flex: 1;">
                   <i class="fa-solid fa-eye"></i> View Details
                 </button>
-                <button class="co-row-btn receipt" onclick="app.downloadOrderReceipt('${order.order_number}')" style="flex: 1;">
-                  <i class="fa-solid fa-print"></i> KOT / Receipt
-                </button>
+                ${(isCompleted || order.pickup_pin_verified) ? `
+                  <button class="co-row-btn receipt" onclick="app.downloadInvoice('${order.order_number}')" style="flex: 1; background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1px solid #4CAF50; font-weight: 800;">
+                    <i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice
+                  </button>
+                ` : ''}
               </div>
             </div>
           </div>
@@ -4635,6 +4836,32 @@ class TiffinApp {
         <div class="co-middle-side-by-side">
           <!-- Left: Order Details Box -->
           <div class="co-order-details-box">
+            ${(!isCancelled && !isRejected) ? `
+              <!-- PROMINENT PICKUP PIN CARD FOR CUSTOMER -->
+              <div style="background: rgba(0, 230, 118, 0.08); border: 1.5px solid #00E676; border-radius: var(--radius-md); padding: 10px 14px; margin-bottom: 0.85rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <span style="font-size: 0.74rem; font-weight: 800; color: #80E6A2; text-transform: uppercase; letter-spacing: 0.5px; display: block;">
+                    <i class="fa-solid fa-lock" style="color: #00E676;"></i> PICKUP PIN
+                  </span>
+                  <span style="font-size: 1.8rem; font-weight: 900; color: #00E676; letter-spacing: 5px; font-family: monospace; line-height: 1.1;">
+                    ${order.pickup_pin || '----'}
+                  </span>
+                  <span style="font-size: 0.78rem; color: #FFFFFF; font-weight: 600; display: block; margin-top: 2px;">
+                    🔐 Please show or tell this PIN to the owner when collecting your order.
+                  </span>
+                </div>
+                ${(order.pickup_pin_verified || isCompleted) ? `
+                  <span style="background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1px solid #4CAF50; padding: 5px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">
+                    <i class="fa-solid fa-circle-check"></i> PIN Verified
+                  </span>
+                ` : `
+                  <span style="background: rgba(0, 230, 118, 0.15); color: #00E676; border: 1px solid rgba(0, 230, 118, 0.4); padding: 5px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">
+                    <i class="fa-solid fa-shield-halved"></i> Active PIN
+                  </span>
+                `}
+              </div>
+            ` : ''}
+
             <div class="co-order-details-title">
               <i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Order Details & Items
             </div>
@@ -4741,9 +4968,11 @@ class TiffinApp {
                 <i class="fa-solid fa-eye"></i> View Full Details
               </button>
 
-              <button class="co-row-btn receipt" onclick="app.downloadOrderReceipt('${order.order_number}')">
-                <i class="fa-solid fa-file-invoice"></i> Download Bill / Receipt
-              </button>
+              ${(isCompleted || order.pickup_pin_verified) ? `
+                <button class="co-row-btn receipt" onclick="app.downloadInvoice('${order.order_number}')" style="background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1.5px solid #4CAF50; font-weight: 800;">
+                  <i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice
+                </button>
+              ` : ''}
 
               ${order.review ? `
                 <button class="co-row-btn review reviewed" onclick="app.openOrderReviewModal('${order.order_number}')" style="background: rgba(255, 179, 0, 0.22); color: var(--accent-gold); border: 1.5px solid var(--accent-gold); font-weight: 800;" title="Click to view or edit your review">
@@ -4857,6 +5086,15 @@ class TiffinApp {
         </span>
       </div>
 
+      <!-- PICKUP PIN BANNER IN ORDER DETAILS -->
+      <div style="background: rgba(0, 230, 118, 0.08); border: 1.5px solid #00E676; padding: 12px; border-radius: 8px; margin: 1rem 0; text-align: center;">
+        <span style="font-size: 0.74rem; font-weight: 800; color: #80E6A2; text-transform: uppercase; letter-spacing: 0.5px; display: block;">🔐 PICKUP PIN</span>
+        <div style="font-size: 2.2rem; font-weight: 900; color: #00E676; letter-spacing: 6px; font-family: monospace; margin: 4px 0;">${order.pickup_pin || '----'}</div>
+        <p style="font-size: 0.8rem; color: #FFFFFF; font-weight: 600; margin: 0;">
+          ${(order.pickup_pin_verified || isCompleted) ? '✅ Pickup PIN Verified & Order Completed' : '🔐 Please show or tell this PIN to the owner when collecting your order.'}
+        </p>
+      </div>
+
       <div class="od-info-grid">
         <div class="od-info-item">
           <span class="od-label">Customer</span>
@@ -4930,16 +5168,175 @@ class TiffinApp {
         `).join('')}
       </div>
 
-      <button class="od-download-btn" onclick="app.downloadOrderReceipt('${order.order_number}')">
-        <i class="fa-solid fa-download"></i> Download Receipt
-      </button>
+      ${(isCompleted || order.pickup_pin_verified) ? `
+        <button class="od-download-btn" onclick="app.downloadInvoice('${order.order_number}')" style="background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1.5px solid #4CAF50; font-weight: 800;">
+          <i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice
+        </button>
+      ` : ''}
     `;
 
     document.getElementById('orderDetailBackdrop').classList.add('open');
   }
 
-  closeOrderDetail() {
-    document.getElementById('orderDetailBackdrop').classList.remove('open');
+  async downloadInvoice(orderNum) {
+    if (!this.currentUser) {
+      this.showToast('Please log in to download invoice', 'warning');
+      return;
+    }
+
+    try {
+      this.showToast('Generating Digital Invoice PDF...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderNum}/invoice`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) {
+        this.showToast(json.message || '❌ Invoice is available ONLY AFTER order is completed.', 'error');
+        return;
+      }
+
+      const inv = json.data;
+      const filename = `Sri-Lakshmi-Annapurna-Invoice-${inv.order_number}.pdf`;
+
+      // Build invoice HTML DOM element for PDF generation
+      const itemsRowsHtml = (inv.items || []).map((item, idx) => `
+        <tr style="border-bottom: 1px solid #EEEEEE;">
+          <td style="padding: 10px 12px; font-weight: 600; color: #222;">${idx + 1}. ${item.name}</td>
+          <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: #444;">${item.quantity}</td>
+          <td style="padding: 10px 12px; text-align: right; color: #555;">₹${item.price}</td>
+          <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #222;">₹${item.price * item.quantity}</td>
+        </tr>
+      `).join('');
+
+      const formattedDate = new Date(inv.order_date).toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+
+      const invoiceHTML = `
+        <div id="pdfInvoiceContainer" style="width: 100%; max-width: 750px; margin: 0 auto; padding: 30px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #222; background: #FFFFFF;">
+          <!-- INVOICE HEADER -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #D9531E; padding-bottom: 18px; margin-bottom: 20px;">
+            <div>
+              <h1 style="font-size: 1.45rem; font-weight: 900; color: #D9531E; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;">${inv.hotel_name}</h1>
+              <p style="font-size: 0.84rem; color: #555; margin: 2px 0;"><i class="fa-solid fa-location-dot" style="color: #D9531E;"></i> ${inv.hotel_address}</p>
+              <p style="font-size: 0.84rem; color: #555; margin: 2px 0;"><i class="fa-solid fa-phone" style="color: #4CAF50;"></i> Phone: ${inv.hotel_phone}</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="background: #E8F5E9; color: #2E7D32; border: 1.5px solid #4CAF50; font-weight: 800; font-size: 0.82rem; padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 8px;">
+                ✅ TAX INVOICE
+              </span>
+              <h2 style="font-size: 1.1rem; font-weight: 800; color: #333; margin: 0;">${inv.invoice_number}</h2>
+              <p style="font-size: 0.82rem; color: #666; margin: 4px 0 0 0;">Order #${inv.order_number}</p>
+            </div>
+          </div>
+
+          <!-- META DETAILS GRID -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; font-size: 0.85rem;">
+            <div>
+              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Customer Name:</strong> ${inv.customer_name}</p>
+              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Mobile Number:</strong> ${inv.customer_mobile}</p>
+              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Order Type:</strong> ${inv.order_type}</p>
+              ${inv.delivery_address ? `<p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Delivery Address:</strong> ${inv.delivery_address}</p>` : ''}
+            </div>
+            <div style="text-align: right;">
+              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Invoice Date:</strong> ${formattedDate}</p>
+              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Payment Method:</strong> ${inv.payment_method}</p>
+              <p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Payment Status:</strong> <span style="color: #2E7D32; font-weight: 700;">${inv.payment_status}</span></p>
+              ${inv.utr_number ? `<p style="margin: 3px 0; color: #666;"><strong style="color: #333;">Transaction UTR:</strong> ${inv.utr_number}</p>` : ''}
+            </div>
+          </div>
+
+          <!-- ITEMS TABLE -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 0.88rem;">
+            <thead>
+              <tr style="background: #F3F4F6; color: #374151; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #E5E7EB;">
+                <th style="padding: 10px 12px; text-align: left;">Item Description</th>
+                <th style="padding: 10px 12px; text-align: center;">Qty</th>
+                <th style="padding: 10px 12px; text-align: right;">Rate</th>
+                <th style="padding: 10px 12px; text-align: right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsRowsHtml}
+            </tbody>
+          </table>
+
+          <!-- TOTALS SUMMARY -->
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 30px;">
+            <div style="width: 280px; font-size: 0.88rem;">
+              <div style="display: flex; justify-content: space-between; padding: 6px 0; color: #555;">
+                <span>Subtotal:</span>
+                <span style="font-weight: 600;">₹${inv.total_amount}</span>
+              </div>
+              ${inv.used_wallet_amount > 0 ? `
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; color: #E65100;">
+                  <span>Wallet / Reward Discount:</span>
+                  <span style="font-weight: 700;">-₹${inv.used_wallet_amount}</span>
+                </div>
+              ` : ''}
+              <div style="display: flex; justify-content: space-between; padding: 10px 0; border-top: 2.5px solid #222; font-size: 1.05rem; font-weight: 900; color: #111;">
+                <span>Net Total Paid:</span>
+                <span style="color: #D9531E;">₹${inv.net_amount}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- FOOTER STAMP & THANKS -->
+          <div style="border-top: 1.5px dashed #D1D5DB; padding-top: 16px; text-align: center; font-size: 0.82rem; color: #6B7280;">
+            <p style="font-weight: 700; color: #374151; margin-bottom: 4px;">🎉 Thank you for ordering from Sri Lakshmi Annapurna Tiffin Center!</p>
+            <p style="margin: 0;">This is an official digital tax invoice for completed Order #${inv.order_number}.</p>
+          </div>
+        </div>
+      `;
+
+      // Render to DOM temporarily for html2pdf rendering
+      let tempDiv = document.getElementById('tempInvoicePdfWrapper');
+      if (!tempDiv) {
+        tempDiv = document.createElement('div');
+        tempDiv.id = 'tempInvoicePdfWrapper';
+        tempDiv.style.position = 'fixed';
+        tempDiv.style.left = '-9999px';
+        tempDiv.style.top = '0';
+        document.body.appendChild(tempDiv);
+      }
+      tempDiv.innerHTML = invoiceHTML;
+
+      // Check html2pdf library
+      if (window.html2pdf) {
+        const element = document.getElementById('pdfInvoiceContainer');
+        const opt = {
+          margin: [8, 8, 8, 8],
+          filename: filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        await window.html2pdf().set(opt).from(element).save();
+        this.showToast(`✅ Invoice ${filename} downloaded successfully!`, 'success');
+      } else {
+        // Fallback print/download window if html2pdf is offline
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>${filename}</title>
+              <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+              <style>
+                @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+              </style>
+            </head>
+            <body onload="window.print();">
+              ${invoiceHTML}
+            </body>
+          </html>
+        `);
+        printWin.document.close();
+      }
+    } catch (err) {
+      console.error('Error downloading invoice:', err);
+      this.showToast('Failed to download invoice. Please try again.', 'error');
+    }
   }
 
   downloadOrderReceipt(orderNum) {
@@ -6465,6 +6862,9 @@ class TiffinApp {
     const isPending = (p.payment_status || '').includes('Pending') || (p.payment_status || '').includes('Verification');
     const isUPI = (p.payment_method || '').includes('UPI') || (p.payment_method || '').includes('Online');
 
+    const relatedOrder = this.orders.find(o => o.order_number === p.order_number);
+    const isOrderCompleted = relatedOrder && (['completed', 'delivered'].includes((relatedOrder.order_status || '').toLowerCase()) || Boolean(relatedOrder.pickup_pin_verified));
+
     const statusBg = isPaid ? 'rgba(76, 175, 80, 0.15)' : isPending ? 'rgba(234, 162, 33, 0.15)' : 'rgba(229, 57, 53, 0.15)';
     const statusBorder = isPaid ? '#4CAF50' : isPending ? '#EAA221' : '#E53935';
     const statusColor = isPaid ? '#4CAF50' : isPending ? '#FFB74D' : '#FF5252';
@@ -6508,9 +6908,7 @@ class TiffinApp {
               </button>
             </div>
           ` : `
-            <span style="font-size: 0.75rem; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px; display: inline-block;">
-              No Screenshot
-            </span>
+            <span style="font-size: 0.76rem; color: var(--text-muted); font-style: italic;">No attachment</span>
           `}
         </td>
 
@@ -6526,9 +6924,13 @@ class TiffinApp {
 
         <!-- 5. Download Invoice / Bill -->
         <td style="padding: 14px 16px; vertical-align: middle; text-align: center;">
-          <button type="button" class="btn-sm-status" onclick="app.downloadSinglePaymentVoucher('${p.order_number}')" style="background: linear-gradient(135deg, #EAA221, #D9531E); color: #FFFFFF; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(217, 83, 30, 0.35);" title="Download Official Receipt Invoice">
-            <i class="fa-solid fa-download"></i> Tax Invoice
-          </button>
+          ${isOrderCompleted ? `
+            <button type="button" class="btn-sm-status" onclick="app.downloadInvoice('${p.order_number}')" style="background: linear-gradient(135deg, #4CAF50, #2E7D32); color: #FFFFFF; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(76, 175, 80, 0.35);" title="Download Official Receipt Invoice">
+              <i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice
+            </button>
+          ` : `
+            <span style="font-size: 0.76rem; color: var(--text-muted); font-style: italic;">Available after completion</span>
+          `}
         </td>
 
         <!-- 6. Delete Action -->

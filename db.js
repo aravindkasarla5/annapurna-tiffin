@@ -188,6 +188,8 @@ async function initDatabase() {
       utr_number VARCHAR(100),
       payment_screenshot TEXT,
       screenshot_url TEXT,
+      pickup_pin VARCHAR(10),
+      pickup_pin_verified BOOLEAN DEFAULT false,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
 
@@ -341,6 +343,8 @@ async function initDatabase() {
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_pin VARCHAR(10);`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_pin_verified BOOLEAN DEFAULT false;`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
@@ -366,6 +370,8 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE orders ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN payment_screenshot TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN screenshot_url TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN pickup_pin TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN pickup_pin_verified INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active';`);
