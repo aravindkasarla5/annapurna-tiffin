@@ -837,9 +837,22 @@ class TiffinApp {
   }
 
   async handleLoginSubmit(e) {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+
+    const submitBtn = document.getElementById('btnLoginSubmit');
+    if (submitBtn && submitBtn.disabled) {
+      return;
+    }
+
     const identifier = document.getElementById('loginIdentifier')?.value || document.getElementById('loginMobile')?.value || '';
     const password = document.getElementById('loginPassword')?.value || '';
+
+    const originalBtnHTML = submitBtn ? submitBtn.innerHTML : '<span>Login to Account</span> <i class="fa-solid fa-arrow-right"></i>';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.classList.add('disabled');
+      submitBtn.innerHTML = '<span>Logging in...</span> <i class="fa-solid fa-circle-notch fa-spin"></i>';
+    }
 
     try {
       const res = await fetch(`${API_BASE}/auth/login`, {
@@ -862,10 +875,9 @@ class TiffinApp {
           localStorage.setItem('tiffin_customer_last_activity', Date.now().toString());
         }
 
-        const custName = this.getFormattedCustomerName();
         const welcomeMsg = this.currentRole === 'OWNER'
           ? 'Welcome back, Owner! 👋'
-          : (custName ? `Welcome back, ${custName} 👋` : 'Welcome back 👋');
+          : '✅ Login successful';
 
         this.showToast(welcomeMsg, 'success');
         this.toggleAuthModal(false);
@@ -876,11 +888,25 @@ class TiffinApp {
         this.renderNavigation();
         this.renderCurrentView();
       } else {
-        this.showToast(json.message || 'Login failed', 'error');
+        if (identifier.trim() === '9392874900' || identifier.trim().toLowerCase() === 'owner@annapurna.com') {
+          this.showToast(json.message || 'Login failed', 'error');
+        } else {
+          if (json.message === 'Your account has been blocked by the owner. Please contact support.') {
+            this.showToast(json.message, 'error');
+          } else {
+            this.showToast('❌ Invalid username and password', 'error');
+          }
+        }
       }
     } catch (err) {
       console.error('Error logging in:', err);
       this.showToast('Server communication error.', 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('disabled');
+        submitBtn.innerHTML = originalBtnHTML;
+      }
     }
   }
 
@@ -984,8 +1010,7 @@ class TiffinApp {
         this.favorites = [];
         this.referralStats = null;
 
-        const custName = this.getFormattedCustomerName();
-        const welcomeMsg = custName ? `Account created successfully! Welcome, ${custName} 👋` : 'Account created successfully! 👋';
+        const welcomeMsg = '✅ Account created successfully';
 
         this.showToast(welcomeMsg, 'success');
         this.toggleAuthModal(false);
