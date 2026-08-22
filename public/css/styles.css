@@ -6777,7 +6777,12 @@ body.guest-mode #btnMobileMenuToggle {
 
 /* 1. Prevent Horizontal Page Overflow on all Owner View Containers (Mobile Scoped) */
 @media (max-width: 768px) {
+  html.owner-mode,
+  html.owner-dashboard-active,
+  html:has(#secOwnerDashboard:not(.hidden)),
   body.owner-mode,
+  body.owner-dashboard-active,
+  body:has(#secOwnerDashboard:not(.hidden)),
   #secOwnerDashboard,
   #secOwnerTiffins,
   #secOwnerOrders,
@@ -6790,10 +6795,21 @@ body.guest-mode #btnMobileMenuToggle {
     max-width: 100% !important;
     box-sizing: border-box !important;
     overflow-x: hidden !important;
+    position: relative !important;
   }
 
-  .main-content,
-  body.owner-mode .main-content {
+  body.owner-mode .top-header,
+  body.owner-dashboard-active .top-header,
+  body:has(#secOwnerDashboard:not(.hidden)) .top-header {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  body.owner-mode .main-content,
+  body.owner-dashboard-active .main-content,
+  body:has(#secOwnerDashboard:not(.hidden)) .main-content {
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
@@ -6815,7 +6831,7 @@ body.guest-mode #btnMobileMenuToggle {
   }
 
   #secOwnerDashboard .section-title {
-    font-size: 1.15rem !important;
+    font-size: 1.1rem !important;
     overflow-wrap: break-word !important;
     word-break: break-word !important;
     max-width: 100% !important;
