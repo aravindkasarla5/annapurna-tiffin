@@ -1198,24 +1198,24 @@ app.post('/api/orders/:id/reorder', authenticateToken, requireRole('CUSTOMER'), 
     await db.executeTransaction(async (tx) => {
       await tx.query(
         `INSERT INTO orders (
-          id, order_number, customer_id, customer_name, customer_mobile,
-          order_type, delivery_address, notes, total_amount, used_wallet_amount,
+          id, order_number, customer_id, customer_name, customer_mobile, 
+          order_type, delivery_address, notes, total_amount, used_wallet_amount, 
           net_amount, payment_method, payment_status, order_status, items,
           utr_number, payment_screenshot, screenshot_url, pickup_pin, pickup_pin_verified, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $9, $10, $11, 'Received', $12, $13, $14, $14, $15, false, $16);`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21);`,
         [
           newOrderId, newOrderNum, req.user.id, req.user.name, req.user.mobile,
-          orderType, deliveryAddress, notes, grandTotal,
-          paymentMethod, paymentStatus, JSON.stringify(reorderableItems),
-          utrNumber, permanentScreenshot, pickupPin, nowIso
+          orderType, deliveryAddress, notes, grandTotal, 0, grandTotal,
+          paymentMethod, paymentStatus, 'Received', JSON.stringify(reorderableItems),
+          utrNumber, permanentScreenshot, permanentScreenshot, pickupPin, false, nowIso
         ]
       );
 
       // Create Payment Record for the NEW Order
       const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
       await tx.query(
-        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, payment_screenshot, screenshot_url, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12);`,
+        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, screenshot_url, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
         [newPayId, newOrderNum, newOrderId, req.user.id, req.user.name, req.user.mobile, grandTotal, paymentMethod, paymentStatus, utrNumber, permanentScreenshot, `Reorder Payment for Order #${newOrderNum}`]
       );
 
