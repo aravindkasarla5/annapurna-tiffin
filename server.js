@@ -1098,6 +1098,62 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/orders/:id/reorder-items - Secure Backend Customer Ownership & Items Verification for Reorder
+app.post('/api/orders/:id/reorder-items', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const orderRes = await db.query('SELECT * FROM orders WHERE (id = $1 OR order_number = $1) AND customer_id = $2;', [orderId, req.user.id]);
+    
+    if (!orderRes.rows.length) {
+      return res.status(403).json({ success: false, message: "Access denied. Order not found or does not belong to your account." });
+    }
+
+    const order = orderRes.rows[0];
+    let items = order.items || [];
+    if (typeof items === 'string') {
+      try { items = JSON.parse(items); } catch(e) { items = []; }
+    }
+
+    // Query active menu to match current prices and availability
+    const tiffinRes = await db.query('SELECT * FROM tiffins;');
+    const currentMenu = tiffinRes.rows || [];
+
+    const reorderableItems = [];
+    const unavailableItems = [];
+
+    items.forEach(item => {
+      const targetId = item.tiffin_id || item.id;
+      const matched = currentMenu.find(m => m.id === targetId || (m.name && item.name && m.name.toLowerCase() === item.name.toLowerCase()));
+      
+      const isAvailable = matched ? (matched.is_available === true || matched.is_available === 1 || matched.is_available === 'true') : false;
+
+      if (matched && isAvailable) {
+        reorderableItems.push({
+          id: matched.id,
+          name: matched.name,
+          price: Number(matched.price),
+          image: matched.image || '',
+          quantity: Number(item.quantity || 1)
+        });
+      } else {
+        unavailableItems.push(item.name || 'Item');
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        original_order_number: order.order_number,
+        reorderableItems,
+        unavailableItems
+      }
+    });
+  } catch (err) {
+    console.error('Reorder items error:', err);
+    res.status(500).json({ success: false, message: "Error verifying reorder items." });
+  }
+});
+
 app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
   try {
     const sRes = await db.query('SELECT is_open, is_qr_pay_enabled FROM settings WHERE id = 1;');

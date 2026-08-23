@@ -2838,70 +2838,61 @@ class TiffinApp {
       return;
     }
 
-    const order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId);
-    if (!order) {
-      this.showToast('Order details not found.', 'error');
-      return;
-    }
-
-    const items = order.items || [];
-    if (!items.length) {
-      this.showToast('No items found in this order.', 'error');
-      return;
-    }
-
     const isHotelOpen = this.settings ? (this.settings.is_open !== false) : true;
     if (!isHotelOpen) {
       this.showToast('🔴 Hotel is currently closed. Cannot place reorder at this time.', 'error');
       return;
     }
 
-    const availableToReorder = [];
-    const unavailableItemNames = [];
+    try {
+      this.showToast('🔄 Verifying reorder items & current prices...', 'info');
 
-    items.forEach(orderItem => {
-      const targetId = orderItem.tiffin_id || orderItem.id;
-      const matchedTiffin = this.menu.find(m => m.id === targetId || m.name.toLowerCase() === (orderItem.name || '').toLowerCase());
+      const res = await fetch(`${API_BASE}/orders/${orderId}/reorder-items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        }
+      });
+      const json = await res.json();
 
-      if (matchedTiffin && matchedTiffin.is_available !== false) {
-        availableToReorder.push({
-          id: matchedTiffin.id,
-          name: matchedTiffin.name,
-          price: Number(matchedTiffin.price),
-          image: matchedTiffin.image,
-          quantity: Number(orderItem.quantity || 1)
-        });
-      } else {
-        unavailableItemNames.push(orderItem.name || 'Item');
+      if (!json.success) {
+        this.showToast(json.message || 'Cannot reorder: Access denied or order not found.', 'error');
+        return;
       }
-    });
 
-    if (!availableToReorder.length) {
-      this.showToast(`❌ Cannot reorder: All items from Order #${order.order_number} are currently unavailable or deleted.`, 'error');
-      return;
-    }
+      const { original_order_number, reorderableItems, unavailableItems } = json.data;
 
-    if (!Array.isArray(this.cart)) this.cart = [];
-
-    availableToReorder.forEach(reItem => {
-      const existingCartIndex = this.cart.findIndex(c => c.id === reItem.id);
-      if (existingCartIndex >= 0) {
-        this.cart[existingCartIndex].quantity += reItem.quantity;
-      } else {
-        this.cart.push(reItem);
+      if (!reorderableItems || !reorderableItems.length) {
+        this.showToast(`❌ Cannot reorder: All items from Order #${original_order_number} are currently unavailable or deleted.`, 'error');
+        return;
       }
-    });
 
-    await this.saveCartBackend();
-    this.updateCartCountUI();
+      if (!Array.isArray(this.cart)) this.cart = [];
 
-    if (unavailableItemNames.length > 0) {
-      this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItemNames.join(', ')}`, 'warning');
-    } else {
-      this.showToast(`🔄 Items from Order #${order.order_number} added to cart at current prices!`, 'success');
+      reorderableItems.forEach(reItem => {
+        const existingIndex = this.cart.findIndex(c => c.id === reItem.id);
+        if (existingIndex >= 0) {
+          this.cart[existingIndex].quantity += reItem.quantity;
+        } else {
+          this.cart.push(reItem);
+        }
+      });
+
+      await this.saveCartBackend();
+      this.updateCartCountUI();
+
+      if (unavailableItems && unavailableItems.length > 0) {
+        this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItems.join(', ')}`, 'warning');
+      } else {
+        this.showToast(`🔄 Items from Order #${original_order_number} added to cart at current prices!`, 'success');
+      }
+
+      this.openCartModal();
+    } catch (err) {
+      console.error('Error reordering order:', err);
+      this.showToast('Failed to process reorder. Please try again.', 'error');
     }
-
-    this.openCartModal();
   }
 
   // =========================================================================
