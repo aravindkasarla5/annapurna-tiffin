@@ -5590,6 +5590,10 @@ class TiffinApp {
                 <i class="fa-solid fa-eye"></i> View Full Details
               </button>
 
+              <button type="button" class="co-row-btn reorder-btn" onclick="app.reorderPreviousOrder('${order.id || order.order_number}', event)" style="background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; font-weight: 800; border: none; cursor: pointer;" title="Reorder items from this previous order">
+                <i class="fa-solid fa-rotate-right"></i> 🔄 Reorder
+              </button>
+
               ${order.review ? `
                 <button class="co-row-btn review reviewed" onclick="app.openOrderReviewModal('${order.order_number}')" style="background: rgba(255, 179, 0, 0.22); color: var(--accent-gold); border: 1.5px solid var(--accent-gold); font-weight: 800;" title="Click to view or edit your review">
                   <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rated ${order.review.rating}/5 • Edit Review
