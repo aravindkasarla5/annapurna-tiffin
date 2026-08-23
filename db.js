@@ -161,7 +161,7 @@ async function initDatabase() {
       description TEXT,
       price NUMERIC(10, 2) NOT NULL,
       category VARCHAR(100) NOT NULL DEFAULT 'Breakfast',
-      image VARCHAR(500),
+      image TEXT,
       is_available BOOLEAN DEFAULT true,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
@@ -302,7 +302,9 @@ async function initDatabase() {
       user_id VARCHAR(100) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       otp VARCHAR(20) NOT NULL,
       mobile VARCHAR(50) NOT NULL,
-      created_at BIGINT NOT NULL
+      created_at BIGINT NOT NULL,
+      attempts INT DEFAULT 0,
+      is_verified BOOLEAN DEFAULT false
     );`,
 
     `CREATE TABLE IF NOT EXISTS counters (
@@ -348,6 +350,7 @@ async function initDatabase() {
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
+        await query(`ALTER TABLE tiffins ALTER COLUMN image TYPE TEXT;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by VARCHAR(100);`);
@@ -357,6 +360,8 @@ async function initDatabase() {
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS balance_before NUMERIC(10, 2);`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS balance_after NUMERIC(10, 2);`);
+        await query(`ALTER TABLE password_resets ADD COLUMN IF NOT EXISTS attempts INT DEFAULT 0;`);
+        await query(`ALTER TABLE password_resets ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false;`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'SUCCESS';`);
       } catch (aErr) {
         console.warn('PostgreSQL DDL Notice:', aErr.message);
@@ -383,6 +388,8 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN balance_before REAL;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN balance_after REAL;`);
+      await safeAlter(`ALTER TABLE password_resets ADD COLUMN attempts INTEGER DEFAULT 0;`);
+      await safeAlter(`ALTER TABLE password_resets ADD COLUMN is_verified INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN status TEXT DEFAULT 'SUCCESS';`);
     }
   } catch (cErr) {

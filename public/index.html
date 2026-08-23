@@ -429,6 +429,22 @@
       </div>
     </section>
 
+    <!-- Customer Favorites Section -->
+    <section id="secCustomerFavorites" class="view-section hidden">
+      <div class="section-header" style="margin-bottom: 1.25rem;">
+        <h2 class="section-title" style="margin: 0; font-size: calc(1.1rem + 0.25vw); white-space: nowrap; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-heart" style="color: #E53935;"></i> My Favorites ❤️
+        </h2>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+          Your saved favorite tiffins for quick access and reordering.
+        </p>
+      </div>
+
+      <div class="menu-grid" id="customerFavoritesGrid">
+        <!-- Rendered dynamically by JavaScript -->
+      </div>
+    </section>
+
     <!-- Customer Payment History Section -->
     <section id="secCustomerPayments" class="view-section hidden">
       <div class="section-header" style="margin-bottom: 1.25rem; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
@@ -2593,8 +2609,16 @@
           </div>
 
           <div class="form-group">
-            <label>Food Image URL</label>
-            <input type="text" class="form-control" id="tifImage" placeholder="/images/idly_sambar.png">
+            <label><i class="fa-solid fa-image" style="color: var(--primary); margin-right: 4px;"></i> Upload Tiffin Image</label>
+            <input type="file" id="tifFileInput" accept="image/jpeg,image/jpg,image/png,image/webp" class="form-control" onchange="app.handleTiffinImageSelect(event)">
+            <input type="hidden" id="tifImage">
+            <div id="tifImagePreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 12px; padding: 10px; border: 1px dashed var(--border-color, #dcdcdc); border-radius: 8px; background: rgba(0,0,0,0.02);">
+              <img id="tifImagePreview" src="" alt="Tiffin Image Preview" style="width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd;">
+              <div style="flex: 1; min-width: 0;">
+                <span id="tifImagePreviewName" style="font-size: 0.82rem; font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dark, #333);">Image Preview</span>
+                <button type="button" onclick="app.removeSelectedTiffinImage()" style="color: #dc3545; font-size: 0.78rem; font-weight: 600; padding: 2px 0; background: none; border: none; cursor: pointer; text-decoration: underline; margin-top: 2px;">Remove Image</button>
+              </div>
+            </div>
           </div>
 
           <div class="form-group">
@@ -2735,44 +2759,64 @@
         <form id="authForgotPasswordForm" class="auth-form hidden" onsubmit="app.handleForgotPasswordSubmit(event)">
           <div class="auth-form-header">
             <h4 style="color: var(--accent-gold); margin-bottom: 4px;"><i class="fa-solid fa-key"></i> Reset Customer Password</h4>
-            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;" id="forgotFormSubtitle">Enter your registered 10-digit mobile number to verify your customer account.</p>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;" id="forgotFormSubtitle">Enter your registered 10-digit mobile number to receive a verification OTP.</p>
           </div>
 
-          <!-- Phase 1: Mobile Number Account Search -->
-          <div class="input-icon-group" id="grpForgotIdentifier">
-            <i class="fa-solid fa-mobile-screen input-icon"></i>
-            <input type="text" class="icon-input" id="forgotIdentifier" placeholder="Registered 10-digit Mobile Number" required>
+          <!-- Step 1: Mobile Number Entry -->
+          <div id="stepForgotPhone">
+            <div class="input-icon-group" id="grpForgotIdentifier">
+              <i class="fa-solid fa-mobile-screen input-icon"></i>
+              <input type="tel" class="icon-input" id="forgotIdentifier" placeholder="Registered 10-digit Mobile Number" autocomplete="tel">
+            </div>
+
+            <button type="button" class="auth-submit-btn login-btn" id="btnForgotSendOtp" onclick="app.requestForgotOtp()" style="margin-top: 6px;">
+              <span>Send OTP</span> <i class="fa-solid fa-paper-plane"></i>
+            </button>
           </div>
 
-          <button type="button" class="auth-submit-btn login-btn" id="btnForgotVerify" onclick="app.verifyForgotPasswordAccount()" style="margin-top: 6px;">
-            <span>Verify Mobile & Find Account</span> <i class="fa-solid fa-user-check"></i>
-          </button>
-
-          <!-- Phase 2: OTP Verification & New Password Reset Fields (Revealed after account is verified) -->
-          <div id="grpForgotResetFields" class="hidden" style="margin-top: 12px; border-top: 1px dashed var(--border-color); padding-top: 12px;">
-            <div id="forgotAccountFoundInfo" style="background: rgba(76, 175, 80, 0.15); border: 1px solid #4CAF50; color: #81C784; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px; text-align: left;">
-              <i class="fa-solid fa-circle-check"></i> Account Verified! OTP Sent: <strong>123456</strong>
+          <!-- Step 2: Enter & Verify OTP -->
+          <div id="stepForgotOtp" class="hidden" style="margin-top: 8px;">
+            <div id="forgotOtpSentBanner" style="background: rgba(234, 162, 33, 0.12); border: 1px solid var(--accent-gold); color: var(--accent-gold); padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px; text-align: left;">
+              <i class="fa-solid fa-paper-plane"></i> OTP sent to: <strong id="forgotMobileSentDisp"></strong>
             </div>
 
             <div class="input-icon-group" style="margin-bottom: 10px;">
               <i class="fa-solid fa-shield-halved input-icon" style="color: var(--accent-gold);"></i>
-              <input type="text" class="icon-input" id="forgotOtp" placeholder="6-digit Verification Code (e.g. 123456)" value="123456" required>
+              <input type="text" class="icon-input" id="forgotOtp" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" placeholder="Enter 6-digit OTP" autocomplete="one-time-code">
+            </div>
+
+            <button type="button" class="auth-submit-btn register-btn" id="btnForgotVerifyOtp" onclick="app.verifyForgotOtp()" style="margin-top: 4px;">
+              <span>Verify OTP</span> <i class="fa-solid fa-shield-check"></i>
+            </button>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.78rem;">
+              <span style="color: var(--text-muted);">Didn't receive OTP?</span>
+              <button type="button" id="btnForgotResendOtp" onclick="app.requestForgotOtp(true)" style="background: none; border: none; color: var(--accent-gold); font-weight: 700; cursor: pointer; text-decoration: underline;" disabled>
+                Resend OTP (<span id="forgotResendTimer">30</span>s)
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: Set New Password & Confirm Password (Revealed after OTP is verified) -->
+          <div id="stepForgotNewPassword" class="hidden" style="margin-top: 12px; border-top: 1px dashed var(--border-color); padding-top: 12px;">
+            <div id="forgotOtpVerifiedBanner" style="background: rgba(76, 175, 80, 0.15); border: 1px solid #4CAF50; color: #81C784; padding: 8px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px; text-align: left;">
+              <i class="fa-solid fa-circle-check"></i> OTP verified successfully. Create your new password:
             </div>
 
             <div class="input-icon-group password-group" style="margin-bottom: 10px;">
               <i class="fa-solid fa-lock input-icon"></i>
-              <input type="password" class="icon-input" id="forgotNewPassword" placeholder="Create new password" required>
+              <input type="password" class="icon-input" id="forgotNewPassword" placeholder="New Password" autocomplete="new-password">
               <i class="fa-solid fa-eye toggle-password-icon" id="toggleForgotNewPassword" onclick="app.togglePasswordVisibility('forgotNewPassword', 'toggleForgotNewPassword')" title="Toggle password visibility"></i>
             </div>
 
             <div class="input-icon-group password-group" style="margin-bottom: 10px;">
               <i class="fa-solid fa-lock input-icon"></i>
-              <input type="password" class="icon-input" id="forgotConfirmPassword" placeholder="Confirm new password" required>
+              <input type="password" class="icon-input" id="forgotConfirmPassword" placeholder="Confirm New Password" autocomplete="new-password">
               <i class="fa-solid fa-eye toggle-password-icon" id="toggleForgotConfirmPassword" onclick="app.togglePasswordVisibility('forgotConfirmPassword', 'toggleForgotConfirmPassword')" title="Toggle password visibility"></i>
             </div>
 
             <button type="submit" class="auth-submit-btn register-btn" id="btnForgotSubmit" style="margin-top: 8px;">
-              <span>Reset Password & Login</span> <i class="fa-solid fa-rotate"></i>
+              <span>Change Password</span> <i class="fa-solid fa-check-circle"></i>
             </button>
           </div>
 

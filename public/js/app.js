@@ -828,12 +828,7 @@ class TiffinApp {
     if (formForgot) formForgot.classList.toggle('hidden', mode !== 'FORGOT_PASSWORD');
 
     if (mode === 'FORGOT_PASSWORD') {
-      const grpFields = document.getElementById('grpForgotResetFields');
-      if (grpFields) grpFields.classList.add('hidden');
-      const btnVerify = document.getElementById('btnForgotVerify');
-      if (btnVerify) btnVerify.classList.remove('hidden');
-      const inputId = document.getElementById('forgotIdentifier');
-      if (inputId) inputId.readOnly = false;
+      this.resetForgotFormState();
     }
   }
 
@@ -1109,14 +1104,51 @@ class TiffinApp {
     return digits;
   }
 
-  async verifyForgotPasswordAccount() {
-    const identifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
-    if (!identifier) {
-      this.showToast('Please enter your registered mobile number or email.', 'warning');
+  resetForgotFormState() {
+    const stepPhone = document.getElementById('stepForgotPhone');
+    const stepOtp = document.getElementById('stepForgotOtp');
+    const stepNewPass = document.getElementById('stepForgotNewPassword');
+    const inputId = document.getElementById('forgotIdentifier');
+    const inputOtp = document.getElementById('forgotOtp');
+    const inputNewPass = document.getElementById('forgotNewPassword');
+    const inputConfirmPass = document.getElementById('forgotConfirmPassword');
+
+    if (stepPhone) stepPhone.classList.remove('hidden');
+    if (stepOtp) stepOtp.classList.add('hidden');
+    if (stepNewPass) stepNewPass.classList.add('hidden');
+
+    if (inputId) {
+      inputId.readOnly = false;
+      inputId.value = '';
+    }
+    if (inputOtp) inputOtp.value = '';
+    if (inputNewPass) inputNewPass.value = '';
+    if (inputConfirmPass) inputConfirmPass.value = '';
+
+    if (this.resendOtpTimer) {
+      clearInterval(this.resendOtpTimer);
+      this.resendOtpTimer = null;
+    }
+  }
+
+  async requestForgotOtp(isResend = false) {
+    const rawIdentifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
+    const identifier = this.normalizePhone(rawIdentifier);
+
+    if (!identifier || identifier.length !== 10) {
+      this.showToast('Please enter your registered 10-digit mobile number.', 'warning');
       return;
     }
 
+    const btn = isResend ? document.getElementById('btnForgotResendOtp') : document.getElementById('btnForgotSendOtp');
+    const origHTML = btn ? btn.innerHTML : 'Send OTP';
+
     try {
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = isResend ? '<i class="fa-solid fa-spinner fa-spin"></i> Resending...' : '<i class="fa-solid fa-spinner fa-spin"></i> Sending OTP...';
+      }
+
       const res = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1125,33 +1157,120 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message || 'Account found. Continue verification.', 'success');
-        const grpFields = document.getElementById('grpForgotResetFields');
-        if (grpFields) grpFields.classList.remove('hidden');
+        this.showToast(json.message || 'OTP sent successfully to your registered phone number.', 'success');
 
-        const btnVerify = document.getElementById('btnForgotVerify');
-        if (btnVerify) btnVerify.classList.add('hidden');
-
+        const stepOtp = document.getElementById('stepForgotOtp');
         const inputId = document.getElementById('forgotIdentifier');
-        if (inputId) inputId.readOnly = true;
+        const mobileDisp = document.getElementById('forgotMobileSentDisp');
 
-        const infoBox = document.getElementById('forgotAccountFoundInfo');
-        if (infoBox && json.data?.otp) {
-          infoBox.innerHTML = `<i class="fa-solid fa-circle-check"></i> Account Verified! Code Sent: <strong>${json.data.otp}</strong>`;
-        }
+        if (inputId) inputId.readOnly = true;
+        if (mobileDisp) mobileDisp.innerText = identifier;
+        if (stepOtp) stepOtp.classList.remove('hidden');
+
+        this.startResendOtpTimer();
+
+        const otpInput = document.getElementById('forgotOtp');
+        if (otpInput) otpInput.focus();
       } else {
-        this.showToast(json.message || 'No account found with this number.', 'error');
+        this.showToast(json.message || 'No registered customer account found with this phone number.', 'error');
+        if (btn && !isResend) {
+          btn.disabled = false;
+          btn.innerHTML = origHTML;
+        }
       }
     } catch (err) {
-      console.error('Error verifying account:', err);
-      this.showToast('Server communication error.', 'error');
+      console.error('Error requesting OTP:', err);
+      this.showToast('Failed to send OTP. Server communication error.', 'error');
+      if (btn && !isResend) {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+      }
+    }
+  }
+
+  startResendOtpTimer() {
+    if (this.resendOtpTimer) clearInterval(this.resendOtpTimer);
+    let seconds = 30;
+
+    const btnResend = document.getElementById('btnForgotResendOtp');
+    const timerDisp = document.getElementById('forgotResendTimer');
+
+    if (btnResend) btnResend.disabled = true;
+    if (timerDisp) timerDisp.innerText = seconds;
+
+    this.resendOtpTimer = setInterval(() => {
+      seconds--;
+      if (timerDisp) timerDisp.innerText = seconds;
+
+      if (seconds <= 0) {
+        clearInterval(this.resendOtpTimer);
+        this.resendOtpTimer = null;
+        if (btnResend) {
+          btnResend.disabled = false;
+          btnResend.innerHTML = 'Resend OTP';
+        }
+      }
+    }, 1000);
+  }
+
+  async verifyForgotOtp() {
+    const rawIdentifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
+    const identifier = this.normalizePhone(rawIdentifier);
+    const otp = document.getElementById('forgotOtp')?.value?.trim() || '';
+
+    if (!identifier) {
+      this.showToast('Please enter your registered phone number.', 'warning');
+      return;
+    }
+
+    if (!otp || otp.length !== 6) {
+      this.showToast('Please enter the 6-digit verification OTP code.', 'warning');
+      return;
+    }
+
+    const btn = document.getElementById('btnForgotVerifyOtp');
+    const origHTML = btn ? btn.innerHTML : 'Verify OTP';
+
+    try {
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
+      }
+
+      const res = await fetch(`${API_BASE}/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, otp })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'OTP verified successfully.', 'success');
+        const stepNewPass = document.getElementById('stepForgotNewPassword');
+        if (stepNewPass) stepNewPass.classList.remove('hidden');
+
+        const newPassInput = document.getElementById('forgotNewPassword');
+        if (newPassInput) newPassInput.focus();
+      } else {
+        this.showToast(json.message || 'OTP is incorrect. Please check and try again.', 'error');
+      }
+    } catch (err) {
+      console.error('Error verifying OTP:', err);
+      this.showToast('Failed to verify OTP. Please try again.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+      }
     }
   }
 
   async handleForgotPasswordSubmit(e) {
     e.preventDefault();
-    const identifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
-    const otp = document.getElementById('forgotOtp')?.value?.trim() || '123456';
+
+    const rawIdentifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
+    const identifier = this.normalizePhone(rawIdentifier);
+    const otp = document.getElementById('forgotOtp')?.value?.trim() || '';
     const new_password = document.getElementById('forgotNewPassword')?.value?.trim() || '';
     const confirm_password = document.getElementById('forgotConfirmPassword')?.value?.trim() || '';
 
@@ -1166,7 +1285,7 @@ class TiffinApp {
     }
 
     if (confirm_password && new_password !== confirm_password) {
-      this.showToast('Passwords do not match. Please check and try again.', 'error');
+      this.showToast('New Password and Confirm New Password do not match.', 'error');
       return;
     }
 
@@ -1175,7 +1294,15 @@ class TiffinApp {
       return;
     }
 
+    const btnSubmit = document.getElementById('btnForgotSubmit');
+    const origHTML = btnSubmit ? btnSubmit.innerHTML : 'Change Password';
+
     try {
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Updating Password...';
+      }
+
       const res = await fetch(`${API_BASE}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1184,31 +1311,23 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message || 'Password reset successfully. Please login again.', 'success');
-        
-        // Reset Forgot Form State
-        const grpFields = document.getElementById('grpForgotResetFields');
-        if (grpFields) grpFields.classList.add('hidden');
-        const btnVerify = document.getElementById('btnForgotVerify');
-        if (btnVerify) btnVerify.classList.remove('hidden');
-        const inputId = document.getElementById('forgotIdentifier');
-        if (inputId) inputId.readOnly = false;
+        this.showToast(json.message || 'Password changed successfully.', 'success');
+        this.resetForgotFormState();
+        this.setAuthMode('LOGIN');
 
-        document.getElementById('forgotNewPassword').value = '';
-        if (document.getElementById('forgotConfirmPassword')) {
-          document.getElementById('forgotConfirmPassword').value = '';
-        }
-
-        // Auto-fill login field and switch mode to LOGIN
         const loginInput = document.getElementById('loginIdentifier');
         if (loginInput) loginInput.value = identifier;
-        this.setAuthMode('LOGIN');
       } else {
-        this.showToast(json.message || 'Password reset failed', 'error');
+        this.showToast(json.message || 'Failed to change password. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error resetting password:', err);
-      this.showToast('Server communication error.', 'error');
+      this.showToast('Server error resetting password. Please try again.', 'error');
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = origHTML;
+      }
     }
   }
 
@@ -1650,6 +1769,7 @@ class TiffinApp {
           desktopNav.innerHTML = `
             <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')"><i class="fa-solid fa-house"></i> Customer Home</a>
             <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.scrollToMenu()"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
+            <a class="nav-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.switchView('secCustomerFavorites')"><i class="fa-solid fa-heart" style="color: #E53935;"></i> My Favorites ❤️</a>
             <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
             <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
             <a class="nav-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.switchView('secCustomerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
@@ -1911,6 +2031,15 @@ class TiffinApp {
               <span class="drawer-item-sub">Review items & checkout</span>
             </div>
             ${cartCount > 0 ? `<span class="drawer-badge-count">${cartCount}</span>` : ''}
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerFavorites');">
+            <div class="drawer-icon-box" style="background: rgba(229,57,53,0.15); color: #E53935;"><i class="fa-solid fa-heart"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">My Favorites ❤️</strong>
+              <span class="drawer-item-sub">Saved favorite tiffins</span>
+            </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
@@ -2196,8 +2325,8 @@ class TiffinApp {
   switchView(viewId) {
     // Access Control Guard - Require login for features
     if (!this.currentUser) {
-      if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral') {
-        this.showToast('Please Login or Register to view orders, payments & referral rewards.', 'error');
+      if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites') {
+        this.showToast('Please Login or Register to view favorites, orders, payments & referral rewards.', 'error');
         this.openAuthModal('CUSTOMER', 'LOGIN');
         return;
       }
@@ -2258,6 +2387,10 @@ class TiffinApp {
     // Trigger render logic per view
     if (this.activeView === 'secCustomerHome') this.renderMenu();
     if (this.activeView === 'secCustomerOrders') this.renderOrders();
+    if (this.activeView === 'secCustomerFavorites') {
+      this.fetchFavorites();
+      this.renderFavorites();
+    }
     if (this.activeView === 'secCustomerPayments') {
       this.fetchPayments();
       this.renderCustomerPayments();
@@ -2578,6 +2711,197 @@ class TiffinApp {
     }
   }
 
+  async toggleFavorite(tiffinId, event) {
+    if (event) event.stopPropagation();
+
+    if (!this.currentUser || this.currentRole !== 'CUSTOMER') {
+      this.showToast('Please log in to save items to your favorites ❤️', 'warning');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
+
+    if (!Array.isArray(this.favorites)) {
+      this.favorites = [];
+    }
+
+    const index = this.favorites.indexOf(tiffinId);
+
+    if (index >= 0) {
+      this.favorites.splice(index, 1);
+      this.showToast('Removed from Favorites ❤️', 'info');
+    } else {
+      this.favorites.push(tiffinId);
+      this.showToast('Added to My Favorites ❤️', 'success');
+    }
+
+    await this.saveFavoritesBackend();
+
+    if (this.activeView === 'secCustomerHome') {
+      this.renderMenu();
+    } else if (this.activeView === 'secCustomerFavorites') {
+      this.renderFavorites();
+    }
+  }
+
+  renderFavorites() {
+    if (this.currentRole !== 'CUSTOMER') return;
+    const container = document.getElementById('customerFavoritesGrid');
+    if (!container) return;
+
+    if (!this.favorites || !this.favorites.length) {
+      container.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+          <div style="width: 70px; height: 70px; border-radius: 50%; background: rgba(229, 57, 53, 0.15); color: #E53935; display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 1rem auto;">
+            <i class="fa-solid fa-heart-crack"></i>
+          </div>
+          <h3 style="color: var(--text-main); font-size: 1.2rem; margin-bottom: 0.5rem;">No Favorites Saved Yet</h3>
+          <p style="font-size: 0.9rem; max-width: 400px; margin: 0 auto 1.25rem auto;">Tap the ❤️ heart icon on any tiffin card in today's menu to save it to your favorites!</p>
+          <button class="btn-primary-block" onclick="app.switchView('secCustomerHome')" style="max-width: 220px; margin: 0 auto;">
+            <i class="fa-solid fa-utensils"></i> Explore Menu
+          </button>
+        </div>`;
+      return;
+    }
+
+    const favoriteItems = [];
+    this.favorites.forEach(favId => {
+      const item = this.menu.find(m => m.id === favId);
+      if (item) {
+        favoriteItems.push(item);
+      }
+    });
+
+    if (!favoriteItems.length) {
+      container.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem 1rem; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-lg); border: 1.5px dashed var(--border-color);">
+          <i class="fa-solid fa-heart-crack" style="font-size: 2.5rem; color: #E53935; margin-bottom: 0.5rem;"></i>
+          <p>Your saved favorite items are currently no longer available on the menu.</p>
+          <button class="btn-primary-block" onclick="app.switchView('secCustomerHome')" style="max-width: 200px; margin: 1rem auto 0 auto;">Browse Menu</button>
+        </div>`;
+      return;
+    }
+
+    const isHotelOpen = this.settings ? (this.settings.is_open !== false) : true;
+
+    container.innerHTML = favoriteItems.map(item => {
+      const qty = this.quantities[item.id] || 1;
+      const isAvailable = item.is_available;
+      const canOrder = isAvailable && isHotelOpen;
+
+      return `
+        <div class="food-card ${!canOrder ? 'unavailable' : ''}">
+          <div class="food-card-img-wrapper">
+            <img src="${item.image}" alt="${item.name}" class="food-card-img" onerror="this.src='/images/idly_sambar.png'">
+            <span class="availability-badge ${canOrder ? 'available' : 'unavailable'}">
+              <i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> ${!isHotelOpen ? 'Hotel Closed' : (isAvailable ? 'Available' : 'Not Available')}
+            </span>
+            <span class="category-tag">${item.category}</span>
+            <button type="button" class="favorite-heart-btn active" onclick="app.toggleFavorite('${item.id}', event)" title="Remove from Favorites" style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.65); border: none; color: #E53935; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; cursor: pointer; backdrop-filter: blur(4px); transition: all 0.2s ease; z-index: 5;">
+              <i class="fa-solid fa-heart"></i>
+            </button>
+          </div>
+
+          <div class="food-card-body">
+            <h3 class="food-card-title">${item.name}</h3>
+            <p class="food-card-desc">${item.description}</p>
+
+            <div class="food-card-footer">
+              <span class="food-card-price">₹${item.price}</span>
+
+              ${canOrder ? `
+                <div class="qty-selector">
+                  <button class="qty-btn" onclick="app.changeItemQty('${item.id}', -1)">-</button>
+                  <span class="qty-val" id="fav_qty_${item.id}">${qty}</span>
+                  <button class="qty-btn" onclick="app.changeItemQty('${item.id}', 1)">+</button>
+                </div>
+                <button class="btn-add-cart" onclick="app.addToCart('${item.id}')">
+                  <i class="fa-solid fa-cart-plus"></i> Add
+                </button>
+              ` : `
+                <button class="btn-add-cart" disabled style="${!isHotelOpen ? 'background: rgba(229,57,53,0.15); color: #FF5252; border: 1px solid rgba(229,57,53,0.3); font-weight: 700;' : ''}">
+                  ${!isHotelOpen ? '🔴 Hotel Closed' : '🔴 Not Available'}
+                </button>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async reorderPreviousOrder(orderId) {
+    if (!this.currentUser || this.currentRole !== 'CUSTOMER') {
+      this.showToast('Please log in to reorder previous orders.', 'warning');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
+
+    const order = (this.orders || []).find(o => o.id === orderId || o.order_number === orderId);
+    if (!order) {
+      this.showToast('Order details not found.', 'error');
+      return;
+    }
+
+    const items = order.items || [];
+    if (!items.length) {
+      this.showToast('No items found in this order.', 'error');
+      return;
+    }
+
+    const isHotelOpen = this.settings ? (this.settings.is_open !== false) : true;
+    if (!isHotelOpen) {
+      this.showToast('🔴 Hotel is currently closed. Cannot place reorder at this time.', 'error');
+      return;
+    }
+
+    const availableToReorder = [];
+    const unavailableItemNames = [];
+
+    items.forEach(orderItem => {
+      const targetId = orderItem.tiffin_id || orderItem.id;
+      const matchedTiffin = this.menu.find(m => m.id === targetId || m.name.toLowerCase() === (orderItem.name || '').toLowerCase());
+
+      if (matchedTiffin && matchedTiffin.is_available !== false) {
+        availableToReorder.push({
+          id: matchedTiffin.id,
+          name: matchedTiffin.name,
+          price: Number(matchedTiffin.price),
+          image: matchedTiffin.image,
+          quantity: Number(orderItem.quantity || 1)
+        });
+      } else {
+        unavailableItemNames.push(orderItem.name || 'Item');
+      }
+    });
+
+    if (!availableToReorder.length) {
+      this.showToast(`❌ Cannot reorder: All items from Order #${order.order_number} are currently unavailable or deleted.`, 'error');
+      return;
+    }
+
+    if (!Array.isArray(this.cart)) this.cart = [];
+
+    availableToReorder.forEach(reItem => {
+      const existingCartIndex = this.cart.findIndex(c => c.id === reItem.id);
+      if (existingCartIndex >= 0) {
+        this.cart[existingCartIndex].quantity += reItem.quantity;
+      } else {
+        this.cart.push(reItem);
+      }
+    });
+
+    await this.saveCartBackend();
+    this.updateCartCountUI();
+
+    if (unavailableItemNames.length > 0) {
+      this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItemNames.join(', ')}`, 'warning');
+    } else {
+      this.showToast(`🔄 Items from Order #${order.order_number} added to cart at current prices!`, 'success');
+    }
+
+    this.openCartModal();
+  }
+
   // =========================================================================
   // MENU RENDER & TIFFIN MANAGEMENT
   // =========================================================================
@@ -2620,6 +2944,7 @@ class TiffinApp {
         const isAvailable = item.is_available;
         const isHotelOpen = this.settings ? (this.settings.is_open !== false) : true;
         const canOrder = isAvailable && isHotelOpen;
+        const isFav = Array.isArray(this.favorites) && this.favorites.includes(item.id);
 
         return `
           <div class="food-card ${!canOrder ? 'unavailable' : ''}">
@@ -2629,6 +2954,9 @@ class TiffinApp {
                 <i class="fa-solid fa-circle" style="font-size: 0.5rem;"></i> ${!isHotelOpen ? 'Hotel Closed' : (isAvailable ? 'Available' : 'Not Available')}
               </span>
               <span class="category-tag">${item.category}</span>
+              <button type="button" class="favorite-heart-btn ${isFav ? 'active' : ''}" onclick="app.toggleFavorite('${item.id}', event)" title="${isFav ? 'Remove from Favorites' : 'Add to Favorites'}" style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.65); border: none; color: ${isFav ? '#E53935' : '#FFFFFF'}; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; cursor: pointer; backdrop-filter: blur(4px); transition: all 0.2s ease; z-index: 5;">
+                <i class="fa-${isFav ? 'solid' : 'regular'} fa-heart"></i>
+              </button>
             </div>
 
             <div class="food-card-body">
@@ -4798,12 +5126,15 @@ class TiffinApp {
                 </div>
               ` : ''}
 
-              <div style="display: flex; gap: 6px; margin-top: 4px;">
-                <button class="co-row-btn view" onclick="app.showOrderDetail('${order.order_number}')" style="flex: 1;">
+              <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                <button class="co-row-btn view" onclick="app.showOrderDetail('${order.order_number}')" style="flex: 1; min-width: 100px;">
                   <i class="fa-solid fa-eye"></i> View Details
                 </button>
+                <button type="button" class="btn-reorder-action" onclick="app.reorderPreviousOrder('${order.id}')" style="flex: 1; min-width: 110px; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; font-weight: 800; border: none; padding: 7px 10px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.8rem; box-shadow: 0 2px 8px rgba(217, 83, 30, 0.3);">
+                  <i class="fa-solid fa-rotate-right"></i> 🔄 Reorder
+                </button>
                 ${(isCompleted || order.pickup_pin_verified) ? `
-                  <button class="co-row-btn receipt" onclick="app.downloadInvoice('${order.order_number}')" style="flex: 1; background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1px solid #4CAF50; font-weight: 800;">
+                  <button class="co-row-btn receipt" onclick="app.downloadInvoice('${order.order_number}')" style="flex: 1; min-width: 120px; background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1px solid #4CAF50; font-weight: 800;">
                     <i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice
                   </button>
                 ` : ''}
@@ -6134,6 +6465,93 @@ class TiffinApp {
   // OWNER TIFFIN MANAGEMENT CRUD
   // =========================================================================
 
+  async handleTiffinImageSelect(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type.toLowerCase())) {
+      this.showToast('❌ Invalid image format. Allowed: JPG, JPEG, PNG, WEBP', 'error');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      this.showToast('❌ Image file size must be under 5MB', 'error');
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      const compressedDataUrl = await this.compressTiffinImage(file);
+      this.selectedTiffinImageBase64 = compressedDataUrl;
+      this.updateTiffinImagePreview(compressedDataUrl, file.name);
+    } catch (err) {
+      console.error('Error processing tiffin image:', err);
+      this.showToast('❌ Failed to process selected image.', 'error');
+    }
+  }
+
+  compressTiffinImage(file, maxWidth = 800, maxHeight = 800, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > maxWidth || height > maxHeight) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          resolve(canvas.toDataURL(mimeType, quality));
+        };
+        img.onerror = (err) => reject(err);
+        img.src = e.target.result;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  updateTiffinImagePreview(srcUrl, fileName = 'Tiffin Image') {
+    const previewContainer = document.getElementById('tifImagePreviewContainer');
+    const previewImg = document.getElementById('tifImagePreview');
+    const previewName = document.getElementById('tifImagePreviewName');
+
+    if (srcUrl) {
+      if (previewImg) previewImg.src = srcUrl;
+      if (previewName) previewName.innerText = fileName;
+      if (previewContainer) previewContainer.style.display = 'flex';
+    } else {
+      if (previewContainer) previewContainer.style.display = 'none';
+      if (previewImg) previewImg.src = '';
+    }
+  }
+
+  removeSelectedTiffinImage() {
+    this.selectedTiffinImageBase64 = '';
+    const tifImageEl = document.getElementById('tifImage');
+    if (tifImageEl) tifImageEl.value = '';
+    const fileInput = document.getElementById('tifFileInput');
+    if (fileInput) fileInput.value = '';
+    this.updateTiffinImagePreview(null);
+  }
+
   openAddTiffinModal() {
     document.getElementById('tiffinModalTitle').innerText = 'Add New Tiffin';
     document.getElementById('editTiffinId').value = '';
@@ -6142,6 +6560,10 @@ class TiffinApp {
     document.getElementById('tifPrice').value = '';
     document.getElementById('tifCategory').value = 'Breakfast';
     document.getElementById('tifImage').value = '/images/idly_sambar.png';
+    const fileInput = document.getElementById('tifFileInput');
+    if (fileInput) fileInput.value = '';
+    this.selectedTiffinImageBase64 = null;
+    this.updateTiffinImagePreview('/images/idly_sambar.png', 'Default Tiffin Image');
     this.formAvailability = true;
     this.updateFormAvailabilityUI();
     this.toggleTiffinModal(true);
@@ -6157,7 +6579,15 @@ class TiffinApp {
     document.getElementById('tifDesc').value = item.description;
     document.getElementById('tifPrice').value = item.price;
     document.getElementById('tifCategory').value = item.category;
-    document.getElementById('tifImage').value = item.image;
+    document.getElementById('tifImage').value = item.image || '';
+    const fileInput = document.getElementById('tifFileInput');
+    if (fileInput) fileInput.value = '';
+    this.selectedTiffinImageBase64 = null;
+    if (item.image) {
+      this.updateTiffinImagePreview(item.image, item.name);
+    } else {
+      this.updateTiffinImagePreview(null);
+    }
     this.formAvailability = Boolean(item.is_available);
     this.updateFormAvailabilityUI();
     this.toggleTiffinModal(true);
@@ -6182,18 +6612,39 @@ class TiffinApp {
   async saveTiffin(e) {
     e.preventDefault();
 
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const origSubmitText = submitBtn ? submitBtn.innerHTML : 'Save Tiffin';
+
     const id = document.getElementById('editTiffinId').value;
     const name = document.getElementById('tifName').value;
     const desc = document.getElementById('tifDesc').value;
     const price = document.getElementById('tifPrice').value;
     const cat = document.getElementById('tifCategory').value;
-    const image = document.getElementById('tifImage').value || '/images/idly_sambar.png';
+    const existingImage = document.getElementById('tifImage').value;
+
+    let finalImage = existingImage;
+    if (this.selectedTiffinImageBase64 !== null && this.selectedTiffinImageBase64 !== undefined) {
+      finalImage = this.selectedTiffinImageBase64;
+    }
+    if (!finalImage) {
+      finalImage = '/images/idly_sambar.png';
+    }
 
     const payload = {
-      name, description: desc, price, category: cat, image, is_available: this.formAvailability
+      name,
+      description: desc,
+      price,
+      category: cat,
+      image: finalImage,
+      is_available: this.formAvailability
     };
 
     try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+      }
+
       let res, json;
       if (id) {
         res = await this.fetchWithAuth(`${API_BASE}/menu/${id}`, {
@@ -6211,14 +6662,20 @@ class TiffinApp {
 
       json = await res.json();
       if (json.success) {
-        this.showToast(json.message || `${name} has been added successfully.`, 'success');
+        this.showToast(json.message || `${name} has been saved successfully.`, 'success');
         this.toggleTiffinModal(false);
         await this.fetchMenu();
       } else {
-        this.showToast(json.message || 'Failed to save tiffin.', 'error');
+        this.showToast(json.message || 'Failed to save tiffin item.', 'error');
       }
     } catch (err) {
       console.error('Error saving tiffin:', err);
+      this.showToast('Error saving tiffin. Please try again.', 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origSubmitText;
+      }
     }
   }
 

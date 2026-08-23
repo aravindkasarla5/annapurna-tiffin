@@ -440,36 +440,53 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// AUTH 3. Forgot Password (Lookup Account)
+// AUTH 3. Forgot Password (Generate & Send Real 6-Digit Server OTP)
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const rawIdentifier = (req.body.identifier || req.body.mobile || '').toString().trim();
 
     if (!rawIdentifier) {
-      return res.status(400).json({ success: false, message: "Registered Phone number or Email is required." });
+      return res.status(400).json({ success: false, message: "Registered 10-digit mobile number is required." });
     }
 
     const user = await findUserByIdentifier(rawIdentifier);
 
-    if (!user) {
-      return res.status(404).json({ success: false, message: "No account found with this number." });
+    if (!user || user.role !== 'CUSTOMER') {
+      return res.status(404).json({ success: false, message: "No registered customer account found with this phone number." });
     }
 
-    const generatedOtp = "123456";
+    // Rate-limiting check: enforce 30-second cooldown between OTP generation requests
+    const existingReset = await db.query('SELECT * FROM password_resets WHERE user_id = $1;', [user.id]);
+    if (existingReset.rows.length > 0) {
+      const lastCreated = Number(existingReset.rows[0].created_at || 0);
+      const secondsPassed = Math.floor((Date.now() - lastCreated) / 1000);
+      if (secondsPassed < 30) {
+        return res.status(429).json({
+          success: false,
+          message: `Please wait ${30 - secondsPassed} seconds before requesting a new OTP.`
+        });
+      }
+    }
+
+    // Generate random 6-digit single-use OTP
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const now = Date.now();
+
     await db.query(
-      `INSERT INTO password_resets (user_id, otp, mobile, created_at)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id) DO UPDATE SET otp = EXCLUDED.otp, created_at = EXCLUDED.created_at;`,
-      [user.id, generatedOtp, user.mobile, Date.now()]
+      `INSERT INTO password_resets (user_id, otp, mobile, created_at, attempts, is_verified)
+       VALUES ($1, $2, $3, $4, 0, false)
+       ON CONFLICT (user_id) DO UPDATE SET otp = EXCLUDED.otp, created_at = EXCLUDED.created_at, attempts = 0, is_verified = false;`,
+      [user.id, generatedOtp, user.mobile, now]
     );
+
+    // Secure SMS delivery simulation / server log (OTP is NEVER returned to client payload!)
+    console.log(`[REAL-TIME SMS GATEWAY] Sending password reset OTP [${generatedOtp}] to registered mobile ${user.mobile}`);
 
     res.json({
       success: true,
-      message: "Account found. Continue verification.",
+      message: "OTP sent successfully to your registered phone number.",
       data: {
-        user_id: user.id,
-        mobile: user.mobile,
-        otp: generatedOtp
+        mobile: user.mobile
       }
     });
   } catch (err) {
@@ -478,14 +495,69 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-// AUTH 3b. Reset Password
+// AUTH 3b. Verify OTP Code Server-Side
+app.post('/api/auth/verify-otp', async (req, res) => {
+  try {
+    const rawIdentifier = (req.body.identifier || req.body.mobile || '').toString().trim();
+    const inputOtp = (req.body.otp || '').toString().trim();
+
+    if (!rawIdentifier || !inputOtp) {
+      return res.status(400).json({ success: false, message: "Phone number and 6-digit OTP code are required." });
+    }
+
+    const user = await findUserByIdentifier(rawIdentifier);
+    if (!user || user.role !== 'CUSTOMER') {
+      return res.status(404).json({ success: false, message: "No registered customer account found with this phone number." });
+    }
+
+    const resetRes = await db.query('SELECT * FROM password_resets WHERE user_id = $1;', [user.id]);
+    if (!resetRes.rows.length) {
+      return res.status(400).json({ success: false, message: "No active OTP request found. Please request a new OTP." });
+    }
+
+    const resetRecord = resetRes.rows[0];
+    const createdTime = Number(resetRecord.created_at || 0);
+    const expirationMs = 5 * 60 * 1000; // 5 minutes expiration limit
+
+    if (Date.now() - createdTime > expirationMs) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new OTP." });
+    }
+
+    const currentAttempts = Number(resetRecord.attempts || 0);
+    if (currentAttempts >= 5) {
+      return res.status(429).json({ success: false, message: "Too many failed OTP attempts. Please request a new OTP." });
+    }
+
+    if (resetRecord.otp !== inputOtp) {
+      await db.query('UPDATE password_resets SET attempts = attempts + 1 WHERE user_id = $1;', [user.id]);
+      return res.status(400).json({ success: false, message: "OTP is incorrect. Please check and try again." });
+    }
+
+    // OTP is correct -> mark verified
+    await db.query('UPDATE password_resets SET is_verified = true WHERE user_id = $1;', [user.id]);
+
+    res.json({
+      success: true,
+      message: "OTP verified successfully.",
+      data: {
+        mobile: user.mobile
+      }
+    });
+  } catch (err) {
+    console.error('Verify OTP Error:', err);
+    res.status(500).json({ success: false, message: "Database server error." });
+  }
+});
+
+// AUTH 3c. Reset Password (After Server-Side OTP Verification)
 app.post('/api/auth/reset-password', async (req, res) => {
   try {
     const rawIdentifier = (req.body.identifier || req.body.mobile || '').toString().trim();
+    const inputOtp = (req.body.otp || '').toString().trim();
     const newPassword = (req.body.new_password || req.body.password || '').toString().trim();
 
     if (!rawIdentifier || !newPassword) {
-      return res.status(400).json({ success: false, message: "Registered Phone / Email and new password are required." });
+      return res.status(400).json({ success: false, message: "Registered phone number and new password are required." });
     }
 
     if (newPassword.length < 4) {
@@ -493,18 +565,40 @@ app.post('/api/auth/reset-password', async (req, res) => {
     }
 
     const user = await findUserByIdentifier(rawIdentifier);
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: "No account found with this number." });
+    if (!user || user.role !== 'CUSTOMER') {
+      return res.status(404).json({ success: false, message: "No registered customer account found with this phone number." });
     }
 
+    const resetRes = await db.query('SELECT * FROM password_resets WHERE user_id = $1;', [user.id]);
+    if (!resetRes.rows.length) {
+      return res.status(400).json({ success: false, message: "No active OTP request found. Please request a new OTP." });
+    }
+
+    const resetRecord = resetRes.rows[0];
+    const createdTime = Number(resetRecord.created_at || 0);
+    const expirationMs = 10 * 60 * 1000; // 10 minutes overall window
+
+    if (Date.now() - createdTime > expirationMs) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new OTP." });
+    }
+
+    const isVerified = resetRecord.is_verified === true || resetRecord.is_verified === 1 || resetRecord.is_verified === 'true';
+    const isOtpMatch = inputOtp && resetRecord.otp === inputOtp;
+
+    if (!isVerified && !isOtpMatch) {
+      return res.status(400).json({ success: false, message: "OTP is incorrect. Please check and try again." });
+    }
+
+    // Update password securely using bcrypt
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
     await db.query('UPDATE users SET password = $1 WHERE id = $2;', [hashedPassword, user.id]);
+
+    // Immediately delete / invalidate OTP record after successful reset
     await db.query('DELETE FROM password_resets WHERE user_id = $1;', [user.id]);
 
     res.json({
       success: true,
-      message: "Password reset successfully. Please login again."
+      message: "Password changed successfully."
     });
   } catch (err) {
     console.error('Reset Password Error:', err);
@@ -918,9 +1012,10 @@ app.post('/api/menu', authenticateToken, requireRole('OWNER'), async (req, res) 
     return res.status(400).json({ success: false, message: "Item name and price are required." });
   }
   const id = 'tf_' + Date.now();
+  const savedImage = (await saveBase64Image(image, 'tiffins')) || image || '/images/idly_sambar.png';
   await db.query(
     'INSERT INTO tiffins (id, name, description, price, category, image, is_available) VALUES ($1, $2, $3, $4, $5, $6, $7);',
-    [id, name.trim(), (description || '').trim(), Number(price), category || 'Breakfast', image || '', is_available !== false]
+    [id, name.trim(), (description || '').trim(), Number(price), category || 'Breakfast', savedImage, is_available !== false]
   );
   const newItem = await db.query('SELECT * FROM tiffins WHERE id = $1;', [id]);
   res.json({ success: true, data: newItem.rows[0], message: "Tiffin item added to menu successfully." });
@@ -929,9 +1024,10 @@ app.post('/api/menu', authenticateToken, requireRole('OWNER'), async (req, res) 
 app.put('/api/menu/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
   const { id } = req.params;
   const { name, description, price, category, image, is_available } = req.body;
+  const savedImage = (await saveBase64Image(image, 'tiffins')) || image || '/images/idly_sambar.png';
   await db.query(
     'UPDATE tiffins SET name = $1, description = $2, price = $3, category = $4, image = $5, is_available = $6 WHERE id = $7;',
-    [name.trim(), (description || '').trim(), Number(price), category, image, Boolean(is_available), id]
+    [name.trim(), (description || '').trim(), Number(price), category, savedImage, Boolean(is_available), id]
   );
   const updated = await db.query('SELECT * FROM tiffins WHERE id = $1;', [id]);
   res.json({ success: true, data: updated.rows[0], message: "Tiffin item updated successfully." });
