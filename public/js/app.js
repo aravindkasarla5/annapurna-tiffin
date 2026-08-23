@@ -2858,7 +2858,7 @@ class TiffinApp {
       let unavailableItems = [];
       let origOrderNum = orderId;
 
-      // Try backend verification endpoint first
+      // Primary: Fetch live verified items from backend endpoint
       try {
         const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderId)}/reorder-items`, {
           method: 'POST',
@@ -2877,10 +2877,10 @@ class TiffinApp {
           }
         }
       } catch (e) {
-        console.warn('Backend reorder endpoint notice, using client fallback:', e);
+        console.warn('Backend reorder verification notice, using client fallback:', e);
       }
 
-      // Client fallback if backend verification didn't populate items
+      // Fallback: Client menu matching if endpoint unreachable
       if (!reorderableItems.length) {
         const order = (this.orders || []).find(o => String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
         if (!order) {
@@ -2917,37 +2917,131 @@ class TiffinApp {
         return;
       }
 
-      if (!Array.isArray(this.cart)) this.cart = [];
+      // Store active reorder state
+      this.activeReorderTargetId = orderId;
+      this.activeReorderData = {
+        origOrderNum,
+        reorderableItems,
+        unavailableItems
+      };
 
-      reorderableItems.forEach(reItem => {
-        const existingIndex = this.cart.findIndex(c => c.id === reItem.id);
-        if (existingIndex >= 0) {
-          this.cart[existingIndex].quantity += reItem.quantity;
-        } else {
-          this.cart.push({
-            id: reItem.id,
-            name: reItem.name,
-            price: Number(reItem.price),
-            image: reItem.image || '',
-            quantity: Number(reItem.quantity || 1)
-          });
-        }
-      });
-
-      await this.saveCartBackend();
-      this.updateCartCountUI();
-
-      if (unavailableItems && unavailableItems.length > 0) {
-        this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItems.join(', ')}`, 'warning');
-      } else {
-        this.showToast(`🔄 Items from Order #${origOrderNum} added to cart at current prices!`, 'success');
-      }
-
-      this.openCartModal();
+      // Open Reorder Review Modal
+      this.openReorderReviewModal();
     } finally {
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = origHTML;
+      }
+    }
+  }
+
+  openReorderReviewModal() {
+    if (!this.activeReorderData) return;
+
+    const { origOrderNum, reorderableItems, unavailableItems } = this.activeReorderData;
+
+    const modalBackdrop = document.getElementById('reorderReviewModalBackdrop');
+    const origNumElem = document.getElementById('reorderReviewOrigNum');
+    const itemsListElem = document.getElementById('reorderReviewItemsList');
+    const grandTotalElem = document.getElementById('reorderReviewGrandTotal');
+    const addressInput = document.getElementById('reorderReviewAddress');
+    const unavailNotice = document.getElementById('reorderReviewUnavailableNotice');
+
+    if (origNumElem) origNumElem.innerText = origOrderNum;
+    if (addressInput) addressInput.value = this.currentUser?.address || '';
+
+    let grandTotal = 0;
+    if (itemsListElem) {
+      itemsListElem.innerHTML = reorderableItems.map(item => {
+        const itemTotal = Number(item.price) * Number(item.quantity);
+        grandTotal += itemTotal;
+        return `
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.1); font-size: 0.84rem;">
+            <div>
+              <strong style="color: #FFF;">${item.name}</strong>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">${item.quantity} × ₹${item.price} (Current Price)</div>
+            </div>
+            <div style="font-weight: 800; color: var(--accent-gold);">₹${itemTotal}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    if (grandTotalElem) grandTotalElem.innerText = `₹${grandTotal}`;
+
+    if (unavailNotice) {
+      if (unavailableItems && unavailableItems.length > 0) {
+        unavailNotice.classList.remove('hidden');
+        unavailNotice.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> <strong>Excluded Unavailable Items:</strong> ${unavailableItems.join(', ')}`;
+      } else {
+        unavailNotice.classList.add('hidden');
+      }
+    }
+
+    if (modalBackdrop) modalBackdrop.classList.add('open');
+  }
+
+  closeReorderReviewModal() {
+    const modalBackdrop = document.getElementById('reorderReviewModalBackdrop');
+    if (modalBackdrop) modalBackdrop.classList.remove('open');
+    this.activeReorderTargetId = null;
+    this.activeReorderData = null;
+  }
+
+  async confirmAndSubmitReorder() {
+    if (!this.activeReorderTargetId) {
+      this.showToast('Reorder target not found.', 'error');
+      return;
+    }
+
+    const address = document.getElementById('reorderReviewAddress')?.value?.trim() || '';
+    const payment_method = document.getElementById('reorderReviewPaymentMethod')?.value || 'Cash';
+    const btnSubmit = document.getElementById('btnConfirmReorderSubmit');
+
+    const origHTML = btnSubmit ? btnSubmit.innerHTML : '<span>Confirm Reorder</span> <i class="fa-solid fa-check-circle"></i>';
+
+    try {
+      if (btnSubmit) {
+        if (btnSubmit.disabled) return;
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Placing New Reorder...';
+      }
+
+      // Call Backend End-to-End Database Reorder Endpoint
+      const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(this.activeReorderTargetId)}/reorder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        },
+        body: JSON.stringify({
+          delivery_address: address,
+          payment_method: payment_method
+        })
+      });
+
+      const json = await res.json();
+
+      if (json.success && json.data?.new_order) {
+        this.showToast(json.message || `🎉 New Reorder #${json.data.new_order.order_number} created successfully!`, 'success');
+        this.closeReorderReviewModal();
+
+        // Refresh Orders directly from backend database
+        await this.fetchOrders();
+
+        // Switch view to Customer Orders & scroll to top
+        this.switchView('secCustomerOrders');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        this.showToast(json.message || 'Failed to place reorder. Please try again.', 'error');
+      }
+    } catch (err) {
+      console.error('Error placing reorder:', err);
+      this.showToast('Server error placing reorder. Please try again.', 'error');
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = origHTML;
       }
     }
   }

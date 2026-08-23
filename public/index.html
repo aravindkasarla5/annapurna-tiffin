@@ -2841,6 +2841,57 @@
     </div>
   </div>
 
+  <!-- Customer Reorder Review Modal Backdrop -->
+  <div class="modal-backdrop" id="reorderReviewModalBackdrop" onclick="app.closeReorderReviewModal()">
+    <div class="modal-card" style="max-width: 480px; text-align: left;" onclick="event.stopPropagation()">
+      <div class="modal-header" style="border-bottom: 1.5px solid var(--accent-gold); padding-bottom: 10px;">
+        <h3 style="color: var(--accent-gold); font-size: 1.15rem; margin: 0; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-rotate-right" style="color: var(--accent-gold);"></i> Review Reorder
+        </h3>
+        <button type="button" class="icon-btn" onclick="app.closeReorderReviewModal()" style="width: 32px; height: 32px; color: #FFF;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px;">
+        <div id="reorderReviewBanner" style="background: rgba(234, 162, 33, 0.12); border: 1px solid var(--accent-gold); color: var(--accent-gold); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; font-weight: 700; margin-bottom: 12px;">
+          <i class="fa-solid fa-rotate"></i> Reordering items from Order #<strong id="reorderReviewOrigNum"></strong>
+        </div>
+
+        <div style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Reorder Items (Current Prices)</div>
+        <div id="reorderReviewItemsList" style="max-height: 200px; overflow-y: auto; margin-bottom: 12px; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: rgba(0,0,0,0.2);">
+          <!-- Dynamically populated -->
+        </div>
+
+        <div id="reorderReviewUnavailableNotice" class="hidden" style="background: rgba(229, 57, 53, 0.12); border: 1px dashed #E53935; color: #EF5350; padding: 8px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; margin-bottom: 12px;">
+          <!-- Dynamically populated if any items are unavailable -->
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Delivery Address / Location:</label>
+          <input type="text" id="reorderReviewAddress" class="form-input-custom" style="width: 100%; padding: 8px 10px; font-size: 0.85rem; border-radius: 8px; background: rgba(0,0,0,0.4); color: #FFF; border: 1px solid var(--border-color);" placeholder="Delivery address">
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Payment Method:</label>
+          <select id="reorderReviewPaymentMethod" class="form-select-custom" style="width: 100%; padding: 8px 10px; font-size: 0.85rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+            <option value="Cash">Cash on Delivery / Pickup</option>
+            <option value="UPI (QR Pay)">UPI / QR Pay</option>
+          </select>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 12px; margin-bottom: 16px;">
+          <span style="font-size: 0.9rem; color: var(--text-muted); font-weight: 700;">Reorder Total:</span>
+          <span style="font-size: 1.35rem; color: var(--accent-gold); font-weight: 900;" id="reorderReviewGrandTotal">₹0</span>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="co-row-btn cancel" onclick="app.closeReorderReviewModal()" style="flex: 1; padding: 10px; font-weight: 700;">Cancel</button>
+          <button type="button" id="btnConfirmReorderSubmit" onclick="app.confirmAndSubmitReorder()" class="auth-submit-btn register-btn" style="flex: 2; padding: 10px; margin: 0; font-weight: 800;">
+            <span>Confirm Reorder</span> <i class="fa-solid fa-check-circle"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Owner Pickup PIN Completion Modal Backdrop -->
   <div class="modal-backdrop" id="verifyPinModalBackdrop" onclick="app.closeVerifyPinModal()">
     <div class="modal-card" style="max-width: 440px;" onclick="event.stopPropagation()">
