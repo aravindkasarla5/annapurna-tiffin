@@ -1098,6 +1098,142 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
   }
 });
 
+// POST /api/orders/:id/reorder - Perform Complete End-to-End Backend Database Reorder Operation
+app.post('/api/orders/:id/reorder', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const sRes = await db.query('SELECT is_open FROM settings WHERE id = 1;');
+    const settings = sRes.rows[0] || {};
+    if (settings.is_open === false) {
+      return res.status(400).json({ success: false, message: "Hotel is currently closed. Reorders are not being accepted at this time." });
+    }
+
+    const targetOrderId = req.params.id;
+
+    // Backend Customer Ownership Guard: Ensure target order belongs to authenticated customer
+    const orderRes = await db.query('SELECT * FROM orders WHERE (id = $1 OR order_number = $1) AND customer_id = $2;', [targetOrderId, req.user.id]);
+    if (!orderRes.rows.length) {
+      return res.status(403).json({ success: false, message: "Access denied. Order not found or does not belong to your account." });
+    }
+
+    const previousOrder = orderRes.rows[0];
+    let prevItems = previousOrder.items || [];
+    if (typeof prevItems === 'string') {
+      try { prevItems = JSON.parse(prevItems); } catch(e) { prevItems = []; }
+    }
+
+    if (!prevItems.length) {
+      return res.status(400).json({ success: false, message: "Previous order has no items to reorder." });
+    }
+
+    // Fetch Current Menu from Database (Live Prices & Live Availability)
+    const tiffinRes = await db.query('SELECT * FROM tiffins;');
+    const currentMenu = tiffinRes.rows || [];
+
+    const reorderableItems = [];
+    const unavailableItems = [];
+
+    prevItems.forEach(item => {
+      const targetId = item.tiffin_id || item.id;
+      const matched = currentMenu.find(m => m.id === targetId || (m.name && item.name && m.name.toLowerCase() === item.name.toLowerCase()));
+
+      const isAvailable = matched ? (matched.is_available === true || matched.is_available === 1 || matched.is_available === 'true') : false;
+
+      if (matched && isAvailable) {
+        reorderableItems.push({
+          tiffin_id: matched.id,
+          id: matched.id,
+          name: matched.name,
+          price: Number(matched.price), // ALWAYS USE CURRENT PRICE
+          quantity: Number(item.quantity || 1)
+        });
+      } else {
+        unavailableItems.push(item.name || 'Item');
+      }
+    });
+
+    if (!reorderableItems.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot create reorder: All items from Order #${previousOrder.order_number} are currently unavailable or deleted.`
+      });
+    }
+
+    // Calculate Grand Total using CURRENT prices
+    let grandTotal = 0;
+    reorderableItems.forEach(item => {
+      grandTotal += Number(item.price) * Number(item.quantity);
+    });
+
+    // Generate NEW Unique Order Number & Order UUID
+    const orderSeq = await db.getNextCounter('order_counter');
+    const newOrderNum = 'TF' + orderSeq;
+    const newOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
+    const nowIso = new Date().toISOString();
+
+    const orderType = req.body.order_type || previousOrder.order_type || 'Takeaway';
+    const deliveryAddress = req.body.delivery_address || req.user.address || previousOrder.delivery_address || '';
+    const notes = req.body.notes || `Reordered from #${previousOrder.order_number}`;
+    const paymentMethod = req.body.payment_method || previousOrder.payment_method || 'Cash';
+
+    // Execute Atomic Transaction to Save New Order to Database
+    let createdOrder = null;
+    await db.executeTransaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO orders (
+          id, order_number, customer_id, customer_name, customer_mobile,
+          order_type, delivery_address, notes, total_amount, used_wallet_amount,
+          net_amount, payment_method, payment_status, order_status, items,
+          pickup_pin, pickup_pin_verified, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $9, $10, 'Pending', 'Received', $11, $12, false, $13);`,
+        [
+          newOrderId, newOrderNum, req.user.id, req.user.name, req.user.mobile,
+          orderType, deliveryAddress, notes, grandTotal,
+          paymentMethod, JSON.stringify(reorderableItems), pickupPin, nowIso
+        ]
+      );
+
+      // Create Payment Record for the NEW Order (Status 'Pending')
+      const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      await tx.query(
+        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending', $9);`,
+        [newPayId, newOrderNum, newOrderId, req.user.id, req.user.name, req.user.mobile, grandTotal, paymentMethod, `Reorder Payment for Order #${newOrderNum}`]
+      );
+
+      // Notify Owner of NEW Order
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Reorder Received', `New Reorder #${newOrderNum} placed by ${req.user.name} (₹${grandTotal}).`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+      );
+
+      // Notify Customer with Pickup PIN
+      await tx.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        ['notif_c_' + Date.now(), 'CUSTOMER', req.user.id, 'Reorder Placed Successfully', `🔐 Your Pickup PIN for New Reorder #${newOrderNum} is ${pickupPin}. Show this PIN when collecting your order.`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+      );
+
+      const createdRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
+      createdOrder = createdRes.rows[0];
+    });
+
+    res.json({
+      success: true,
+      message: `🎉 New Reorder #${newOrderNum} created successfully!`,
+      data: {
+        new_order: createdOrder,
+        original_order_number: previousOrder.order_number,
+        unavailableItems
+      }
+    });
+  } catch (err) {
+    console.error('Backend Reorder Error:', err);
+    res.status(500).json({ success: false, message: "Database server error creating reorder." });
+  }
+});
+
 // POST /api/orders/:id/reorder-items - Secure Backend Customer Ownership & Items Verification for Reorder
 app.post('/api/orders/:id/reorder-items', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
   try {

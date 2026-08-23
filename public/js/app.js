@@ -2831,109 +2831,125 @@ class TiffinApp {
     }).join('');
   }
 
-  async reorderPreviousOrder(orderId) {
-    if (!this.currentUser || this.currentRole !== 'CUSTOMER') {
-      this.showToast('Please log in to reorder previous orders.', 'warning');
-      this.openAuthModal('CUSTOMER', 'LOGIN');
-      return;
+  async reorderPreviousOrder(orderId, evt) {
+    const btn = evt ? (evt.currentTarget || evt.target) : null;
+    const origHTML = btn ? btn.innerHTML : '<i class="fa-solid fa-rotate-right"></i> 🔄 Reorder';
+
+    if (btn) {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
     }
 
-    const isHotelOpen = this.settings ? (this.settings.is_open !== false) : true;
-    if (!isHotelOpen) {
-      this.showToast('🔴 Hotel is currently closed. Cannot place reorder at this time.', 'error');
-      return;
-    }
-
-    let reorderableItems = [];
-    let unavailableItems = [];
-    let origOrderNum = orderId;
-
-    // Try backend verification endpoint first
     try {
-      const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderId)}/reorder-items`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.authToken}`
-        }
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          origOrderNum = json.data.original_order_number || orderId;
-          reorderableItems = json.data.reorderableItems || [];
-          unavailableItems = json.data.unavailableItems || [];
-        }
-      }
-    } catch (e) {
-      console.warn('Backend reorder endpoint notice, using client fallback:', e);
-    }
-
-    // Client fallback if backend verification didn't populate items
-    if (!reorderableItems.length) {
-      const order = (this.orders || []).find(o => String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
-      if (!order) {
-        this.showToast('Order details not found.', 'error');
-        return;
-      }
-      origOrderNum = order.order_number || orderId;
-      const items = order.items || [];
-      if (!items.length) {
-        this.showToast('No items found in this order.', 'error');
+      if (!this.currentUser || this.currentRole !== 'CUSTOMER') {
+        this.showToast('Please log in to reorder previous orders.', 'warning');
+        this.openAuthModal('CUSTOMER', 'LOGIN');
         return;
       }
 
-      items.forEach(orderItem => {
-        const targetId = orderItem.tiffin_id || orderItem.id;
-        const matchedTiffin = (this.menu || []).find(m => m.id === targetId || (m.name && orderItem.name && m.name.toLowerCase() === orderItem.name.toLowerCase()));
+      const isHotelOpen = this.settings ? (this.settings.is_open !== false) : true;
+      if (!isHotelOpen) {
+        this.showToast('🔴 Hotel is currently closed. Cannot place reorder at this time.', 'error');
+        return;
+      }
 
-        if (matchedTiffin && matchedTiffin.is_available !== false) {
-          reorderableItems.push({
-            id: matchedTiffin.id,
-            name: matchedTiffin.name,
-            price: Number(matchedTiffin.price),
-            image: matchedTiffin.image,
-            quantity: Number(orderItem.quantity || 1)
-          });
-        } else {
-          unavailableItems.push(orderItem.name || 'Item');
+      let reorderableItems = [];
+      let unavailableItems = [];
+      let origOrderNum = orderId;
+
+      // Try backend verification endpoint first
+      try {
+        const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderId)}/reorder-items`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.authToken}`
+          }
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            origOrderNum = json.data.original_order_number || orderId;
+            reorderableItems = json.data.reorderableItems || [];
+            unavailableItems = json.data.unavailableItems || [];
+          }
         }
-      });
-    }
+      } catch (e) {
+        console.warn('Backend reorder endpoint notice, using client fallback:', e);
+      }
 
-    if (!reorderableItems.length) {
-      this.showToast(`❌ Cannot reorder: All items from Order #${origOrderNum} are currently unavailable or deleted.`, 'error');
-      return;
-    }
+      // Client fallback if backend verification didn't populate items
+      if (!reorderableItems.length) {
+        const order = (this.orders || []).find(o => String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
+        if (!order) {
+          this.showToast('Order details not found.', 'error');
+          return;
+        }
+        origOrderNum = order.order_number || orderId;
+        const items = order.items || [];
+        if (!items.length) {
+          this.showToast('No items found in this order.', 'error');
+          return;
+        }
 
-    if (!Array.isArray(this.cart)) this.cart = [];
+        items.forEach(orderItem => {
+          const targetId = orderItem.tiffin_id || orderItem.id;
+          const matchedTiffin = (this.menu || []).find(m => m.id === targetId || (m.name && orderItem.name && m.name.toLowerCase() === orderItem.name.toLowerCase()));
 
-    reorderableItems.forEach(reItem => {
-      const existingIndex = this.cart.findIndex(c => c.id === reItem.id);
-      if (existingIndex >= 0) {
-        this.cart[existingIndex].quantity += reItem.quantity;
-      } else {
-        this.cart.push({
-          id: reItem.id,
-          name: reItem.name,
-          price: Number(reItem.price),
-          image: reItem.image || '',
-          quantity: Number(reItem.quantity || 1)
+          if (matchedTiffin && matchedTiffin.is_available !== false) {
+            reorderableItems.push({
+              id: matchedTiffin.id,
+              name: matchedTiffin.name,
+              price: Number(matchedTiffin.price),
+              image: matchedTiffin.image,
+              quantity: Number(orderItem.quantity || 1)
+            });
+          } else {
+            unavailableItems.push(orderItem.name || 'Item');
+          }
         });
       }
-    });
 
-    await this.saveCartBackend();
-    this.updateCartCountUI();
+      if (!reorderableItems.length) {
+        this.showToast(`❌ Cannot reorder: All items from Order #${origOrderNum} are currently unavailable or deleted.`, 'error');
+        return;
+      }
 
-    if (unavailableItems && unavailableItems.length > 0) {
-      this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItems.join(', ')}`, 'warning');
-    } else {
-      this.showToast(`🔄 Items from Order #${origOrderNum} added to cart at current prices!`, 'success');
+      if (!Array.isArray(this.cart)) this.cart = [];
+
+      reorderableItems.forEach(reItem => {
+        const existingIndex = this.cart.findIndex(c => c.id === reItem.id);
+        if (existingIndex >= 0) {
+          this.cart[existingIndex].quantity += reItem.quantity;
+        } else {
+          this.cart.push({
+            id: reItem.id,
+            name: reItem.name,
+            price: Number(reItem.price),
+            image: reItem.image || '',
+            quantity: Number(reItem.quantity || 1)
+          });
+        }
+      });
+
+      await this.saveCartBackend();
+      this.updateCartCountUI();
+
+      if (unavailableItems && unavailableItems.length > 0) {
+        this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItems.join(', ')}`, 'warning');
+      } else {
+        this.showToast(`🔄 Items from Order #${origOrderNum} added to cart at current prices!`, 'success');
+      }
+
+      this.openCartModal();
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+      }
     }
-
-    this.openCartModal();
   }
 
   // =========================================================================
