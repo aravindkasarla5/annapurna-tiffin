@@ -2946,9 +2946,16 @@ class TiffinApp {
     const grandTotalElem = document.getElementById('reorderReviewGrandTotal');
     const addressInput = document.getElementById('reorderReviewAddress');
     const unavailNotice = document.getElementById('reorderReviewUnavailableNotice');
+    const selectPayMethod = document.getElementById('reorderReviewPaymentMethod');
 
     if (origNumElem) origNumElem.innerText = origOrderNum;
     if (addressInput) addressInput.value = this.currentUser?.address || '';
+
+    // Reset payment & proof fields
+    if (selectPayMethod) selectPayMethod.value = 'Cash';
+    this.removeReorderScreenshot();
+    const utrInput = document.getElementById('reorderUTRNumber');
+    if (utrInput) utrInput.value = '';
 
     let grandTotal = 0;
     if (itemsListElem) {
@@ -2978,12 +2985,100 @@ class TiffinApp {
       }
     }
 
+    this.handleReorderPaymentMethodChange('Cash');
+
     if (modalBackdrop) modalBackdrop.classList.add('open');
+  }
+
+  handleReorderPaymentMethodChange(method) {
+    const upiQrBox = document.getElementById('reorderUpiQrBox');
+    const btnSubmit = document.getElementById('btnConfirmReorderSubmit');
+    const isOnline = method === 'UPI' || method === 'QRPay';
+
+    if (upiQrBox) {
+      upiQrBox.classList.toggle('hidden', !isOnline);
+    }
+
+    if (isOnline && this.settings) {
+      const qrImg = document.getElementById('reorderQrScannerImg');
+      if (qrImg) {
+        const qrSrc = this.getQrDisplayUrl();
+        if (qrSrc && qrImg.getAttribute('data-raw-src') !== qrSrc) {
+          qrImg.src = qrSrc;
+          qrImg.setAttribute('data-raw-src', qrSrc);
+        }
+      }
+      const upiDisplay = document.getElementById('reorderUpiIdDisplay');
+      if (upiDisplay) {
+        upiDisplay.innerText = this.settings.upi_id || '9392974900@ybl';
+      }
+
+      const elHolder = document.getElementById('reorderDisplayBankHolder');
+      const elBank = document.getElementById('reorderDisplayBankName');
+      const elAcc = document.getElementById('reorderDisplayBankAccount');
+      const elIfsc = document.getElementById('reorderDisplayBankIfsc');
+      const elBox = document.getElementById('reorderBankDetailsDisplay');
+
+      const bankHolder = this.settings.account_holder || this.settings.upi_name || this.settings.hotel_name || '';
+      const bankName = this.settings.bank_name || '';
+      const bankAcc = this.settings.bank_account || '';
+      const bankIfsc = this.settings.bank_ifsc || '';
+
+      if (elHolder) elHolder.innerText = bankHolder || '-';
+      if (elBank) elBank.innerText = bankName || '-';
+      if (elAcc) elAcc.innerText = bankAcc || '-';
+      if (elIfsc) elIfsc.innerText = bankIfsc || '-';
+      if (elBox) elBox.classList.toggle('hidden', !(bankAcc || bankIfsc || bankName));
+    }
+
+    if (btnSubmit) {
+      const grandTotalText = document.getElementById('reorderReviewGrandTotal')?.innerText || '';
+      if (isOnline) {
+        btnSubmit.innerHTML = `<span>Confirm & Pay Reorder (${grandTotalText})</span> <i class="fa-solid fa-check-circle"></i>`;
+      } else {
+        btnSubmit.innerHTML = `<span>Confirm Reorder</span> <i class="fa-solid fa-check-circle"></i>`;
+      }
+    }
+  }
+
+  handleReorderScreenshotUpload(evt) {
+    const file = evt.target.files ? evt.target.files[0] : null;
+    const fileNameElem = document.getElementById('reorderScreenshotFileName');
+    const previewWrapper = document.getElementById('reorderScreenshotPreviewWrapper');
+    const previewImg = document.getElementById('reorderScreenshotPreviewImg');
+
+    if (!file) {
+      this.reorderScreenshotData = null;
+      if (fileNameElem) fileNameElem.innerText = 'No file selected';
+      if (previewWrapper) previewWrapper.classList.add('hidden');
+      return;
+    }
+
+    if (fileNameElem) fileNameElem.innerText = file.name;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.reorderScreenshotData = e.target.result;
+      if (previewImg) previewImg.src = e.target.result;
+      if (previewWrapper) previewWrapper.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  removeReorderScreenshot() {
+    this.reorderScreenshotData = null;
+    const input = document.getElementById('reorderPaymentScreenshot');
+    if (input) input.value = '';
+    const fileNameElem = document.getElementById('reorderScreenshotFileName');
+    if (fileNameElem) fileNameElem.innerText = 'No file selected';
+    const previewWrapper = document.getElementById('reorderScreenshotPreviewWrapper');
+    if (previewWrapper) previewWrapper.classList.add('hidden');
   }
 
   closeReorderReviewModal() {
     const modalBackdrop = document.getElementById('reorderReviewModalBackdrop');
     if (modalBackdrop) modalBackdrop.classList.remove('open');
+    this.removeReorderScreenshot();
     this.activeReorderTargetId = null;
     this.activeReorderData = null;
   }
@@ -2996,8 +3091,19 @@ class TiffinApp {
 
     const address = document.getElementById('reorderReviewAddress')?.value?.trim() || '';
     const payment_method = document.getElementById('reorderReviewPaymentMethod')?.value || 'Cash';
-    const btnSubmit = document.getElementById('btnConfirmReorderSubmit');
+    const utrNumber = document.getElementById('reorderUTRNumber')?.value?.trim() || '';
+    const screenshotData = this.reorderScreenshotData || '';
 
+    const isOnline = payment_method === 'UPI' || payment_method === 'QRPay';
+
+    if (isOnline) {
+      if (!utrNumber && !screenshotData) {
+        this.showToast('Please upload a payment screenshot or enter the 12-digit UTR number for your online payment.', 'warning');
+        return;
+      }
+    }
+
+    const btnSubmit = document.getElementById('btnConfirmReorderSubmit');
     const origHTML = btnSubmit ? btnSubmit.innerHTML : '<span>Confirm Reorder</span> <i class="fa-solid fa-check-circle"></i>';
 
     try {
@@ -3016,7 +3122,9 @@ class TiffinApp {
         },
         body: JSON.stringify({
           delivery_address: address,
-          payment_method: payment_method
+          payment_method: payment_method,
+          utr_number: utrNumber,
+          payment_screenshot: screenshotData
         })
       });
 

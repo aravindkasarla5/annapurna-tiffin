@@ -2871,10 +2871,76 @@
 
         <div style="margin-bottom: 16px;">
           <label style="font-size: 0.78rem; color: var(--text-muted); font-weight: 700; display: block; margin-bottom: 4px;">Payment Method:</label>
-          <select id="reorderReviewPaymentMethod" class="form-select-custom" style="width: 100%; padding: 8px 10px; font-size: 0.85rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);">
+          <select id="reorderReviewPaymentMethod" class="form-select-custom" style="width: 100%; padding: 8px 10px; font-size: 0.85rem; border-radius: 8px; background: var(--bg-surface); color: #FFF; border: 1px solid var(--border-color);" onchange="app.handleReorderPaymentMethodChange(this.value)">
             <option value="Cash">Cash on Delivery / Pickup</option>
-            <option value="UPI (QR Pay)">UPI / QR Pay</option>
+            <option value="UPI">Online / UPI Payment</option>
+            <option value="QRPay">QR Pay (Scan QR Code)</option>
           </select>
+        </div>
+
+        <!-- Dynamic Reorder UPI / QR Scanner & Proof Payment Box -->
+        <div id="reorderUpiQrBox" class="hidden" style="background: rgba(10, 10, 14, 0.6); padding: 1rem; border-radius: 10px; border: 1px solid var(--accent-gold); margin-bottom: 16px;">
+          <div style="text-align: center; margin-bottom: 0.75rem;">
+            <span style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.78rem; padding: 4px 10px; border-radius: 20px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-qrcode"></i> Scan Shop Owner QR Code to Pay
+            </span>
+          </div>
+
+          <!-- Shop Owner's Uploaded QR Scanner Image with Zoom -->
+          <div class="checkout-qr-wrapper" style="position: relative; width: 170px; margin: 0 auto 0.85rem; cursor: pointer;" onclick="app.zoomCheckoutQrCode()">
+            <div class="qr-card-box" style="background: #FFFFFF; padding: 10px; border-radius: 12px; border: 2px solid var(--accent-gold); text-align: center;">
+              <img id="reorderQrScannerImg" src="" alt="Shop Owner UPI QR Code" style="width: 140px; height: 140px; object-fit: contain; display: block; margin: 0 auto;">
+            </div>
+            <button type="button" class="btn-qr-zoom" title="Click to zoom QR Code scanner" onclick="event.stopPropagation(); app.zoomCheckoutQrCode()" style="font-size: 0.72rem; padding: 3px 8px;">
+              <i class="fa-solid fa-magnifying-glass-plus"></i> <span>Zoom QR Code</span>
+            </button>
+          </div>
+
+          <!-- UPI ID & Copy Button -->
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 6px 12px; border-radius: 20px; margin-bottom: 0.85rem; border: 1px solid var(--border-color);">
+            <span style="font-size: 0.8rem; font-weight: 700; color: #FFF;"><i class="fa-solid fa-at" style="color: var(--accent-gold);"></i> <span id="reorderUpiIdDisplay">9392974900@ybl</span></span>
+            <button type="button" class="btn-sm-status" onclick="app.copyUpiId()" style="background: var(--accent-gold); color: #000; font-weight: 800; border: none; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; cursor: pointer;">
+              <i class="fa-regular fa-copy"></i> Copy
+            </button>
+          </div>
+
+          <!-- Bank Details Display (Optional) -->
+          <div id="reorderBankDetailsDisplay" class="hidden" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.15); padding: 8px 10px; border-radius: 8px; margin-bottom: 0.85rem; font-size: 0.76rem; color: var(--text-muted);">
+            <div style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; color: var(--accent-gold); margin-bottom: 4px;">
+              <i class="fa-solid fa-building-columns"></i> Hotel Bank Account Details
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+              <div>Holder: <strong id="reorderDisplayBankHolder" style="color: #FFF;">-</strong></div>
+              <div>Bank: <strong id="reorderDisplayBankName" style="color: #FFF;">-</strong></div>
+              <div>A/C: <strong id="reorderDisplayBankAccount" style="color: #FFF; font-family: monospace;">-</strong></div>
+              <div>IFSC: <strong id="reorderDisplayBankIfsc" style="color: #FFF; font-family: monospace;">-</strong></div>
+            </div>
+          </div>
+
+          <!-- Payment Proof Upload & UTR -->
+          <div style="background: rgba(26, 26, 34, 0.8); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
+              <i class="fa-solid fa-camera" style="color: var(--primary);"></i> 1. Upload Payment Screenshot <span style="color: var(--primary);">*</span>
+            </label>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <label class="btn-secondary-outline" style="font-size: 0.75rem; padding: 5px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                <i class="fa-solid fa-upload"></i> Choose Screenshot File
+                <input type="file" id="reorderPaymentScreenshot" accept="image/*" onchange="app.handleReorderScreenshotUpload(event)" style="display: none;">
+              </label>
+              <span id="reorderScreenshotFileName" style="font-size: 0.72rem; color: var(--accent-gold); font-style: italic;">No file selected</span>
+            </div>
+            <div id="reorderScreenshotPreviewWrapper" class="hidden" style="margin-top: 6px; position: relative; width: 80px; height: 80px; border-radius: 6px; overflow: hidden; border: 1px solid var(--accent-gold);">
+              <img id="reorderScreenshotPreviewImg" style="width: 100%; height: 100%; object-fit: cover;">
+              <button type="button" onclick="app.removeReorderScreenshot()" style="position: absolute; top: 2px; right: 2px; background: rgba(229,57,53,0.9); color: #FFF; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 0.65rem; cursor: pointer;">✕</button>
+            </div>
+          </div>
+
+          <div style="background: rgba(26, 26, 34, 0.8); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border-color);">
+            <label style="font-size: 0.78rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 4px;">
+              <i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> 2. Enter 12-Digit UTR / Transaction No <span style="color: var(--primary);">*</span>
+            </label>
+            <input type="text" class="form-control" id="reorderUTRNumber" placeholder="e.g. 623491827364" maxlength="30" style="font-family: monospace; font-size: 0.85rem; font-weight: 700; letter-spacing: 1px; padding: 6px 8px;">
+          </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 12px; margin-bottom: 16px;">
