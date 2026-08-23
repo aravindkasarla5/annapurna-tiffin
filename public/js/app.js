@@ -1141,7 +1141,7 @@ class TiffinApp {
     }
 
     const btn = isResend ? document.getElementById('btnForgotResendOtp') : document.getElementById('btnForgotSendOtp');
-    const origHTML = btn ? btn.innerHTML : 'Send OTP';
+    const origHTML = btn ? btn.innerHTML : '<span>Send OTP</span> <i class="fa-solid fa-paper-plane"></i>';
 
     try {
       if (btn) {
@@ -1159,13 +1159,15 @@ class TiffinApp {
       if (json.success) {
         this.showToast(json.message || 'OTP sent successfully to your registered phone number.', 'success');
 
+        const stepPhone = document.getElementById('stepForgotPhone');
         const stepOtp = document.getElementById('stepForgotOtp');
         const inputId = document.getElementById('forgotIdentifier');
         const mobileDisp = document.getElementById('forgotMobileSentDisp');
 
+        if (stepPhone) stepPhone.classList.add('hidden');
+        if (stepOtp) stepOtp.classList.remove('hidden');
         if (inputId) inputId.readOnly = true;
         if (mobileDisp) mobileDisp.innerText = identifier;
-        if (stepOtp) stepOtp.classList.remove('hidden');
 
         this.startResendOtpTimer();
 
@@ -1173,14 +1175,11 @@ class TiffinApp {
         if (otpInput) otpInput.focus();
       } else {
         this.showToast(json.message || 'No registered customer account found with this phone number.', 'error');
-        if (btn && !isResend) {
-          btn.disabled = false;
-          btn.innerHTML = origHTML;
-        }
       }
     } catch (err) {
       console.error('Error requesting OTP:', err);
       this.showToast('Failed to send OTP. Server communication error.', 'error');
+    } finally {
       if (btn && !isResend) {
         btn.disabled = false;
         btn.innerHTML = origHTML;
@@ -1229,7 +1228,7 @@ class TiffinApp {
     }
 
     const btn = document.getElementById('btnForgotVerifyOtp');
-    const origHTML = btn ? btn.innerHTML : 'Verify OTP';
+    const origHTML = btn ? btn.innerHTML : '<span>Verify OTP</span> <i class="fa-solid fa-shield-check"></i>';
 
     try {
       if (btn) {
@@ -1246,7 +1245,10 @@ class TiffinApp {
 
       if (json.success) {
         this.showToast(json.message || 'OTP verified successfully.', 'success');
+        const stepOtp = document.getElementById('stepForgotOtp');
         const stepNewPass = document.getElementById('stepForgotNewPassword');
+
+        if (stepOtp) stepOtp.classList.add('hidden');
         if (stepNewPass) stepNewPass.classList.remove('hidden');
 
         const newPassInput = document.getElementById('forgotNewPassword');
