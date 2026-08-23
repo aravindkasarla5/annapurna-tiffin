@@ -2844,55 +2844,96 @@ class TiffinApp {
       return;
     }
 
-    try {
-      this.showToast('🔄 Verifying reorder items & current prices...', 'info');
+    let reorderableItems = [];
+    let unavailableItems = [];
+    let origOrderNum = orderId;
 
-      const res = await fetch(`${API_BASE}/orders/${orderId}/reorder-items`, {
+    // Try backend verification endpoint first
+    try {
+      const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderId)}/reorder-items`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.authToken}`
         }
       });
-      const json = await res.json();
 
-      if (!json.success) {
-        this.showToast(json.message || 'Cannot reorder: Access denied or order not found.', 'error');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          origOrderNum = json.data.original_order_number || orderId;
+          reorderableItems = json.data.reorderableItems || [];
+          unavailableItems = json.data.unavailableItems || [];
+        }
+      }
+    } catch (e) {
+      console.warn('Backend reorder endpoint notice, using client fallback:', e);
+    }
+
+    // Client fallback if backend verification didn't populate items
+    if (!reorderableItems.length) {
+      const order = (this.orders || []).find(o => String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
+      if (!order) {
+        this.showToast('Order details not found.', 'error');
+        return;
+      }
+      origOrderNum = order.order_number || orderId;
+      const items = order.items || [];
+      if (!items.length) {
+        this.showToast('No items found in this order.', 'error');
         return;
       }
 
-      const { original_order_number, reorderableItems, unavailableItems } = json.data;
+      items.forEach(orderItem => {
+        const targetId = orderItem.tiffin_id || orderItem.id;
+        const matchedTiffin = (this.menu || []).find(m => m.id === targetId || (m.name && orderItem.name && m.name.toLowerCase() === orderItem.name.toLowerCase()));
 
-      if (!reorderableItems || !reorderableItems.length) {
-        this.showToast(`❌ Cannot reorder: All items from Order #${original_order_number} are currently unavailable or deleted.`, 'error');
-        return;
-      }
-
-      if (!Array.isArray(this.cart)) this.cart = [];
-
-      reorderableItems.forEach(reItem => {
-        const existingIndex = this.cart.findIndex(c => c.id === reItem.id);
-        if (existingIndex >= 0) {
-          this.cart[existingIndex].quantity += reItem.quantity;
+        if (matchedTiffin && matchedTiffin.is_available !== false) {
+          reorderableItems.push({
+            id: matchedTiffin.id,
+            name: matchedTiffin.name,
+            price: Number(matchedTiffin.price),
+            image: matchedTiffin.image,
+            quantity: Number(orderItem.quantity || 1)
+          });
         } else {
-          this.cart.push(reItem);
+          unavailableItems.push(orderItem.name || 'Item');
         }
       });
-
-      await this.saveCartBackend();
-      this.updateCartCountUI();
-
-      if (unavailableItems && unavailableItems.length > 0) {
-        this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItems.join(', ')}`, 'warning');
-      } else {
-        this.showToast(`🔄 Items from Order #${original_order_number} added to cart at current prices!`, 'success');
-      }
-
-      this.openCartModal();
-    } catch (err) {
-      console.error('Error reordering order:', err);
-      this.showToast('Failed to process reorder. Please try again.', 'error');
     }
+
+    if (!reorderableItems.length) {
+      this.showToast(`❌ Cannot reorder: All items from Order #${origOrderNum} are currently unavailable or deleted.`, 'error');
+      return;
+    }
+
+    if (!Array.isArray(this.cart)) this.cart = [];
+
+    reorderableItems.forEach(reItem => {
+      const existingIndex = this.cart.findIndex(c => c.id === reItem.id);
+      if (existingIndex >= 0) {
+        this.cart[existingIndex].quantity += reItem.quantity;
+      } else {
+        this.cart.push({
+          id: reItem.id,
+          name: reItem.name,
+          price: Number(reItem.price),
+          image: reItem.image || '',
+          quantity: Number(reItem.quantity || 1)
+        });
+      }
+    });
+
+    await this.saveCartBackend();
+    this.updateCartCountUI();
+
+    if (unavailableItems && unavailableItems.length > 0) {
+      this.showToast(`⚠️ Reordered available items! Note: Some items were unavailable and excluded: ${unavailableItems.join(', ')}`, 'warning');
+    } else {
+      this.showToast(`🔄 Items from Order #${origOrderNum} added to cart at current prices!`, 'success');
+    }
+
+    this.openCartModal();
   }
 
   // =========================================================================
@@ -5123,7 +5164,7 @@ class TiffinApp {
                 <button class="co-row-btn view" onclick="app.showOrderDetail('${order.order_number}')" style="flex: 1; min-width: 100px;">
                   <i class="fa-solid fa-eye"></i> View Details
                 </button>
-                <button type="button" class="btn-reorder-action" onclick="app.reorderPreviousOrder('${order.id}')" style="flex: 1; min-width: 110px; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; font-weight: 800; border: none; padding: 7px 10px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.8rem; box-shadow: 0 2px 8px rgba(217, 83, 30, 0.3);">
+                <button type="button" class="btn-reorder-action" onclick="app.reorderPreviousOrder('${order.id || order.order_number}')" style="flex: 1; min-width: 110px; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; font-weight: 800; border: none; padding: 7px 10px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.8rem; box-shadow: 0 2px 8px rgba(217, 83, 30, 0.3);">
                   <i class="fa-solid fa-rotate-right"></i> 🔄 Reorder
                 </button>
                 ${(isCompleted || order.pickup_pin_verified) ? `
