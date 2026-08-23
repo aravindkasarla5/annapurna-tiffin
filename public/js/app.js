@@ -5274,9 +5274,6 @@ class TiffinApp {
                 <button class="co-row-btn view" onclick="app.showOrderDetail('${order.order_number}')" style="flex: 1; min-width: 100px;">
                   <i class="fa-solid fa-eye"></i> View Details
                 </button>
-                <button type="button" class="btn-reorder-action" onclick="app.reorderPreviousOrder('${order.id || order.order_number}')" style="flex: 1; min-width: 110px; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; font-weight: 800; border: none; padding: 7px 10px; border-radius: var(--radius-md); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 0.8rem; box-shadow: 0 2px 8px rgba(217, 83, 30, 0.3);">
-                  <i class="fa-solid fa-rotate-right"></i> 🔄 Reorder
-                </button>
                 ${(isCompleted || order.pickup_pin_verified) ? `
                   <button class="co-row-btn receipt" onclick="app.downloadInvoice('${order.order_number}')" style="flex: 1; min-width: 120px; background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1px solid #4CAF50; font-weight: 800;">
                     <i class="fa-solid fa-file-invoice"></i> 🧾 Download Invoice
