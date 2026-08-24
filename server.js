@@ -578,7 +578,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
           console.log(`[WhatsApp OTP Success] Message accepted by Meta WhatsApp API ID: ${data.messages[0].id}`);
           return { success: true, message: "OTP sent successfully to your WhatsApp number." };
         } else {
-          console.error('[WhatsApp OTP Provider Error]:', data);
+          console.error('[WhatsApp OTP Provider Error]:', JSON.stringify(data));
           return { success: false, message: "Unable to send OTP via WhatsApp. Provider rejected delivery." };
         }
       } catch (err) {
@@ -613,7 +613,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
           console.log(`[WhatsApp Twilio Success] Message SID: ${data.sid}`);
           return { success: true, message: "OTP sent successfully to your WhatsApp number." };
         } else {
-          console.error('[WhatsApp Twilio Error]:', data);
+          console.error('[WhatsApp Twilio Error]:', JSON.stringify(data));
           return { success: false, message: "Unable to send OTP via WhatsApp. Provider rejected delivery." };
         }
       } catch (err) {
@@ -621,7 +621,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         return { success: false, message: "Unable to send OTP via WhatsApp. Provider communication failed." };
       }
     } else {
-      console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in environment (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID).');
+      console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in Render environment. Please set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID.');
       const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
       if (isDev) {
         console.log(`[DEV OTP FALLBACK - WHATSAPP]: OTP code for customer ${user.mobile} is: ${otp}`);
@@ -666,7 +666,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
           console.log(`[SMS Twilio Success] Message SID: ${data.sid}`);
           return { success: true, message: "OTP sent successfully via SMS." };
         } else {
-          console.error('[SMS Twilio Error]:', data);
+          console.error('[SMS Twilio Error]:', JSON.stringify(data));
           return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
         }
       } catch (err) {
@@ -676,15 +676,21 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
     } else if (smsApiKey) {
       try {
         const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
-        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${smsApiKey}&variables_values=${otp}&route=otp&numbers=${cleanMobile}`;
-        const response = await fetch(smsUrl, { method: 'GET' });
+        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(smsApiKey)}&variables_values=${encodeURIComponent(otp)}&route=otp&numbers=${cleanMobile}`;
+        const response = await fetch(smsUrl, {
+          method: 'GET',
+          headers: {
+            'authorization': smsApiKey,
+            'Content-Type': 'application/json'
+          }
+        });
         const data = await response.json();
 
-        if (response.ok && data.return === true) {
-          console.log(`[SMS Fast2SMS Success] Request ID: ${data.request_id}`);
+        if (response.ok && (data.return === true || data.status_code === 200)) {
+          console.log(`[SMS Fast2SMS Success] Request ID: ${data.request_id || 'OK'}`);
           return { success: true, message: "OTP sent successfully via SMS." };
         } else {
-          console.error('[SMS Fast2SMS Error]:', data);
+          console.error('[SMS Fast2SMS Error]:', JSON.stringify(data));
           return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
         }
       } catch (err) {
@@ -694,7 +700,8 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
     } else if (twoFactorKey) {
       try {
         const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
-        const tfUrl = `https://2factor.in/API/V1/${twoFactorKey}/SMS/+91${cleanMobile}/${otp}`;
+        const tfTemplate = process.env.TWOFACTOR_TEMPLATE_NAME ? `/${process.env.TWOFACTOR_TEMPLATE_NAME}` : '';
+        const tfUrl = `https://2factor.in/API/V1/${twoFactorKey}/SMS/+91${cleanMobile}/${otp}${tfTemplate}`;
         const response = await fetch(tfUrl, { method: 'GET' });
         const data = await response.json();
 
@@ -702,7 +709,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
           console.log(`[SMS 2Factor Success] Session ID: ${data.Details}`);
           return { success: true, message: "OTP sent successfully via SMS." };
         } else {
-          console.error('[SMS 2Factor Error]:', data);
+          console.error('[SMS 2Factor Error]:', JSON.stringify(data));
           return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
         }
       } catch (err) {
@@ -725,7 +732,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
           console.log(`[SMS MSG91 Success] Request ID: ${data.message}`);
           return { success: true, message: "OTP sent successfully via SMS." };
         } else {
-          console.error('[SMS MSG91 Error]:', data);
+          console.error('[SMS MSG91 Error]:', JSON.stringify(data));
           return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
         }
       } catch (err) {
@@ -733,7 +740,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
       }
     } else {
-      console.warn('[OTP Delivery Notice]: No SMS Gateway credentials configured in environment.');
+      console.warn('[OTP Delivery Notice]: No SMS Gateway credentials configured in Render environment. Please set FAST2SMS_API_KEY, TWOFACTOR_API_KEY, MSG91_AUTH_KEY, or TWILIO_ACCOUNT_SID.');
       const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
       if (isDev) {
         console.log(`[DEV OTP FALLBACK - SMS]: OTP code for customer ${user.mobile} is: ${otp}`);
