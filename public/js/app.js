@@ -293,6 +293,9 @@ class TiffinApp {
       await this.fetchSettings(true);
       await this.fetchMenu(true);
       if (this.currentUser) {
+        if (this.currentUser.role === 'CUSTOMER' && (this.currentUser.password_change_required || this.currentUser.passwordChangeRequired)) {
+          return;
+        }
         await this.fetchOrders(true);
         await this.fetchNotifications(true);
         await this.fetchSupportTickets(true);
@@ -10394,22 +10397,29 @@ class TiffinApp {
 
   checkPasswordChangeRequired() {
     if (this.currentUser && this.currentUser.role === 'CUSTOMER' && (this.currentUser.password_change_required || this.currentUser.passwordChangeRequired)) {
-      this.showForcedChangePasswordModal();
+      const backdrop = document.getElementById('forcedChangePasswordModalBackdrop');
+      if (!backdrop || !backdrop.classList.contains('open')) {
+        this.showForcedChangePasswordModal();
+      }
     }
   }
 
   showForcedChangePasswordModal() {
-    const errBox = document.getElementById('forcedChangePasswordError');
-    if (errBox) { errBox.style.display = 'none'; errBox.innerText = ''; }
-    
-    const input0 = document.getElementById('forcedCurrentPassword');
-    const input1 = document.getElementById('forcedNewPassword');
-    const input2 = document.getElementById('forcedConfirmPassword');
-    if (input0) input0.value = '';
-    if (input1) input1.value = '';
-    if (input2) input2.value = '';
-
     const backdrop = document.getElementById('forcedChangePasswordModalBackdrop');
+    const isAlreadyOpen = backdrop && backdrop.classList.contains('open');
+
+    if (!isAlreadyOpen) {
+      const errBox = document.getElementById('forcedChangePasswordError');
+      if (errBox) { errBox.style.display = 'none'; errBox.innerText = ''; }
+      
+      const input0 = document.getElementById('forcedCurrentPassword');
+      const input1 = document.getElementById('forcedNewPassword');
+      const input2 = document.getElementById('forcedConfirmPassword');
+      if (input0) input0.value = '';
+      if (input1) input1.value = '';
+      if (input2) input2.value = '';
+    }
+
     if (backdrop) backdrop.classList.add('open');
   }
 
