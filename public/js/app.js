@@ -31,11 +31,14 @@ window.addEventListener('appinstalled', () => {
   }
 });
 
-// Immediate Service Worker Registration (registers immediately without waiting for late load event)
+// Immediate Service Worker Registration (registers immediately and checks for server updates)
 if ('serviceWorker' in navigator) {
   const registerSw = () => {
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then(reg => console.log('[PWA SW] Registered successfully with scope:', reg.scope))
+      .then(reg => {
+        console.log('[PWA SW] Registered successfully with scope:', reg.scope);
+        reg.update(); // Force check for SW update on server
+      })
       .catch(err => console.warn('[PWA SW] Registration failed:', err));
   };
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
