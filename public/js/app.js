@@ -846,7 +846,7 @@ class TiffinApp {
 
   togglePasswordVisibility(inputId, iconId) {
     const input = document.getElementById(inputId);
-    const icon = document.getElementById(iconId);
+    const icon = typeof iconId === 'string' ? document.getElementById(iconId) : iconId;
     if (!input || !icon) return;
 
     if (input.type === 'password') {
@@ -10402,8 +10402,10 @@ class TiffinApp {
     const errBox = document.getElementById('forcedChangePasswordError');
     if (errBox) { errBox.style.display = 'none'; errBox.innerText = ''; }
     
+    const input0 = document.getElementById('forcedCurrentPassword');
     const input1 = document.getElementById('forcedNewPassword');
     const input2 = document.getElementById('forcedConfirmPassword');
+    if (input0) input0.value = '';
     if (input1) input1.value = '';
     if (input2) input2.value = '';
 
@@ -10412,6 +10414,7 @@ class TiffinApp {
   }
 
   async submitForcedPasswordChange() {
+    const currentPassword = (document.getElementById('forcedCurrentPassword')?.value || '').trim();
     const newPassword = (document.getElementById('forcedNewPassword')?.value || '').trim();
     const confirmPassword = (document.getElementById('forcedConfirmPassword')?.value || '').trim();
     const errBox = document.getElementById('forcedChangePasswordError');
@@ -10421,8 +10424,8 @@ class TiffinApp {
       else { this.showToast(msg, 'error'); }
     };
 
-    if (!newPassword || !confirmPassword) {
-      showError('Please enter and confirm your new password.');
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      showError('Please enter all password fields.');
       return;
     }
 
@@ -10447,7 +10450,7 @@ class TiffinApp {
           'Authorization': `Bearer ${this.authToken}`,
           'X-Auth-Token': this.authToken
         },
-        body: JSON.stringify({ newPassword, confirmPassword })
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
       });
 
       const json = await res.json();
@@ -10468,11 +10471,11 @@ class TiffinApp {
         this.renderNavigation();
         this.renderCurrentView();
       } else {
-        showError(json.message || 'Error changing password.');
+        showError(json.message || 'Unable to change password. Please try again.');
       }
     } catch (err) {
       console.error('Error submitting forced password change:', err);
-      showError('Server communication error changing password.');
+      showError('Unable to change password. Please try again.');
     } finally {
       if (btn) { btn.disabled = false; btn.innerText = '🔐 Change Password'; }
     }

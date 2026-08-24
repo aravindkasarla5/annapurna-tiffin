@@ -3362,16 +3362,24 @@
         </div>
         <h3 style="color: #FFF; font-size: 1.3rem; font-weight: 700; margin-bottom: 0.4rem;">🔐 Change Your Password</h3>
         <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.45;">
-          Your password was reset by the Owner.<br>Please create a new password before continuing.
+          Your password was reset by the Owner.<br>Please enter your current reset password and choose a new password.
         </p>
       </div>
 
       <form id="forcedChangePasswordForm" onsubmit="event.preventDefault(); app.submitForcedPasswordChange();">
         <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Current Password</label>
+          <div style="position: relative;">
+            <input type="password" id="forcedCurrentPassword" class="auth-input" placeholder="Enter current / temporary password" required style="width: 100%; padding-right: 40px;">
+            <i class="fa-solid fa-eye toggle-password-icon" id="toggleForcedCurrentPassword" onclick="app.togglePasswordVisibility('forcedCurrentPassword', 'toggleForcedCurrentPassword')" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"></i>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1rem;">
           <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">New Password</label>
           <div style="position: relative;">
             <input type="password" id="forcedNewPassword" class="auth-input" placeholder="Enter new password (min 6 chars)" required style="width: 100%; padding-right: 40px;">
-            <i class="fa-solid fa-eye toggle-password-icon" onclick="app.togglePasswordVisibility('forcedNewPassword', this)" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"></i>
+            <i class="fa-solid fa-eye toggle-password-icon" id="toggleForcedNewPassword" onclick="app.togglePasswordVisibility('forcedNewPassword', 'toggleForcedNewPassword')" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"></i>
           </div>
         </div>
 
@@ -3379,7 +3387,7 @@
           <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Confirm New Password</label>
           <div style="position: relative;">
             <input type="password" id="forcedConfirmPassword" class="auth-input" placeholder="Re-enter new password" required style="width: 100%; padding-right: 40px;">
-            <i class="fa-solid fa-eye toggle-password-icon" onclick="app.togglePasswordVisibility('forcedConfirmPassword', this)" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"></i>
+            <i class="fa-solid fa-eye toggle-password-icon" id="toggleForcedConfirmPassword" onclick="app.togglePasswordVisibility('forcedConfirmPassword', 'toggleForcedConfirmPassword')" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"></i>
           </div>
         </div>
 

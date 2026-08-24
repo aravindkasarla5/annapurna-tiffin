@@ -7272,4 +7272,60 @@ body.guest-mode #btnMobileMenuToggle {
   box-shadow: 0 0 12px rgba(255, 179, 0, 0.6) !important;
 }
 
+/* =========================================================================
+   CUSTOMER CHANGE PASSWORD FORM STYLING (Strictly Scoped)
+   ========================================================================= */
+#forcedChangePasswordModalBackdrop .modal-card {
+  border: 1.5px solid rgba(245, 166, 35, 0.35) !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 25px rgba(245, 166, 35, 0.15) !important;
+  background: linear-gradient(145deg, #1C1814, #120F0D) !important;
+  border-radius: 16px !important;
+}
+
+#forcedChangePasswordForm .form-group {
+  margin-bottom: 1.1rem;
+}
+
+#forcedChangePasswordForm .auth-input {
+  width: 100%;
+  height: 46px;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 8px !important;
+  color: #FFFFFF !important;
+  font-size: 0.92rem !important;
+  padding: 0 42px 0 14px !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
+  box-sizing: border-box !important;
+}
+
+#forcedChangePasswordForm .auth-input:focus {
+  outline: none !important;
+  border-color: var(--accent-gold, #F5A623) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.22) !important;
+}
+
+#forcedChangePasswordForm .toggle-password-icon {
+  transition: color 0.2s ease !important;
+}
+
+#forcedChangePasswordForm .toggle-password-icon:hover {
+  color: var(--accent-gold, #F5A623) !important;
+}
+
+#btnForcedChangePasswordSubmit {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease !important;
+}
+
+#btnForcedChangePasswordSubmit:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px rgba(245, 166, 35, 0.35) !important;
+}
+
+#btnForcedChangePasswordSubmit:disabled {
+  opacity: 0.65 !important;
+  cursor: not-allowed !important;
+}
+
 
