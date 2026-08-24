@@ -845,6 +845,11 @@ class TiffinApp {
     if (formRegister) formRegister.classList.toggle('hidden', mode !== 'REGISTER');
     if (formForgot) formForgot.classList.toggle('hidden', mode !== 'FORGOT_PASSWORD');
 
+    const regAlert = document.getElementById('regDuplicateAlert');
+    if (regAlert && mode !== 'REGISTER') {
+      regAlert.classList.add('hidden');
+    }
+
     if (mode === 'FORGOT_PASSWORD') {
       this.resetForgotFormState();
     }
@@ -952,40 +957,49 @@ class TiffinApp {
       return; // Prevent accidental duplicate submissions
     }
 
+    const regAlert = document.getElementById('regDuplicateAlert');
+    const regAlertText = document.getElementById('regAlertText');
+    if (regAlert) regAlert.classList.add('hidden');
+
     const nameInput = document.getElementById('regName');
     const mobileInput = document.getElementById('regMobile');
-    const passwordInput = document.getElementById('regPassword');
     const emailInput = document.getElementById('regEmail');
+    const passwordInput = document.getElementById('regPassword');
+    const confirmPasswordInput = document.getElementById('regConfirmPassword');
     const addressInput = document.getElementById('regAddress');
     const refCodeInput = document.getElementById('regReferralCode');
 
     const name = nameInput?.value.trim() || '';
     const rawMobile = mobileInput?.value.trim() || '';
-    const password = passwordInput?.value.trim() || '';
     const email = emailInput?.value.trim() || '';
+    const password = passwordInput?.value.trim() || '';
+    const confirmPassword = confirmPasswordInput?.value.trim() || '';
     const address = addressInput?.value.trim() || '';
     const referral_code = refCodeInput?.value.trim() || '';
 
-    // Step 1: Frontend Form Validation with clear feedback
+    // 1. Full Name check
     if (!name) {
       this.showToast('Please enter your name.', 'error');
       if (nameInput) nameInput.focus();
       return;
     }
 
-    const cleanMobile = rawMobile.replace(/\D/g, '');
-    if (!cleanMobile) {
-      this.showToast('Please enter your mobile number.', 'error');
-      if (mobileInput) mobileInput.focus();
-      return;
-    }
-
-    if (cleanMobile.length < 10) {
+    // 2. Mobile Number check — exactly 10 digits, numbers only
+    if (!/^\d{10}$/.test(rawMobile)) {
       this.showToast('Please enter a valid 10-digit mobile number.', 'error');
       if (mobileInput) mobileInput.focus();
       return;
     }
 
+    // 3. Email Address check — valid format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      this.showToast('Please enter a valid email address.', 'error');
+      if (emailInput) emailInput.focus();
+      return;
+    }
+
+    // 4. Password checks
     if (!password) {
       this.showToast('Please enter a password.', 'error');
       if (passwordInput) passwordInput.focus();
@@ -995,6 +1009,19 @@ class TiffinApp {
     if (password.length < 4) {
       this.showToast('Password must be at least 4 characters long.', 'error');
       if (passwordInput) passwordInput.focus();
+      return;
+    }
+
+    // 5. Confirm Password checks
+    if (!confirmPassword) {
+      this.showToast('Please confirm your password.', 'error');
+      if (confirmPasswordInput) confirmPasswordInput.focus();
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      this.showToast('Passwords do not match.', 'error');
+      if (confirmPasswordInput) confirmPasswordInput.focus();
       return;
     }
 
@@ -1008,9 +1035,11 @@ class TiffinApp {
 
     const payload = {
       name,
-      mobile: cleanMobile,
+      mobile: rawMobile,
+      email: email.toLowerCase(),
       password,
-      email,
+      confirm_password: confirmPassword,
+      confirmPassword,
       address,
       referral_code
     };
@@ -1024,6 +1053,7 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success) {
+        if (regAlert) regAlert.classList.add('hidden');
         this.currentUser = json.user;
         this.authToken = json.token;
         this.currentRole = json.user.role;
@@ -1044,7 +1074,7 @@ class TiffinApp {
         this.favorites = [];
         this.referralStats = null;
 
-        const welcomeMsg = '✅ Account created successfully';
+        const welcomeMsg = json.message || '✅ Account created successfully. You can login now.';
 
         this.showToast(welcomeMsg, 'success');
         this.toggleAuthModal(false);
@@ -1055,7 +1085,17 @@ class TiffinApp {
         this.renderNavigation();
         this.renderCurrentView();
       } else {
-        this.showToast(json.message || 'Unable to create account. Please try again.', 'error');
+        const errorMsg = json.message || 'Unable to create account. Please try again.';
+        this.showToast(errorMsg, 'error');
+
+        // Display duplicate alert box with [ Login Now ] button if duplicate account
+        if (json.isDuplicate || errorMsg.toLowerCase().includes('already registered')) {
+          if (regAlert && regAlertText) {
+            regAlertText.textContent = errorMsg;
+            regAlert.classList.remove('hidden');
+          }
+        }
+
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.classList.remove('disabled');

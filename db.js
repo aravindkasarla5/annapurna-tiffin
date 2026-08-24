@@ -400,6 +400,30 @@ async function initDatabase() {
     console.error('Error initializing counters:', cErr);
   }
 
+  // Safely enforce unique constraints for users table (mobile & email) without data loss
+  try {
+    const mobileDupesRes = await query(`SELECT mobile, COUNT(*) as c FROM users GROUP BY mobile HAVING COUNT(*) > 1;`);
+    const emailDupesRes = await query(`SELECT LOWER(TRIM(email)) as email, COUNT(*) as c FROM users WHERE email IS NOT NULL AND TRIM(email) != '' GROUP BY LOWER(TRIM(email)) HAVING COUNT(*) > 1;`);
+
+    if (mobileDupesRes.rows && mobileDupesRes.rows.length > 0) {
+      console.warn('⚠️ Duplicate mobile numbers detected in users table — skipping unique mobile constraint creation to prevent data loss:', mobileDupesRes.rows);
+    } else {
+      await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile);`);
+    }
+
+    if (emailDupesRes.rows && emailDupesRes.rows.length > 0) {
+      console.warn('⚠️ Duplicate email addresses detected in users table — skipping unique email constraint creation to prevent data loss:', emailDupesRes.rows);
+    } else {
+      if (usePg) {
+        await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(LOWER(email)) WHERE email IS NOT NULL AND TRIM(email) != '';`);
+      } else {
+        await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email COLLATE NOCASE) WHERE email IS NOT NULL AND TRIM(email) != '';`);
+      }
+    }
+  } catch (idxErr) {
+    console.warn('Notice regarding unique index creation on users table:', idxErr.message);
+  }
+
   console.log('PostgreSQL database schemas successfully initialized.');
 
   // Auto-seed from seed_data.json if database is fresh

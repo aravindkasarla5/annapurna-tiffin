@@ -1,4 +1,4 @@
-try { require('dotenv').config(); } catch(e) {}
+try { require('dotenv').config(); } catch (e) { }
 
 const express = require('express');
 const cors = require('cors');
@@ -57,7 +57,7 @@ function sanitizeUser(user) {
   if (!user) return null;
   const userSafe = { ...user };
   delete userSafe.password;
-  
+
   if (typeof userSafe.cart === 'string') {
     try { userSafe.cart = JSON.parse(userSafe.cart); } catch (e) { userSafe.cart = []; }
   }
@@ -81,7 +81,7 @@ async function generateToken(userId, role = 'CUSTOMER') {
   const userRole = userRes.rows.length > 0 ? userRes.rows[0].role : role;
   const token = 'tok_' + userId + '_' + Date.now() + '_' + crypto.randomBytes(8).toString('hex');
   const now = Date.now();
-  
+
   await db.query(
     'INSERT INTO tokens (token, user_id, role, created_at, last_activity) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (token) DO UPDATE SET role = EXCLUDED.role, last_activity = EXCLUDED.last_activity;',
     [token, userId, userRole, now, now]
@@ -217,7 +217,7 @@ async function optionalAuth(req, res, next) {
           req.token = token;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   next();
 }
@@ -276,7 +276,7 @@ function checkPasswordMatch(storedPassword, inputPassword) {
   if (!sPass || !iPass) return false;
 
   if (sPass.startsWith('$2a$') || sPass.startsWith('$2b$')) {
-    try { return bcrypt.compareSync(iPass, sPass); } catch (e) {}
+    try { return bcrypt.compareSync(iPass, sPass); } catch (e) { }
   }
   return sPass === iPass;
 }
@@ -288,35 +288,90 @@ function checkPasswordMatch(storedPassword, inputPassword) {
 // AUTH 1. Register New Customer
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, mobile, password, email, address } = req.body;
+    const { name, mobile, password, confirm_password, confirmPassword, email, address } = req.body;
 
-    if (!name || !mobile || !password) {
-      return res.status(400).json({ success: false, message: "Name, mobile, and password are required." });
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Please enter your full name." });
     }
 
     if (req.body.role === 'OWNER') {
       return res.status(400).json({ success: false, message: "Owner registration is not allowed. Single owner account is maintained." });
     }
 
-    const cleanMobile = normalizePhone(mobile);
-    if (!cleanMobile || cleanMobile.length < 10) {
+    // 1. Mobile validation — Exactly 10 digits, numbers only
+    const rawMobile = (mobile || '').toString().trim();
+    if (!/^\d{10}$/.test(rawMobile)) {
       return res.status(400).json({ success: false, message: "Please enter a valid 10-digit mobile number." });
     }
+    const cleanMobile = rawMobile;
 
     if (cleanMobile === '9392874900') {
-      return res.status(400).json({ success: false, message: "This mobile number is reserved for Hotel Owner. Please login." });
+      return res.status(400).json({ success: false, isDuplicate: true, duplicateType: 'MOBILE', message: "This mobile number is reserved for Hotel Owner. Please login." });
     }
 
-    const existing = await findUserByIdentifier(cleanMobile);
-    if (existing) {
-      return res.status(400).json({ success: false, message: "Mobile number already registered. Please login." });
+    // 2. Email validation — Valid format required
+    const cleanEmail = (email || '').toString().trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: "Please enter a valid email address." });
+    }
+
+    // 3. Password validation & Confirm password match
+    const pass = (password || '').toString().trim();
+    const cPass = (confirm_password !== undefined ? confirm_password : (confirmPassword !== undefined ? confirmPassword : '')).toString().trim();
+
+    if (!pass) {
+      return res.status(400).json({ success: false, message: "Please enter a password." });
+    }
+    if (pass.length < 4) {
+      return res.status(400).json({ success: false, message: "Password must be at least 4 characters long." });
+    }
+    if (!cPass) {
+      return res.status(400).json({ success: false, message: "Please confirm your password." });
+    }
+    if (pass !== cPass) {
+      return res.status(400).json({ success: false, message: "Passwords do not match." });
+    }
+
+    // 4. Backend Database Uniqueness Checks (Mobile & Email)
+    const existingMobileRes = await db.query('SELECT id FROM users WHERE mobile = $1 LIMIT 1;', [cleanMobile]);
+    const existingMobile = existingMobileRes.rows.length > 0;
+
+    const existingEmailRes = await db.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND email IS NOT NULL AND TRIM(email) != \'\' LIMIT 1;', [cleanEmail]);
+    const existingEmail = existingEmailRes.rows.length > 0;
+
+    if (existingMobile && existingEmail) {
+      return res.status(400).json({
+        success: false,
+        isDuplicate: true,
+        duplicateType: 'BOTH',
+        message: "You're already registered. Please login with your existing account."
+      });
+    }
+
+    if (existingMobile) {
+      return res.status(400).json({
+        success: false,
+        isDuplicate: true,
+        duplicateType: 'MOBILE',
+        message: "You're already registered with this mobile number. You can login now."
+      });
+    }
+
+    if (existingEmail) {
+      return res.status(400).json({
+        success: false,
+        isDuplicate: true,
+        duplicateType: 'EMAIL',
+        message: "You're already registered with this email address. You can login now."
+      });
     }
 
     // Generate Unique Referral Code & Hashed Password
     const namePrefix = name.trim().replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 5) || 'TIFFIN';
     const randomNum = Math.floor(10 + Math.random() * 90);
     const generatedRefCode = `${namePrefix}${randomNum}`;
-    const hashedPassword = bcrypt.hashSync(password.trim(), 10);
+    const hashedPassword = bcrypt.hashSync(pass, 10);
 
     const newUserId = 'usr_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
     const newUser = {
@@ -325,7 +380,7 @@ app.post('/api/auth/register', async (req, res) => {
       mobile: cleanMobile,
       password: hashedPassword,
       role: 'CUSTOMER',
-      email: (email || '').trim(),
+      email: cleanEmail,
       address: (address || '').trim(),
       referral_code: generatedRefCode,
       referred_by: null,
@@ -360,25 +415,64 @@ app.post('/api/auth/register', async (req, res) => {
       newUser.referred_by_code = referrer.referral_code;
     }
 
-    // Insert user into PostgreSQL FIRST to satisfy Foreign Key constraints
-    await db.query(
-      `INSERT INTO users (
-        id, name, mobile, password, role, email, address, referral_code, 
-        referred_by, referred_by_code, wallet_balance, loyalty_points, cart, favorites, show_on_leaderboard, sound_enabled
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);`,
-      [
-        newUser.id, newUser.name, newUser.mobile, newUser.password, newUser.role,
-        newUser.email, newUser.address, newUser.referral_code, newUser.referred_by,
-        newUser.referred_by_code, 0, 0, '[]', '[]', true, true
-      ]
-    );
+    // Insert user into DB with race condition constraint violation handling
+    try {
+      await db.query(
+        `INSERT INTO users (
+          id, name, mobile, password, role, email, address, referral_code, 
+          referred_by, referred_by_code, wallet_balance, loyalty_points, cart, favorites, show_on_leaderboard, sound_enabled
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);`,
+        [
+          newUser.id, newUser.name, newUser.mobile, newUser.password, newUser.role,
+          newUser.email, newUser.address, newUser.referral_code, newUser.referred_by,
+          newUser.referred_by_code, 0, 0, '[]', '[]', true, true
+        ]
+      );
+    } catch (dbInsErr) {
+      console.error('Registration Database Insert Constraint Notice:', dbInsErr.message);
 
-    // Insert into referrals table after user row exists in PostgreSQL
+      const dupMobCheck = await db.query('SELECT id FROM users WHERE mobile = $1 LIMIT 1;', [cleanMobile]);
+      const dupEmailCheck = await db.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND email IS NOT NULL AND TRIM(email) != \'\' LIMIT 1;', [cleanEmail]);
+
+      const isDupMob = dupMobCheck.rows.length > 0;
+      const isDupEmail = dupEmailCheck.rows.length > 0;
+
+      if (isDupMob && isDupEmail) {
+        return res.status(400).json({
+          success: false,
+          isDuplicate: true,
+          duplicateType: 'BOTH',
+          message: "You're already registered. Please login with your existing account."
+        });
+      } else if (isDupMob) {
+        return res.status(400).json({
+          success: false,
+          isDuplicate: true,
+          duplicateType: 'MOBILE',
+          message: "You're already registered with this mobile number. You can login now."
+        });
+      } else if (isDupEmail) {
+        return res.status(400).json({
+          success: false,
+          isDuplicate: true,
+          duplicateType: 'EMAIL',
+          message: "You're already registered with this email address. You can login now."
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        isDuplicate: true,
+        message: "You're already registered with this mobile number or email. You can login now."
+      });
+    }
+
+    // Insert into referrals table after user row exists in database
     if (referrer) {
       const settingsRes = await db.query('SELECT referral FROM settings WHERE id = 1;');
       let settingsReferral = settingsRes.rows[0]?.referral || {};
       if (typeof settingsReferral === 'string') {
-        try { settingsReferral = JSON.parse(settingsReferral); } catch (e) {}
+        try { settingsReferral = JSON.parse(settingsReferral); } catch (e) { }
       }
       const rawVal = Number(settingsReferral.referrer_reward);
       const rewardVal = (!isNaN(rawVal) && isFinite(rawVal) && rawVal > 0) ? rawVal : 10;
@@ -409,7 +503,7 @@ app.post('/api/auth/register', async (req, res) => {
       success: true,
       token: token,
       user: userSafe,
-      message: `Account registered successfully!${refMessage}`
+      message: `Account created successfully. You can login now.${refMessage}`
     });
   } catch (err) {
     console.error('Registration Error:', err);
@@ -473,7 +567,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Helper: Send OTP via configured messaging providers (Email / WhatsApp / SMS)
 async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
   const chosenMethod = (method || 'SMS').toUpperCase();
-  
+
   // 1. Email Delivery via Nodemailer / SMTP
   if (chosenMethod === 'EMAIL') {
     if (!user.email || !user.email.includes('@')) {
@@ -540,7 +634,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
         const formattedMobile = `91${cleanMobile}`;
         const waUrl = `https://graph.facebook.com/v18.0/${waPhoneId}/messages`;
-        
+
         const payload = process.env.WHATSAPP_TEMPLATE_NAME ? {
           messaging_product: 'whatsapp',
           to: formattedMobile,
@@ -590,7 +684,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         const cleanNumber = user.mobile.replace(/[^0-9]/g, '').slice(-10);
         const formattedMobile = `+91${cleanNumber}`;
         const fromNum = twilioWaFrom.startsWith('whatsapp:') ? twilioWaFrom : `whatsapp:${twilioWaFrom}`;
-        
+
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
         const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
 
@@ -678,7 +772,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         const cleanApiKey = smsApiKey.toString().trim();
         const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
         const rawMsg = `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes. Do not share this code.`;
-        
+
         // 1. Primary Request: Fast2SMS Quick SMS Route GET (route=q - works instantly without domain/DLT verification)
         const qUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(cleanApiKey)}&route=q&message=${encodeURIComponent(rawMsg)}&language=english&flash=0&numbers=${cleanMobile}`;
         let response = await fetch(qUrl, { method: 'GET' });
@@ -718,60 +812,60 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         console.error('[SMS Provider Network Error]:', err.message);
         return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
       }
-    } else if (twoFactorKey) {
-      try {
-        const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
-        const tfTemplate = process.env.TWOFACTOR_TEMPLATE_NAME ? `/${process.env.TWOFACTOR_TEMPLATE_NAME}` : '';
-        const tfUrl = `https://2factor.in/API/V1/${twoFactorKey}/SMS/+91${cleanMobile}/${otp}${tfTemplate}`;
-        const response = await fetch(tfUrl, { method: 'GET' });
-        const data = await response.json();
+  } else if (twoFactorKey) {
+    try {
+      const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+      const tfTemplate = process.env.TWOFACTOR_TEMPLATE_NAME ? `/${process.env.TWOFACTOR_TEMPLATE_NAME}` : '';
+      const tfUrl = `https://2factor.in/API/V1/${twoFactorKey}/SMS/+91${cleanMobile}/${otp}${tfTemplate}`;
+      const response = await fetch(tfUrl, { method: 'GET' });
+      const data = await response.json();
 
-        if (response.ok && (data.Status === 'Success' || data.status === 'Success')) {
-          console.log(`[SMS 2Factor Success] Session ID: ${data.Details}`);
-          return { success: true, message: "OTP sent successfully via SMS." };
-        } else {
-          console.error('[SMS 2Factor Error]:', JSON.stringify(data));
-          return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
-        }
-      } catch (err) {
-        console.error('[SMS 2Factor Network Error]:', err.message);
-        return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
+      if (response.ok && (data.Status === 'Success' || data.status === 'Success')) {
+        console.log(`[SMS 2Factor Success] Session ID: ${data.Details}`);
+        return { success: true, message: "OTP sent successfully via SMS." };
+      } else {
+        console.error('[SMS 2Factor Error]:', JSON.stringify(data));
+        return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
       }
-    } else if (msg91AuthKey) {
-      try {
-        const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
-        const msg91TemplateId = process.env.MSG91_TEMPLATE_ID || '';
-        const msg91Url = `https://control.msg91.com/api/v5/otp?template_id=${msg91TemplateId}&mobile=91${cleanMobile}&authkey=${msg91AuthKey}`;
-        const response = await fetch(msg91Url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ OTP: otp })
-        });
-        const data = await response.json();
-
-        if (response.ok && (data.type === 'success' || data.type === 'Success')) {
-          console.log(`[SMS MSG91 Success] Request ID: ${data.message}`);
-          return { success: true, message: "OTP sent successfully via SMS." };
-        } else {
-          console.error('[SMS MSG91 Error]:', JSON.stringify(data));
-          return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
-        }
-      } catch (err) {
-        console.error('[SMS MSG91 Network Error]:', err.message);
-        return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
-      }
-    } else {
-      console.warn('[OTP Delivery Notice]: No SMS Gateway credentials configured in Render environment. Please set FAST2SMS_API_KEY, TWOFACTOR_API_KEY, MSG91_AUTH_KEY, or TWILIO_ACCOUNT_SID.');
-      const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
-      if (isDev) {
-        console.log(`[DEV OTP FALLBACK - SMS]: OTP code for customer ${user.mobile} is: ${otp}`);
-        return { success: true, devMode: true, message: "OTP sent successfully via SMS (Development Mode)." };
-      }
-      return { success: false, message: "Unable to send SMS OTP right now. Please try again later." };
+    } catch (err) {
+      console.error('[SMS 2Factor Network Error]:', err.message);
+      return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
     }
-  }
+  } else if (msg91AuthKey) {
+    try {
+      const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+      const msg91TemplateId = process.env.MSG91_TEMPLATE_ID || '';
+      const msg91Url = `https://control.msg91.com/api/v5/otp?template_id=${msg91TemplateId}&mobile=91${cleanMobile}&authkey=${msg91AuthKey}`;
+      const response = await fetch(msg91Url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ OTP: otp })
+      });
+      const data = await response.json();
 
-  return { success: false, message: "Invalid delivery method selected." };
+      if (response.ok && (data.type === 'success' || data.type === 'Success')) {
+        console.log(`[SMS MSG91 Success] Request ID: ${data.message}`);
+        return { success: true, message: "OTP sent successfully via SMS." };
+      } else {
+        console.error('[SMS MSG91 Error]:', JSON.stringify(data));
+        return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
+      }
+    } catch (err) {
+      console.error('[SMS MSG91 Network Error]:', err.message);
+      return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
+    }
+  } else {
+    console.warn('[OTP Delivery Notice]: No SMS Gateway credentials configured in Render environment. Please set FAST2SMS_API_KEY, TWOFACTOR_API_KEY, MSG91_AUTH_KEY, or TWILIO_ACCOUNT_SID.');
+    const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
+    if (isDev) {
+      console.log(`[DEV OTP FALLBACK - SMS]: OTP code for customer ${user.mobile} is: ${otp}`);
+      return { success: true, devMode: true, message: "OTP sent successfully via SMS (Development Mode)." };
+    }
+    return { success: false, message: "Unable to send SMS OTP right now. Please try again later." };
+  }
+}
+
+return { success: false, message: "Invalid delivery method selected." };
 }
 
 // AUTH 3a. Get Recovery Methods for Registered Customer
@@ -1182,7 +1276,7 @@ app.delete('/api/profile/photo', authenticateToken, async (req, res) => {
 app.get('/api/cart', authenticateToken, async (req, res) => {
   const userRes = await db.query('SELECT cart FROM users WHERE id = $1;', [req.user.id]);
   let cart = [];
-  try { cart = typeof userRes.rows[0]?.cart === 'string' ? JSON.parse(userRes.rows[0].cart) : (userRes.rows[0]?.cart || []); } catch(e) {}
+  try { cart = typeof userRes.rows[0]?.cart === 'string' ? JSON.parse(userRes.rows[0].cart) : (userRes.rows[0]?.cart || []); } catch (e) { }
   res.json({ success: true, data: cart });
 });
 
@@ -1195,7 +1289,7 @@ app.post('/api/cart', authenticateToken, async (req, res) => {
 app.get('/api/favorites', authenticateToken, async (req, res) => {
   const userRes = await db.query('SELECT favorites FROM users WHERE id = $1;', [req.user.id]);
   let favorites = [];
-  try { favorites = typeof userRes.rows[0]?.favorites === 'string' ? JSON.parse(userRes.rows[0].favorites) : (userRes.rows[0]?.favorites || []); } catch(e) {}
+  try { favorites = typeof userRes.rows[0]?.favorites === 'string' ? JSON.parse(userRes.rows[0].favorites) : (userRes.rows[0]?.favorites || []); } catch (e) { }
   res.json({ success: true, data: favorites });
 });
 
@@ -1217,7 +1311,7 @@ app.get('/api/settings', async (req, res) => {
     }
     const s = sRes.rows[0];
     if (typeof s.referral === 'string') {
-      try { s.referral = JSON.parse(s.referral); } catch (e) {}
+      try { s.referral = JSON.parse(s.referral); } catch (e) { }
     }
 
     // Conditional caching so the 2-second live polling does not re-download the
@@ -1379,7 +1473,7 @@ const handleSaveSettings = async (req, res) => {
     const updated = await db.query('SELECT * FROM settings WHERE id = 1;');
     const updatedSettings = updated.rows[0];
     if (typeof updatedSettings.referral === 'string') {
-      try { updatedSettings.referral = JSON.parse(updatedSettings.referral); } catch (e) {}
+      try { updatedSettings.referral = JSON.parse(updatedSettings.referral); } catch (e) { }
     }
     res.json({ success: true, settings: updatedSettings, data: updatedSettings, message: "Business settings updated successfully." });
   } catch (err) {
@@ -1416,7 +1510,7 @@ async function seedDefaultTiffins() {
          ON CONFLICT (id) DO NOTHING;`,
         [t.id, t.name, t.description, t.price, t.category, t.image, t.is_available]
       );
-    } catch(e) {}
+    } catch (e) { }
   }
 }
 
@@ -1428,7 +1522,7 @@ async function seedOwnerUser() {
        ON CONFLICT (id) DO NOTHING;`,
       ['usr_owner_1', 'Lakshmi Narayana (Owner)', '9392874900', '9392874900', 'OWNER', 'owner@annapurna.com', '#42, Temple Road, Bengaluru, KA']
     );
-  } catch(e) {}
+  } catch (e) { }
 }
 
 const getMenuHandler = async (req, res) => {
@@ -1439,7 +1533,7 @@ const getMenuHandler = async (req, res) => {
     try {
       const migrate = require('./migrate_to_postgres');
       await migrate();
-    } catch (e) {}
+    } catch (e) { }
     tRes = await db.query('SELECT * FROM tiffins ORDER BY created_at ASC;');
   }
   res.json({ success: true, data: tRes.rows || [] });
@@ -1516,7 +1610,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
           revMap.set(r.order_number, r);
         }
       });
-    } catch (rErr) {}
+    } catch (rErr) { }
 
     const parsedOrders = oRes.rows.map(o => {
       if (typeof o.items === 'string') {
@@ -1529,7 +1623,7 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       if (!o.pickup_pin) {
         const legacyPin = String(Math.floor(1000 + Math.random() * 9000));
         o.pickup_pin = legacyPin;
-        db.query('UPDATE orders SET pickup_pin = $1 WHERE id = $2 AND (pickup_pin IS NULL OR pickup_pin = \'\');', [legacyPin, o.id]).catch(() => {});
+        db.query('UPDATE orders SET pickup_pin = $1 WHERE id = $2 AND (pickup_pin IS NULL OR pickup_pin = \'\');', [legacyPin, o.id]).catch(() => { });
       }
       o.pickup_pin_verified = Boolean(o.pickup_pin_verified);
       return o;
@@ -1570,7 +1664,7 @@ app.post('/api/orders/:id/reorder', authenticateToken, requireRole('CUSTOMER'), 
     }
     let prevItems = previousOrder.items || [];
     if (typeof prevItems === 'string') {
-      try { prevItems = JSON.parse(prevItems); } catch(e) { prevItems = []; }
+      try { prevItems = JSON.parse(prevItems); } catch (e) { prevItems = []; }
     }
 
     if (!prevItems.length) {
@@ -1633,7 +1727,7 @@ app.post('/api/orders/:id/reorder', authenticateToken, requireRole('CUSTOMER'), 
     let savedScreenshotUrl = null;
     if (rawScreenshot) {
       if (typeof rawScreenshot === 'string' && rawScreenshot.startsWith('data:image/')) {
-        try { savedScreenshotUrl = await saveBase64Image(rawScreenshot, 'screenshots'); } catch(e) { savedScreenshotUrl = null; }
+        try { savedScreenshotUrl = await saveBase64Image(rawScreenshot, 'screenshots'); } catch (e) { savedScreenshotUrl = null; }
       } else {
         savedScreenshotUrl = rawScreenshot;
       }
@@ -1709,7 +1803,7 @@ app.post('/api/orders/:id/reorder-items', authenticateToken, requireRole('CUSTOM
   try {
     const orderId = req.params.id;
     const orderRes = await db.query('SELECT * FROM orders WHERE (id = $1 OR order_number = $1) AND customer_id = $2;', [orderId, req.user.id]);
-    
+
     if (!orderRes.rows.length) {
       return res.status(403).json({ success: false, message: "Access denied. Order not found or does not belong to your account." });
     }
@@ -1727,7 +1821,7 @@ app.post('/api/orders/:id/reorder-items', authenticateToken, requireRole('CUSTOM
     }
     let items = order.items || [];
     if (typeof items === 'string') {
-      try { items = JSON.parse(items); } catch(e) { items = []; }
+      try { items = JSON.parse(items); } catch (e) { items = []; }
     }
 
     // Query active menu to match current prices and availability
@@ -1740,7 +1834,7 @@ app.post('/api/orders/:id/reorder-items', authenticateToken, requireRole('CUSTOM
     items.forEach(item => {
       const targetId = item.tiffin_id || item.id;
       const matched = currentMenu.find(m => m.id === targetId || (m.name && item.name && m.name.toLowerCase() === item.name.toLowerCase()));
-      
+
       const isAvailable = matched ? (matched.is_available === true || matched.is_available === 1 || matched.is_available === 'true') : false;
 
       if (matched && isAvailable) {
@@ -1952,7 +2046,7 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
     await checkAndProcessReferralReward(req.user.id, orderNum);
 
     if (createdOrder) {
-      try { createdOrder.items = JSON.parse(createdOrder.items); } catch(e) {}
+      try { createdOrder.items = JSON.parse(createdOrder.items); } catch (e) { }
       createdOrder.payment_screenshot = createdOrder.payment_screenshot || createdOrder.screenshot_url || '';
       createdOrder.screenshot_url = createdOrder.screenshot_url || createdOrder.payment_screenshot || '';
     }
@@ -1965,8 +2059,8 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       success: true,
       data: createdOrder,
       wallet_balance: updatedWalletBalance,
-      message: isReferralPayment 
-        ? `Order #${orderNum} paid successfully using Referral Wallet!` 
+      message: isReferralPayment
+        ? `Order #${orderNum} paid successfully using Referral Wallet!`
         : `Order #${orderNum} placed successfully!`
     });
   } catch (err) {
@@ -2183,7 +2277,7 @@ app.put('/api/orders/:id/modify', authenticateToken, requireRole('CUSTOMER'), as
     updatedWalletBalance = Number(userBalRes.rows[0]?.wallet_balance || 0);
 
     if (updatedOrder) {
-      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) {}
+      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
     }
 
     res.json({
@@ -2319,7 +2413,7 @@ app.post('/api/orders/:id/cancel', authenticateToken, requireRole('CUSTOMER'), a
     updatedWalletBalance = Number(userBalRes.rows[0]?.wallet_balance || 0);
 
     if (updatedOrder) {
-      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) {}
+      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
     }
 
     res.json({
@@ -2382,8 +2476,8 @@ app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) =>
     }
 
     const cleanUtr = utr_number !== undefined && utr_number !== null ? utr_number.trim() : (order.utr_number || null);
-    const permanentScreenshot = (payment_screenshot && typeof payment_screenshot === 'string' && payment_screenshot.startsWith('data:image/')) 
-      ? payment_screenshot 
+    const permanentScreenshot = (payment_screenshot && typeof payment_screenshot === 'string' && payment_screenshot.startsWith('data:image/'))
+      ? payment_screenshot
       : (savedScreenshotUrl || order.payment_screenshot || order.screenshot_url || null);
 
     await db.query(
@@ -2398,7 +2492,7 @@ app.post('/api/orders/:id/payment-proof', authenticateToken, async (req, res) =>
 
     const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
     const updatedOrder = updatedRes.rows[0];
-    try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+    try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
     updatedOrder.payment_screenshot = updatedOrder.payment_screenshot || updatedOrder.screenshot_url || '';
     updatedOrder.screenshot_url = updatedOrder.screenshot_url || updatedOrder.payment_screenshot || '';
 
@@ -2548,7 +2642,7 @@ async function verifyPhonePeStatusWithApi(txnId) {
   }
 
   const order = oRes.rows[0];
-  try { order.items = JSON.parse(order.items); } catch(e) {}
+  try { order.items = JSON.parse(order.items); } catch (e) { }
 
   const targetTxnId = order.utr_number || txnId;
   const stringToHash = `/pg/v1/status/${PHONEPE_MERCHANT_ID}/${targetTxnId}${PHONEPE_SALT_KEY}`;
@@ -2619,7 +2713,7 @@ async function verifyPhonePeStatusWithApi(txnId) {
 
   const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
   const updatedOrder = updatedRes.rows[0] || order;
-  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
 
   return {
     success: true,
@@ -2786,7 +2880,7 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
       }
 
       if (targetOrder) {
-        try { targetOrder.items = JSON.parse(targetOrder.items); } catch(e) {}
+        try { targetOrder.items = JSON.parse(targetOrder.items); } catch (e) { }
       }
 
       phonePeTxnStore.set(txnId, {
@@ -3040,7 +3134,7 @@ app.post('/api/orders/:id/processing-screenshot', authenticateToken, requireRole
 
     const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
     const updatedOrder = updatedRes.rows[0];
-    try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+    try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
     updatedOrder.payment_screenshot = updatedOrder.payment_screenshot || updatedOrder.screenshot_url || '';
     updatedOrder.screenshot_url = updatedOrder.screenshot_url || updatedOrder.payment_screenshot || '';
 
@@ -3104,7 +3198,7 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
   // Dispatch Customer Notification on Status Update
   if (order.customer_id) {
     const notifTitle = order_status ? `Order #${order.order_number} is ${newOrderStatus}` : `Payment Updated`;
-    const notifMsg = order_status 
+    const notifMsg = order_status
       ? `Your order #${order.order_number} status is now "${newOrderStatus}".`
       : `Payment status for Order #${order.order_number} is updated to "${newPaymentStatus}".`;
     await db.query(
@@ -3125,7 +3219,7 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
 
   const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
   const updatedOrder = updatedRes.rows[0];
-  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
 
   res.json({ success: true, data: updatedOrder, message: `Order #${order.order_number} status updated to ${newOrderStatus}.` });
 });
@@ -3165,7 +3259,7 @@ app.patch('/api/orders/:id/payment-verify', authenticateToken, requireRole('OWNE
 
   const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
   const updatedOrder = updatedRes.rows[0];
-  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+  try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
 
   res.json({ success: true, data: updatedOrder, message: `Order #${order.order_number} payment status updated to ${newPaymentStatus}.` });
 });
@@ -3249,7 +3343,7 @@ app.post('/api/orders/:id/verify-pin', authenticateToken, requireRole('OWNER'), 
     const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
     const updatedOrder = updatedRes.rows[0];
     if (updatedOrder) {
-      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch(e) {}
+      try { updatedOrder.items = JSON.parse(updatedOrder.items); } catch (e) { }
       updatedOrder.pickup_pin_verified = true;
     }
 
@@ -3449,7 +3543,7 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
       const settingsRes = await db.query('SELECT referral FROM settings WHERE id = 1;');
       let settingsReferral = settingsRes.rows[0]?.referral || {};
       if (typeof settingsReferral === 'string') {
-        try { settingsReferral = JSON.parse(settingsReferral); } catch (e) {}
+        try { settingsReferral = JSON.parse(settingsReferral); } catch (e) { }
       }
 
       const activeRewardAmt = Number(settingsReferral.referrer_reward);

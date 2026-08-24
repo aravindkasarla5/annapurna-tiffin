@@ -2718,6 +2718,18 @@
             </h3>
             <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.9rem;">Fill details below to register a new customer account</p>
           </div>
+
+          <!-- Dynamic Registration Duplicate / Error Alert Box -->
+          <div id="regDuplicateAlert" class="reg-alert-box hidden">
+            <div class="reg-alert-content">
+              <i class="fa-solid fa-triangle-exclamation reg-alert-icon"></i>
+              <span id="regAlertText">You're already registered. You can login now.</span>
+            </div>
+            <button type="button" class="btn-alert-login-now" onclick="app.setAuthMode('LOGIN')">
+              <i class="fa-solid fa-right-to-bracket"></i> Login Now
+            </button>
+          </div>
+
           <div class="input-icon-group">
             <i class="fa-solid fa-user input-icon"></i>
             <input type="text" class="icon-input" id="regName" placeholder="Full Name (e.g. Suresh Gowda)" autocomplete="name" required>
@@ -2725,7 +2737,12 @@
 
           <div class="input-icon-group">
             <i class="fa-solid fa-mobile-screen input-icon"></i>
-            <input type="tel" class="icon-input" id="regMobile" placeholder="10-digit mobile number" autocomplete="tel" required>
+            <input type="tel" class="icon-input" id="regMobile" placeholder="10-digit mobile number (e.g. 9392874900)" autocomplete="tel" maxlength="10" required>
+          </div>
+
+          <div class="input-icon-group">
+            <i class="fa-solid fa-envelope input-icon"></i>
+            <input type="email" class="icon-input" id="regEmail" placeholder="Valid Email Address (e.g. customer@example.com)" autocomplete="email" required>
           </div>
 
           <div class="input-icon-group password-group">
@@ -2734,9 +2751,10 @@
             <i class="fa-solid fa-eye toggle-password-icon" id="toggleRegPassword" onclick="app.togglePasswordVisibility('regPassword', 'toggleRegPassword')" title="Toggle password visibility"></i>
           </div>
 
-          <div class="input-icon-group">
-            <i class="fa-solid fa-envelope input-icon"></i>
-            <input type="email" class="icon-input" id="regEmail" placeholder="Email Address (Optional)" autocomplete="email">
+          <div class="input-icon-group password-group">
+            <i class="fa-solid fa-shield-halved input-icon"></i>
+            <input type="password" class="icon-input" id="regConfirmPassword" placeholder="Confirm password" autocomplete="new-password" required>
+            <i class="fa-solid fa-eye toggle-password-icon" id="toggleRegConfirmPassword" onclick="app.togglePasswordVisibility('regConfirmPassword', 'toggleRegConfirmPassword')" title="Toggle confirm password visibility"></i>
           </div>
 
           <div class="input-icon-group">
