@@ -1,3 +1,5 @@
+try { require('dotenv').config(); } catch(e) {}
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -524,60 +526,102 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
     }
   }
 
-  // 2. WhatsApp Delivery via WhatsApp Cloud API / HTTP Provider
+  // 2. WhatsApp Delivery via WhatsApp Cloud API / Twilio WhatsApp
   if (chosenMethod === 'WHATSAPP') {
-    const waToken = process.env.WHATSAPP_TOKEN || process.env.WHATSAPP_API_KEY;
-    const waPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const waToken = process.env.WHATSAPP_TOKEN || process.env.WHATSAPP_API_KEY || process.env.WHATSAPP_CLOUD_API_TOKEN || process.env.META_WHATSAPP_TOKEN;
+    const waPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID || process.env.META_PHONE_NUMBER_ID;
 
-    if (!waToken || !waPhoneId) {
-      console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in environment.');
-      return { success: false, message: "WhatsApp messaging service is currently not configured on server." };
-    }
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioWaFrom = process.env.TWILIO_WHATSAPP_NUMBER || process.env.TWILIO_PHONE_NUMBER;
 
-    try {
-      const formattedMobile = user.mobile.length === 10 ? `91${user.mobile}` : user.mobile.replace(/[^0-9]/g, '');
-      const waUrl = `https://graph.facebook.com/v18.0/${waPhoneId}/messages`;
-      
-      const response = await fetch(waUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${waToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: formattedMobile,
-          type: 'text',
-          text: {
-            body: `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes. Do not share this code.`
-          }
-        })
-      });
+    if (waToken && waPhoneId) {
+      try {
+        const formattedMobile = user.mobile.length === 10 ? `91${user.mobile}` : user.mobile.replace(/[^0-9]/g, '');
+        const waUrl = `https://graph.facebook.com/v18.0/${waPhoneId}/messages`;
+        
+        const response = await fetch(waUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${waToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: formattedMobile,
+            type: 'text',
+            text: {
+              body: `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes. Do not share this code.`
+            }
+          })
+        });
 
-      const data = await response.json();
-      if (response.ok && data.messages && data.messages.length) {
-        console.log(`[WhatsApp OTP Success] Message accepted by WhatsApp API ID: ${data.messages[0].id}`);
-        return { success: true, message: "OTP sent successfully to your WhatsApp number." };
-      } else {
-        console.error('[WhatsApp OTP Provider Error]:', data);
-        return { success: false, message: "Unable to send OTP via WhatsApp. Provider rejected delivery." };
+        const data = await response.json();
+        if (response.ok && data.messages && data.messages.length) {
+          console.log(`[WhatsApp OTP Success] Message accepted by Meta WhatsApp API ID: ${data.messages[0].id}`);
+          return { success: true, message: "OTP sent successfully to your WhatsApp number." };
+        } else {
+          console.error('[WhatsApp OTP Provider Error]:', data);
+          return { success: false, message: "Unable to send OTP via WhatsApp. Provider rejected delivery." };
+        }
+      } catch (err) {
+        console.error('[WhatsApp OTP Network Error]:', err.message);
+        return { success: false, message: "Unable to send OTP via WhatsApp. Provider communication failed." };
       }
-    } catch (err) {
-      console.error('[WhatsApp OTP Network Error]:', err.message);
-      return { success: false, message: "Unable to send OTP via WhatsApp. Provider communication failed." };
+    } else if (twilioSid && twilioToken && twilioWaFrom) {
+      try {
+        const cleanNumber = user.mobile.replace(/[^0-9]/g, '');
+        const formattedMobile = cleanNumber.length === 10 ? `+91${cleanNumber}` : (cleanNumber.startsWith('91') ? `+${cleanNumber}` : `+91${cleanNumber}`);
+        const fromNum = twilioWaFrom.startsWith('whatsapp:') ? twilioWaFrom : `whatsapp:${twilioWaFrom}`;
+        
+        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
+        const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
+
+        const params = new URLSearchParams();
+        params.append('To', `whatsapp:${formattedMobile}`);
+        params.append('From', fromNum);
+        params.append('Body', `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes.`);
+
+        const response = await fetch(twilioUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: params
+        });
+
+        const data = await response.json();
+        if (response.ok && data.sid) {
+          console.log(`[WhatsApp Twilio Success] Message SID: ${data.sid}`);
+          return { success: true, message: "OTP sent successfully to your WhatsApp number." };
+        } else {
+          console.error('[WhatsApp Twilio Error]:', data);
+          return { success: false, message: "Unable to send OTP via WhatsApp. Provider rejected delivery." };
+        }
+      } catch (err) {
+        console.error('[WhatsApp Twilio Network Error]:', err.message);
+        return { success: false, message: "Unable to send OTP via WhatsApp. Provider communication failed." };
+      }
+    } else {
+      console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in environment.');
+      return { success: false, message: "WhatsApp OTP service is currently not configured on server." };
     }
   }
 
-  // 3. SMS Delivery via SMS Gateway (Twilio / Fast2SMS)
+  // 3. SMS Delivery via SMS Gateway (Twilio / Fast2SMS / MSG91 / 2Factor)
   if (chosenMethod === 'SMS') {
-    const smsApiKey = process.env.SMS_API_KEY || process.env.FAST2SMS_API_KEY;
+    const smsApiKey = process.env.SMS_API_KEY || process.env.FAST2SMS_API_KEY || process.env.FAST2SMS_KEY;
     const twilioSid = process.env.TWILIO_ACCOUNT_SID;
     const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-    const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
+    const twilioFrom = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_NUMBER || process.env.TWILIO_FROM;
+    const msg91AuthKey = process.env.MSG91_AUTH_KEY;
+    const twoFactorKey = process.env.TWOFACTOR_API_KEY || process.env.FACTOR2_API_KEY;
 
     if (twilioSid && twilioToken && twilioFrom) {
       try {
-        const formattedMobile = user.mobile.startsWith('+') ? user.mobile : `+91${user.mobile.replace(/[^0-9]/g, '')}`;
+        const cleanNumber = user.mobile.replace(/[^0-9]/g, '');
+        const formattedMobile = user.mobile.startsWith('+') ? user.mobile : (cleanNumber.length === 10 ? `+91${cleanNumber}` : `+${cleanNumber}`);
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
         const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
 
@@ -609,7 +653,8 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
       }
     } else if (smsApiKey) {
       try {
-        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${smsApiKey}&variables_values=${otp}&route=otp&numbers=${user.mobile}`;
+        const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${smsApiKey}&variables_values=${otp}&route=otp&numbers=${cleanMobile}`;
         const response = await fetch(smsUrl, { method: 'GET' });
         const data = await response.json();
 
@@ -622,6 +667,24 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         }
       } catch (err) {
         console.error('[SMS Provider Network Error]:', err.message);
+        return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
+      }
+    } else if (twoFactorKey) {
+      try {
+        const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+        const tfUrl = `https://2factor.in/API/V1/${twoFactorKey}/SMS/+91${cleanMobile}/${otp}`;
+        const response = await fetch(tfUrl, { method: 'GET' });
+        const data = await response.json();
+
+        if (response.ok && (data.Status === 'Success' || data.status === 'Success')) {
+          console.log(`[SMS 2Factor Success] Session ID: ${data.Details}`);
+          return { success: true, message: "OTP sent successfully via SMS." };
+        } else {
+          console.error('[SMS 2Factor Error]:', data);
+          return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
+        }
+      } catch (err) {
+        console.error('[SMS 2Factor Network Error]:', err.message);
         return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
       }
     } else {

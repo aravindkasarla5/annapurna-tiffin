@@ -1186,7 +1186,7 @@ class TiffinApp {
     }
 
     let selectedMethod = 'SMS';
-    const checkedRadio = document.querySelector('input[name="forgotRecoveryMethod"]:checked');
+    const checkedRadio = document.querySelector('input[name="forgotOtpDeliveryMethod"]:checked') || document.querySelector('input[name="forgotRecoveryMethod"]:checked');
     if (checkedRadio) {
       selectedMethod = checkedRadio.value;
     }
