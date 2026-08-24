@@ -678,30 +678,40 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         const cleanApiKey = smsApiKey.toString().trim();
         const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
         
-        // Try Fast2SMS Dedicated OTP Route (route=otp)
-        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(cleanApiKey)}&variables_values=${encodeURIComponent(otp)}&route=otp&numbers=${cleanMobile}`;
-        let response = await fetch(smsUrl, {
-          method: 'GET',
+        // Fast2SMS Official POST API Request (route=otp)
+        let response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+          method: 'POST',
           headers: {
             'authorization': cleanApiKey,
             'Content-Type': 'application/json'
-          }
+          },
+          body: JSON.stringify({
+            route: 'otp',
+            variables_values: otp,
+            numbers: cleanMobile
+          })
         });
         let data = await response.json();
 
-        // If route=otp fails or returns false, fallback to Fast2SMS Quick SMS Route (route=q)
+        // If POST fails, try GET API Request (route=otp)
         if (!response.ok || data.return !== true) {
-          console.warn('[Fast2SMS OTP Route Notice]: OTP route response:', JSON.stringify(data), '- Attempting Quick SMS route fallback...');
-          const qMsg = encodeURIComponent(`🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes.`);
-          const qUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(cleanApiKey)}&route=q&message=${qMsg}&language=english&flash=0&numbers=${cleanMobile}`;
-          const qResp = await fetch(qUrl, {
-            method: 'GET',
-            headers: { 'authorization': cleanApiKey }
-          });
-          const qData = await qResp.json();
-          if (qResp.ok && (qData.return === true || qData.status_code === 200)) {
-            data = qData;
-            response = qResp;
+          console.warn('[Fast2SMS POST Notice]:', JSON.stringify(data), '- Attempting GET route=otp fallback...');
+          const getUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${cleanApiKey}&route=otp&variables_values=${otp}&numbers=${cleanMobile}`;
+          const getResp = await fetch(getUrl, { method: 'GET' });
+          const getData = await getResp.json();
+          if (getResp.ok && getData.return === true) {
+            data = getData;
+            response = getResp;
+          } else {
+            // Quick SMS route fallback (route=q)
+            const qMsg = encodeURIComponent(`🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes.`);
+            const qUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${cleanApiKey}&route=q&message=${qMsg}&language=english&flash=0&numbers=${cleanMobile}`;
+            const qResp = await fetch(qUrl, { method: 'GET' });
+            const qData = await qResp.json();
+            if (qResp.ok && (qData.return === true || qData.status_code === 200)) {
+              data = qData;
+              response = qResp;
+            }
           }
         }
 
@@ -710,7 +720,11 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
           return { success: true, message: "OTP sent successfully via SMS." };
         } else {
           console.error('[SMS Fast2SMS Error]:', JSON.stringify(data));
-          return { success: false, message: `Unable to send OTP via SMS (${data.message && data.message[0] ? data.message[0] : 'Provider rejected delivery'}).` };
+          const detailErr = Array.isArray(data.message) ? data.message.join(' ') : (data.message || 'Provider rejected delivery');
+          if (detailErr.includes('Invalid Authorization') || detailErr === 'B') {
+            return { success: false, message: "SMS delivery failed. Please check your Fast2SMS API Key in Render Environment Variables." };
+          }
+          return { success: false, message: `Unable to send OTP via SMS (${detailErr}).` };
         }
       } catch (err) {
         console.error('[SMS Provider Network Error]:', err.message);
