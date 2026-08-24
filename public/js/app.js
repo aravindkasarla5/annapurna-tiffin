@@ -1131,13 +1131,48 @@ class TiffinApp {
     }
   }
 
-  async requestForgotOtp(isResend = false) {
-    const rawIdentifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
-    const identifier = this.normalizePhone(rawIdentifier);
+  resetForgotFormState() {
+    const stepPhone = document.getElementById('stepForgotPhone');
+    const stepOtp = document.getElementById('stepForgotOtp');
+    const stepNewPass = document.getElementById('stepForgotNewPassword');
+    const stepMethods = document.getElementById('stepForgotMethods');
+    const inputId = document.getElementById('forgotIdentifier');
+    const inputOtp = document.getElementById('forgotOtp');
+    const inputNewPass = document.getElementById('forgotNewPassword');
+    const inputConfirmPass = document.getElementById('forgotConfirmPassword');
 
-    if (!identifier || identifier.length !== 10) {
-      this.showToast('Please enter your registered 10-digit mobile number.', 'warning');
+    if (stepPhone) stepPhone.classList.remove('hidden');
+    if (stepOtp) stepOtp.classList.add('hidden');
+    if (stepNewPass) stepNewPass.classList.add('hidden');
+    if (stepMethods) stepMethods.classList.add('hidden');
+
+    if (inputId) {
+      inputId.readOnly = false;
+      inputId.value = '';
+    }
+    if (inputOtp) inputOtp.value = '';
+    if (inputNewPass) inputNewPass.value = '';
+    if (inputConfirmPass) inputConfirmPass.value = '';
+
+    if (this.resendOtpTimer) {
+      clearInterval(this.resendOtpTimer);
+      this.resendOtpTimer = null;
+    }
+  }
+
+  async requestForgotOtp(isResend = false) {
+    const rawVal = document.getElementById('forgotIdentifier')?.value || '';
+    const mobile = rawVal.replace(/[^0-9]/g, '').trim();
+
+    if (!mobile || mobile.length !== 10) {
+      this.showToast('Please enter a valid 10-digit mobile number.', 'warning');
       return;
+    }
+
+    let selectedMethod = 'SMS';
+    const checkedRadio = document.querySelector('input[name="forgotRecoveryMethod"]:checked');
+    if (checkedRadio) {
+      selectedMethod = checkedRadio.value;
     }
 
     const btn = isResend ? document.getElementById('btnForgotResendOtp') : document.getElementById('btnForgotSendOtp');
@@ -1152,12 +1187,12 @@ class TiffinApp {
       const res = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier })
+        body: JSON.stringify({ mobile, method: selectedMethod })
       });
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message || 'OTP sent successfully to your registered phone number.', 'success');
+        this.showToast(json.message || 'OTP sent successfully.', 'success');
 
         const stepPhone = document.getElementById('stepForgotPhone');
         const stepOtp = document.getElementById('stepForgotOtp');
@@ -1167,18 +1202,18 @@ class TiffinApp {
         if (stepPhone) stepPhone.classList.add('hidden');
         if (stepOtp) stepOtp.classList.remove('hidden');
         if (inputId) inputId.readOnly = true;
-        if (mobileDisp) mobileDisp.innerText = identifier;
+        if (mobileDisp) mobileDisp.innerText = json.data?.maskedMobile || mobile;
 
         this.startResendOtpTimer();
 
         const otpInput = document.getElementById('forgotOtp');
         if (otpInput) otpInput.focus();
       } else {
-        this.showToast(json.message || 'No registered customer account found with this phone number.', 'error');
+        this.showToast(json.message || 'Unable to send OTP. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error requesting OTP:', err);
-      this.showToast('Failed to send OTP. Server communication error.', 'error');
+      this.showToast('Unable to send OTP. Server communication error.', 'error');
     } finally {
       if (btn && !isResend) {
         btn.disabled = false;
@@ -1213,12 +1248,12 @@ class TiffinApp {
   }
 
   async verifyForgotOtp() {
-    const rawIdentifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
-    const identifier = this.normalizePhone(rawIdentifier);
+    const rawVal = document.getElementById('forgotIdentifier')?.value || '';
+    const mobile = rawVal.replace(/[^0-9]/g, '').trim();
     const otp = document.getElementById('forgotOtp')?.value?.trim() || '';
 
-    if (!identifier) {
-      this.showToast('Please enter your registered phone number.', 'warning');
+    if (!mobile || mobile.length !== 10) {
+      this.showToast('Please enter a valid 10-digit mobile number.', 'warning');
       return;
     }
 
@@ -1239,7 +1274,7 @@ class TiffinApp {
       const res = await fetch(`${API_BASE}/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, otp })
+        body: JSON.stringify({ mobile, otp })
       });
       const json = await res.json();
 
@@ -1270,14 +1305,14 @@ class TiffinApp {
   async handleForgotPasswordSubmit(e) {
     e.preventDefault();
 
-    const rawIdentifier = document.getElementById('forgotIdentifier')?.value?.trim() || '';
-    const identifier = this.normalizePhone(rawIdentifier);
+    const rawVal = document.getElementById('forgotIdentifier')?.value || '';
+    const mobile = rawVal.replace(/[^0-9]/g, '').trim();
     const otp = document.getElementById('forgotOtp')?.value?.trim() || '';
     const new_password = document.getElementById('forgotNewPassword')?.value?.trim() || '';
     const confirm_password = document.getElementById('forgotConfirmPassword')?.value?.trim() || '';
 
-    if (!identifier) {
-      this.showToast('Please enter your registered mobile number.', 'warning');
+    if (!mobile || mobile.length !== 10) {
+      this.showToast('Please enter a valid 10-digit mobile number.', 'warning');
       return;
     }
 
@@ -1308,19 +1343,19 @@ class TiffinApp {
       const res = await fetch(`${API_BASE}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, otp, new_password })
+        body: JSON.stringify({ mobile, otp, new_password })
       });
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message || 'Password changed successfully.', 'success');
+        this.showToast(json.message || 'Password reset successfully. Please login with your new password.', 'success');
         this.resetForgotFormState();
         this.setAuthMode('LOGIN');
 
         const loginInput = document.getElementById('loginIdentifier');
-        if (loginInput) loginInput.value = identifier;
+        if (loginInput) loginInput.value = mobile;
       } else {
-        this.showToast(json.message || 'Failed to change password. Please try again.', 'error');
+        this.showToast(json.message || 'Failed to reset password. Please try again.', 'error');
       }
     } catch (err) {
       console.error('Error resetting password:', err);
@@ -2854,6 +2889,16 @@ class TiffinApp {
         return;
       }
 
+      // Client Guard: Reorder allowed ONLY for completed orders
+      const targetOrder = (this.orders || []).find(o => String(o.id) === String(orderId) || String(o.order_number) === String(orderId));
+      if (targetOrder) {
+        const orderStatClean = (targetOrder.order_status || '').toLowerCase();
+        if (!['completed', 'delivered'].includes(orderStatClean)) {
+          this.showToast('❌ Reorder is available ONLY AFTER the order is completed.', 'error');
+          return;
+        }
+      }
+
       let reorderableItems = [];
       let unavailableItems = [];
       let origOrderNum = orderId;
@@ -2868,16 +2913,17 @@ class TiffinApp {
           }
         });
 
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.data) {
-            origOrderNum = json.data.original_order_number || orderId;
-            reorderableItems = json.data.reorderableItems || [];
-            unavailableItems = json.data.unavailableItems || [];
-          }
+        const json = await res.json();
+        if (res.ok && json.success && json.data) {
+          origOrderNum = json.data.original_order_number || orderId;
+          reorderableItems = json.data.reorderableItems || [];
+          unavailableItems = json.data.unavailableItems || [];
+        } else if (!res.ok || !json.success) {
+          this.showToast(json.message || '❌ Reorder is available ONLY AFTER the order is completed.', 'error');
+          return;
         }
       } catch (e) {
-        console.warn('Backend reorder verification notice, using client fallback:', e);
+        console.warn('Backend reorder verification notice:', e);
       }
 
       // Fallback: Client menu matching if endpoint unreachable
@@ -5698,9 +5744,11 @@ class TiffinApp {
                 <i class="fa-solid fa-eye"></i> View Full Details
               </button>
 
-              <button type="button" class="co-row-btn reorder-btn" onclick="app.reorderPreviousOrder('${order.id || order.order_number}', event)" style="background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; font-weight: 800; border: none; cursor: pointer;" title="Reorder items from this previous order">
-                <i class="fa-solid fa-rotate-right"></i> 🔄 Reorder
-              </button>
+              ${(['completed', 'delivered'].includes((order.order_status || '').toLowerCase())) ? `
+                <button type="button" class="co-row-btn reorder-btn" onclick="app.reorderPreviousOrder('${order.id || order.order_number}', event)" style="background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; font-weight: 800; border: none; cursor: pointer;" title="Reorder items from this previous order">
+                  <i class="fa-solid fa-rotate-right"></i> 🔄 Reorder
+                </button>
+              ` : ''}
 
               ${order.review ? `
                 <button class="co-row-btn review reviewed" onclick="app.openOrderReviewModal('${order.order_number}')" style="background: rgba(255, 179, 0, 0.22); color: var(--accent-gold); border: 1.5px solid var(--accent-gold); font-weight: 800;" title="Click to view or edit your review">

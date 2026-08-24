@@ -2762,11 +2762,17 @@
             <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;" id="forgotFormSubtitle">Enter your registered 10-digit mobile number to receive a verification OTP.</p>
           </div>
 
-          <!-- Step 1: Mobile Number Entry -->
+          <!-- Step 1: Mobile Number Entry & Recovery Method Selection -->
           <div id="stepForgotPhone">
             <div class="input-icon-group" id="grpForgotIdentifier">
               <i class="fa-solid fa-mobile-screen input-icon"></i>
-              <input type="tel" class="icon-input" id="forgotIdentifier" placeholder="Registered 10-digit Mobile Number" autocomplete="tel">
+              <input type="tel" class="icon-input" id="forgotIdentifier" maxlength="10" placeholder="Registered 10-digit Mobile Number" autocomplete="tel">
+            </div>
+
+            <!-- Optional Recovery Method Selector (shown if multiple recovery methods available) -->
+            <div id="stepForgotMethods" class="hidden" style="margin-top: 8px; margin-bottom: 10px; background: rgba(255,255,255,0.03); border: 1px dashed var(--border-color); padding: 10px; border-radius: 8px;">
+              <span style="font-size: 0.78rem; font-weight: 700; color: var(--accent-gold); display: block; margin-bottom: 6px;">How would you like to receive your OTP?</span>
+              <div id="forgotMethodsList" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.82rem; color: #FFF;"></div>
             </div>
 
             <button type="button" class="auth-submit-btn login-btn" id="btnForgotSendOtp" onclick="app.requestForgotOtp()" style="margin-top: 6px;">

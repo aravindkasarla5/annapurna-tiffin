@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 const db = require('./db');
 
 const app = express();
@@ -440,22 +441,236 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// AUTH 3. Forgot Password (Generate & Send Real 6-Digit Server OTP)
+// Helper: Send OTP via configured messaging providers (Email / WhatsApp / SMS)
+async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
+  const chosenMethod = (method || 'SMS').toUpperCase();
+  
+  // 1. Email Delivery via Nodemailer / SMTP
+  if (chosenMethod === 'EMAIL') {
+    if (!user.email || !user.email.includes('@')) {
+      return { success: false, message: "No registered email address found for this customer account." };
+    }
+
+    const smtpHost = process.env.SMTP_HOST || process.env.EMAIL_HOST;
+    const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
+    const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+    const smtpPort = Number(process.env.SMTP_PORT || 587);
+
+    if (!smtpHost || !smtpUser || !smtpPass) {
+      console.warn('[OTP Delivery Notice]: SMTP credentials not set in environment.');
+      return { success: false, message: "Email delivery service is currently not configured on server." };
+    }
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: { user: smtpUser, pass: smtpPass }
+      });
+
+      const mailOptions = {
+        from: `"${process.env.APP_NAME || 'Sri Lakshmi Annapurna Tiffin'}" <${smtpUser}>`,
+        to: user.email,
+        subject: '🔐 Your Password Reset OTP Code',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <h2 style="color: #d9531e; text-align: center;">Sri Lakshmi Annapurna Tiffin Center</h2>
+            <hr style="border: none; border-top: 1px solid #eee;">
+            <p>Hello <strong>${user.name || 'Valued Customer'}</strong>,</p>
+            <p>You requested a password reset for your customer account (Mobile: <strong>${user.mobile}</strong>).</p>
+            <div style="text-align: center; margin: 25px 0;">
+              <span style="font-size: 2.2rem; font-weight: 900; letter-spacing: 6px; color: #d9531e; background: #fff3e0; padding: 10px 24px; border-radius: 8px; border: 1px dashed #d9531e; font-family: monospace;">${otp}</span>
+            </div>
+            <p style="font-size: 0.85rem; color: #666;">This OTP is valid for <strong>5 minutes</strong>. Do NOT share this OTP code with anyone.</p>
+            <p style="font-size: 0.8rem; color: #999; text-align: center; margin-top: 20px;">If you did not request a password reset, please ignore this email.</p>
+          </div>
+        `
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`[Email OTP Success] Message accepted by SMTP provider ID: ${info.messageId}`);
+      return { success: true, message: `OTP sent successfully to your registered email address.` };
+    } catch (err) {
+      console.error('[Email OTP Transport Error]:', err.message);
+      return { success: false, message: "Unable to send OTP via email. Provider delivery failed." };
+    }
+  }
+
+  // 2. WhatsApp Delivery via WhatsApp Cloud API / HTTP Provider
+  if (chosenMethod === 'WHATSAPP') {
+    const waToken = process.env.WHATSAPP_TOKEN || process.env.WHATSAPP_API_KEY;
+    const waPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+    if (!waToken || !waPhoneId) {
+      console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in environment.');
+      return { success: false, message: "WhatsApp messaging service is currently not configured on server." };
+    }
+
+    try {
+      const formattedMobile = user.mobile.length === 10 ? `91${user.mobile}` : user.mobile.replace(/[^0-9]/g, '');
+      const waUrl = `https://graph.facebook.com/v18.0/${waPhoneId}/messages`;
+      
+      const response = await fetch(waUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${waToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: formattedMobile,
+          type: 'text',
+          text: {
+            body: `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes. Do not share this code.`
+          }
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok && data.messages && data.messages.length) {
+        console.log(`[WhatsApp OTP Success] Message accepted by WhatsApp API ID: ${data.messages[0].id}`);
+        return { success: true, message: "OTP sent successfully to your WhatsApp number." };
+      } else {
+        console.error('[WhatsApp OTP Provider Error]:', data);
+        return { success: false, message: "Unable to send OTP via WhatsApp. Provider rejected delivery." };
+      }
+    } catch (err) {
+      console.error('[WhatsApp OTP Network Error]:', err.message);
+      return { success: false, message: "Unable to send OTP via WhatsApp. Provider communication failed." };
+    }
+  }
+
+  // 3. SMS Delivery via SMS Gateway (Twilio / Fast2SMS)
+  if (chosenMethod === 'SMS') {
+    const smsApiKey = process.env.SMS_API_KEY || process.env.FAST2SMS_API_KEY;
+    const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
+
+    if (twilioSid && twilioToken && twilioFrom) {
+      try {
+        const formattedMobile = user.mobile.startsWith('+') ? user.mobile : `+91${user.mobile.replace(/[^0-9]/g, '')}`;
+        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
+        const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
+
+        const params = new URLSearchParams();
+        params.append('To', formattedMobile);
+        params.append('From', twilioFrom);
+        params.append('Body', `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes.`);
+
+        const response = await fetch(twilioUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: params
+        });
+
+        const data = await response.json();
+        if (response.ok && data.sid) {
+          console.log(`[SMS Twilio Success] Message SID: ${data.sid}`);
+          return { success: true, message: "OTP sent successfully via SMS." };
+        } else {
+          console.error('[SMS Twilio Error]:', data);
+          return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
+        }
+      } catch (err) {
+        console.error('[SMS Twilio Network Error]:', err.message);
+        return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
+      }
+    } else if (smsApiKey) {
+      try {
+        const smsUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${smsApiKey}&variables_values=${otp}&route=otp&numbers=${user.mobile}`;
+        const response = await fetch(smsUrl, { method: 'GET' });
+        const data = await response.json();
+
+        if (response.ok && data.return === true) {
+          console.log(`[SMS Fast2SMS Success] Request ID: ${data.request_id}`);
+          return { success: true, message: "OTP sent successfully via SMS." };
+        } else {
+          console.error('[SMS Fast2SMS Error]:', data);
+          return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
+        }
+      } catch (err) {
+        console.error('[SMS Provider Network Error]:', err.message);
+        return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
+      }
+    } else {
+      console.warn('[OTP Delivery Notice]: No SMS Gateway credentials configured in environment.');
+      return { success: false, message: "SMS delivery service is currently not configured on server." };
+    }
+  }
+
+  return { success: false, message: "Invalid delivery method selected." };
+}
+
+// AUTH 3a. Get Recovery Methods for Registered Customer
+app.post('/api/auth/recovery-methods', async (req, res) => {
+  try {
+    const rawMobile = (req.body.mobile || req.body.identifier || '').toString().replace(/[^0-9]/g, '').trim();
+
+    if (!rawMobile || rawMobile.length !== 10) {
+      return res.status(400).json({ success: false, message: "Please enter a valid 10-digit mobile number." });
+    }
+
+    const user = await findUserByIdentifier(rawMobile);
+    if (!user || user.role !== 'CUSTOMER') {
+      return res.status(404).json({ success: false, message: "No account was found for this mobile number." });
+    }
+
+    const maskedMobile = user.mobile.length >= 10 ? '******' + user.mobile.slice(-4) : user.mobile;
+    let maskedEmail = null;
+    if (user.email && user.email.includes('@')) {
+      const parts = user.email.split('@');
+      maskedEmail = parts[0].charAt(0) + '*****@' + parts[1];
+    }
+
+    const methods = [];
+    const hasWaConfig = Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
+    const hasSmsConfig = Boolean(process.env.TWILIO_ACCOUNT_SID || process.env.FAST2SMS_API_KEY);
+    const hasEmailConfig = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER);
+
+    if (hasWaConfig) {
+      methods.push({ type: 'WHATSAPP', label: `WhatsApp: ${maskedMobile}`, maskedTarget: maskedMobile });
+    }
+    if (hasSmsConfig || (!hasWaConfig && !hasEmailConfig)) {
+      methods.push({ type: 'SMS', label: `SMS: ${maskedMobile}`, maskedTarget: maskedMobile });
+    }
+    if (user.email && user.email.includes('@') && hasEmailConfig) {
+      methods.push({ type: 'EMAIL', label: `Email: ${maskedEmail}`, maskedTarget: maskedEmail });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        mobile: user.mobile,
+        methods: methods
+      }
+    });
+  } catch (err) {
+    console.error('Recovery Methods Error:', err);
+    res.status(500).json({ success: false, message: "Database server error." });
+  }
+});
+
+// AUTH 3b. Forgot Password (Generate Crypto OTP & Send via Provider)
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
-    const rawIdentifier = (req.body.identifier || req.body.mobile || '').toString().trim();
+    const rawMobile = (req.body.mobile || req.body.identifier || '').toString().replace(/[^0-9]/g, '').trim();
+    const method = (req.body.method || 'SMS').toString().trim().toUpperCase();
 
-    if (!rawIdentifier) {
-      return res.status(400).json({ success: false, message: "Registered 10-digit mobile number is required." });
+    if (!rawMobile || rawMobile.length !== 10) {
+      return res.status(400).json({ success: false, message: "Please enter a valid 10-digit mobile number." });
     }
 
-    const user = await findUserByIdentifier(rawIdentifier);
-
+    const user = await findUserByIdentifier(rawMobile);
     if (!user || user.role !== 'CUSTOMER') {
-      return res.status(404).json({ success: false, message: "No registered customer account found with this phone number." });
+      return res.status(404).json({ success: false, message: "No account was found for this mobile number." });
     }
 
-    // Rate-limiting check: enforce 30-second cooldown between OTP generation requests
+    // Rate-limiting check: enforce 30-second cooldown between OTP requests
     const existingReset = await db.query('SELECT * FROM password_resets WHERE user_id = $1;', [user.id]);
     if (existingReset.rows.length > 0) {
       const lastCreated = Number(existingReset.rows[0].created_at || 0);
@@ -468,8 +683,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       }
     }
 
-    // Generate random 6-digit single-use OTP
-    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Cryptographically secure random 6-digit OTP
+    const generatedOtp = crypto.randomInt(100000, 1000000).toString();
     const now = Date.now();
 
     await db.query(
@@ -479,35 +694,45 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       [user.id, generatedOtp, user.mobile, now]
     );
 
-    // Secure SMS delivery simulation / server log (OTP is NEVER returned to client payload!)
-    console.log(`[REAL-TIME SMS GATEWAY] Sending password reset OTP [${generatedOtp}] to registered mobile ${user.mobile}`);
+    // Attempt actual delivery via configured provider
+    const deliveryResult = await sendOtpViaProvider({ user, otp: generatedOtp, method });
 
+    if (!deliveryResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: deliveryResult.message || "Unable to send OTP. Please try again."
+      });
+    }
+
+    const maskedMobile = user.mobile.length >= 10 ? '******' + user.mobile.slice(-4) : user.mobile;
     res.json({
       success: true,
-      message: "OTP sent successfully to your registered phone number.",
+      message: `OTP sent successfully via ${method.toLowerCase()}.`,
       data: {
-        mobile: user.mobile
+        mobile: user.mobile,
+        maskedMobile,
+        method: method
       }
     });
   } catch (err) {
     console.error('Forgot Password Error:', err);
-    res.status(500).json({ success: false, message: "Database server error." });
+    res.status(500).json({ success: false, message: "Unable to send OTP. Please try again." });
   }
 });
 
-// AUTH 3b. Verify OTP Code Server-Side
+// AUTH 3c. Verify OTP Code Server-Side
 app.post('/api/auth/verify-otp', async (req, res) => {
   try {
-    const rawIdentifier = (req.body.identifier || req.body.mobile || '').toString().trim();
+    const rawMobile = (req.body.mobile || req.body.identifier || '').toString().replace(/[^0-9]/g, '').trim();
     const inputOtp = (req.body.otp || '').toString().trim();
 
-    if (!rawIdentifier || !inputOtp) {
-      return res.status(400).json({ success: false, message: "Phone number and 6-digit OTP code are required." });
+    if (!rawMobile || rawMobile.length !== 10 || !inputOtp || inputOtp.length !== 6) {
+      return res.status(400).json({ success: false, message: "Valid 10-digit mobile number and 6-digit OTP code are required." });
     }
 
-    const user = await findUserByIdentifier(rawIdentifier);
+    const user = await findUserByIdentifier(rawMobile);
     if (!user || user.role !== 'CUSTOMER') {
-      return res.status(404).json({ success: false, message: "No registered customer account found with this phone number." });
+      return res.status(404).json({ success: false, message: "No account was found for this mobile number." });
     }
 
     const resetRes = await db.query('SELECT * FROM password_resets WHERE user_id = $1;', [user.id]);
@@ -549,24 +774,24 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   }
 });
 
-// AUTH 3c. Reset Password (After Server-Side OTP Verification)
+// AUTH 3d. Reset Password (After Server-Side OTP Verification)
 app.post('/api/auth/reset-password', async (req, res) => {
   try {
-    const rawIdentifier = (req.body.identifier || req.body.mobile || '').toString().trim();
+    const rawMobile = (req.body.mobile || req.body.identifier || '').toString().replace(/[^0-9]/g, '').trim();
     const inputOtp = (req.body.otp || '').toString().trim();
     const newPassword = (req.body.new_password || req.body.password || '').toString().trim();
 
-    if (!rawIdentifier || !newPassword) {
-      return res.status(400).json({ success: false, message: "Registered phone number and new password are required." });
+    if (!rawMobile || rawMobile.length !== 10 || !newPassword) {
+      return res.status(400).json({ success: false, message: "Registered 10-digit mobile number and new password are required." });
     }
 
     if (newPassword.length < 4) {
       return res.status(400).json({ success: false, message: "Password must be at least 4 characters long." });
     }
 
-    const user = await findUserByIdentifier(rawIdentifier);
+    const user = await findUserByIdentifier(rawMobile);
     if (!user || user.role !== 'CUSTOMER') {
-      return res.status(404).json({ success: false, message: "No registered customer account found with this phone number." });
+      return res.status(404).json({ success: false, message: "No account was found for this mobile number." });
     }
 
     const resetRes = await db.query('SELECT * FROM password_resets WHERE user_id = $1;', [user.id]);
@@ -598,7 +823,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
     res.json({
       success: true,
-      message: "Password changed successfully."
+      message: "Password reset successfully. Please login with your new password."
     });
   } catch (err) {
     console.error('Reset Password Error:', err);
@@ -1116,6 +1341,16 @@ app.post('/api/orders/:id/reorder', authenticateToken, requireRole('CUSTOMER'), 
     }
 
     const previousOrder = orderRes.rows[0];
+
+    // Backend Order Status Guard: Reorder is allowed ONLY for completed orders
+    const statusClean = (previousOrder.order_status || '').toLowerCase();
+    const isCompleted = ['completed', 'delivered'].includes(statusClean);
+    if (!isCompleted) {
+      return res.status(400).json({
+        success: false,
+        message: `❌ Cannot reorder. Order #${previousOrder.order_number} has not reached Completed status (Current status: "${previousOrder.order_status}"). Reorder is available only after order completion.`
+      });
+    }
     let prevItems = previousOrder.items || [];
     if (typeof prevItems === 'string') {
       try { prevItems = JSON.parse(prevItems); } catch(e) { prevItems = []; }
@@ -1263,6 +1498,16 @@ app.post('/api/orders/:id/reorder-items', authenticateToken, requireRole('CUSTOM
     }
 
     const order = orderRes.rows[0];
+
+    // Backend Order Status Guard: Reorder items allowed ONLY for completed orders
+    const statusClean = (order.order_status || '').toLowerCase();
+    const isCompleted = ['completed', 'delivered'].includes(statusClean);
+    if (!isCompleted) {
+      return res.status(400).json({
+        success: false,
+        message: `❌ Reorder is available ONLY AFTER the order is completed. Order #${order.order_number} status is currently "${order.order_status}".`
+      });
+    }
     let items = order.items || [];
     if (typeof items === 'string') {
       try { items = JSON.parse(items); } catch(e) { items = []; }
