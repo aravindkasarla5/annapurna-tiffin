@@ -43,14 +43,12 @@ function convertPgSqlToSqlite(sql) {
   
   if (converted.toUpperCase().includes('ON CONFLICT') && converted.toUpperCase().includes('DO UPDATE')) {
     converted = converted.replace(/INSERT INTO/gi, 'INSERT OR REPLACE INTO');
-    converted = converted.replace(/ON CONFLICT[\s\S]+?;$/gi, ';');
-    converted = converted.replace(/ON CONFLICT[\s\S]+/gi, '');
+    converted = converted.replace(/ON CONFLICT[\s\S]*/gi, '');
   } else if (converted.toUpperCase().includes('ON CONFLICT') && converted.toUpperCase().includes('DO NOTHING')) {
     converted = converted.replace(/INSERT INTO/gi, 'INSERT OR IGNORE INTO');
-    converted = converted.replace(/ON CONFLICT[\s\S]+?;$/gi, ';');
-    converted = converted.replace(/ON CONFLICT[\s\S]+/gi, '');
+    converted = converted.replace(/ON CONFLICT[\s\S]*/gi, '');
   }
-  return converted;
+  return converted.trim();
 }
 
 // Universal SQL Query Method
@@ -72,7 +70,7 @@ async function query(text, params = []) {
       if (isSelect) {
         sqliteDb.all(cleanSql, params, (err, rows) => {
           if (err) {
-            console.error('[SQLite Query Error]:', err.message);
+            console.error('[SQLite Query Error]:', err.message, 'SQL:', cleanSql);
             return reject(err);
           }
           const parsedRows = rows ? rows.map(r => {
@@ -89,7 +87,7 @@ async function query(text, params = []) {
       } else {
         sqliteDb.run(cleanSql, params, function(err) {
           if (err) {
-            console.error('[SQLite Query Error]:', err.message);
+            console.error('[SQLite Query Error]:', err.message, 'SQL:', cleanSql);
             return reject(err);
           }
           resolve({ rows: [], rowCount: this.changes || 0, insertId: this.lastID });
@@ -128,6 +126,8 @@ async function initDatabase() {
       blocked_by VARCHAR(100),
       deleted_at TIMESTAMPTZ,
       profile_photo TEXT,
+      password_change_required BOOLEAN DEFAULT false,
+      temp_password_expires_at BIGINT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
 
@@ -356,6 +356,8 @@ async function initDatabase() {
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_by VARCHAR(100);`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_change_required BOOLEAN DEFAULT false;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS temp_password_expires_at BIGINT;`);
         await query(`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS last_activity BIGINT;`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS balance_before NUMERIC(10, 2);`);
@@ -384,6 +386,8 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE users ADD COLUMN blocked_by TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN deleted_at TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN profile_photo TEXT;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN password_change_required INTEGER DEFAULT 0;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN temp_password_expires_at INTEGER;`);
       await safeAlter(`ALTER TABLE tokens ADD COLUMN last_activity INTEGER;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN balance_before REAL;`);
@@ -399,25 +403,27 @@ async function initDatabase() {
   console.log('PostgreSQL database schemas successfully initialized.');
 
   // Auto-seed from seed_data.json if database is fresh
-  try {
-    const tiffinCountRes = await query(`SELECT COUNT(*) FROM tiffins;`);
-    const count = Number(tiffinCountRes.rows[0]?.count || 0);
-    if (count === 0 && !autoSeedInProgress) {
-      console.log('Database empty on startup — running automated seed migration from seed_data.json...');
-      autoSeedInProgress = true;
-      try {
-        const migrateModule = require('./migrate_to_postgres');
-        if (typeof migrateModule === 'function') {
-          await migrateModule();
+  if (!autoSeedInProgress) {
+    autoSeedInProgress = true;
+    try {
+      const tiffinCountRes = await query(`SELECT COUNT(*) as count FROM tiffins;`);
+      const count = Number(tiffinCountRes.rows[0]?.count || tiffinCountRes.rows[0]?.['COUNT(*)'] || 0);
+      if (count === 0) {
+        console.log('Database empty on startup — running automated seed migration from seed_data.json...');
+        try {
+          const migrateModule = require('./migrate_to_postgres');
+          if (typeof migrateModule === 'function') {
+            await migrateModule();
+          }
+        } catch (seedErr) {
+          console.error('Auto-seed migration error:', seedErr.message);
         }
-      } catch (seedErr) {
-        console.error('Auto-seed migration error:', seedErr.message);
-      } finally {
-        autoSeedInProgress = false;
       }
+    } catch (seedErr) {
+      console.error('Auto-seed check notice:', seedErr.message);
+    } finally {
+      autoSeedInProgress = false;
     }
-  } catch (seedErr) {
-    console.error('Auto-seed check notice:', seedErr.message);
   }
 }
 

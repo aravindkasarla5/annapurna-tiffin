@@ -69,6 +69,7 @@ function sanitizeUser(user) {
   userSafe.wallet_balance = Number(userSafe.wallet_balance || 0);
   userSafe.loyalty_points = Number(userSafe.loyalty_points || 0);
   userSafe.sound_enabled = userSafe.sound_enabled !== false;
+  userSafe.password_change_required = Boolean(user.password_change_required);
   return userSafe;
 }
 
@@ -169,6 +170,21 @@ async function authenticateToken(req, res, next) {
 
     req.user = user;
     req.token = token;
+
+    // Forced Password Change Route Guard: Customer MUST change temporary password before accessing other features
+    if (user.role === 'CUSTOMER' && Boolean(user.password_change_required)) {
+      const reqPath = (req.baseUrl || '') + (req.path || '');
+      const allowedPaths = ['/api/auth/change-password', '/api/auth/logout', '/api/auth/me'];
+      const isAllowed = allowedPaths.some(p => reqPath.endsWith(p));
+      if (!isAllowed) {
+        return res.status(403).json({
+          success: false,
+          code: 'PASSWORD_CHANGE_REQUIRED',
+          message: "Your password was reset by the Owner. Please create a new password before continuing."
+        });
+      }
+    }
+
     next();
   } catch (err) {
     console.error('Auth Middleware Error:', err);
@@ -426,6 +442,16 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
+    if (user.role === 'CUSTOMER' && Boolean(user.password_change_required) && user.temp_password_expires_at) {
+      const expTime = Number(user.temp_password_expires_at);
+      if (expTime > 0 && Date.now() > expTime) {
+        return res.status(400).json({
+          success: false,
+          message: "Your temporary password has expired. Please contact the Owner again."
+        });
+      }
+    }
+
     const token = await generateToken(user.id);
     const userSafe = sanitizeUser(user);
 
@@ -433,6 +459,7 @@ app.post('/api/auth/login', async (req, res) => {
       success: true,
       token: token,
       user: userSafe,
+      passwordChangeRequired: Boolean(user.password_change_required),
       message: user.role === 'OWNER' ? 'Welcome to Hotel Owner Dashboard!' : `Welcome back, ${user.name}!`
     });
   } catch (err) {
@@ -828,6 +855,49 @@ app.post('/api/auth/reset-password', async (req, res) => {
   } catch (err) {
     console.error('Reset Password Error:', err);
     res.status(500).json({ success: false, message: "Database server error." });
+  }
+});
+
+// AUTH 3.5 Forced Change Password (Customer Creates New Permanent Password)
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { newPassword, confirmPassword } = req.body;
+
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ success: false, message: "New password and confirm password are required." });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ success: false, message: "New password and confirm password do not match." });
+    }
+
+    if (newPassword.trim().length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters long." });
+    }
+
+    // New password MUST be different from current temporary password
+    if (checkPasswordMatch(req.user.password, newPassword.trim())) {
+      return res.status(400).json({ success: false, message: "New password must be different from the temporary password." });
+    }
+
+    const hashedPassword = bcrypt.hashSync(newPassword.trim(), 10);
+
+    await db.query(
+      `UPDATE users SET password = $1, password_change_required = false, temp_password_expires_at = NULL WHERE id = $2;`,
+      [hashedPassword, req.user.id]
+    );
+
+    const updatedUserRes = await db.query('SELECT * FROM users WHERE id = $1;', [req.user.id]);
+    const userSafe = sanitizeUser(updatedUserRes.rows[0]);
+
+    res.json({
+      success: true,
+      user: userSafe,
+      message: "Password changed successfully."
+    });
+  } catch (err) {
+    console.error('Change Password Error:', err);
+    res.status(500).json({ success: false, message: "Error changing password." });
   }
 });
 
@@ -3496,6 +3566,69 @@ app.delete('/api/owner/customers/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Delete Customer Account Error:', err);
     res.status(500).json({ success: false, message: "Error deleting customer account." });
+  }
+});
+
+// 5. Owner Reset Customer Password (Generates Secure Temporary Password)
+app.post('/api/owner/customers/:id/reset-password', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'OWNER') {
+      return res.status(403).json({ success: false, message: "Unauthorized access. Owner privileges required." });
+    }
+
+    const { id } = req.params;
+    const uRes = await db.query('SELECT id, name, mobile, role FROM users WHERE id = $1 AND role = $2;', [id, 'CUSTOMER']);
+    if (!uRes.rows || !uRes.rows.length) {
+      return res.status(404).json({ success: false, message: "Customer account not found." });
+    }
+
+    const customer = uRes.rows[0];
+
+    // Generate secure random temporary password (8 characters: upper, lower, numbers)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let tempPassword = '';
+    const randomBytes = crypto.randomBytes(8);
+    for (let i = 0; i < 8; i++) {
+      tempPassword += chars[randomBytes[i] % chars.length];
+    }
+
+    const hashedPassword = bcrypt.hashSync(tempPassword, 10);
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+    await db.query(
+      `UPDATE users SET password = $1, password_change_required = true, temp_password_expires_at = $2 WHERE id = $3 AND role = 'CUSTOMER';`,
+      [hashedPassword, expiresAt, id]
+    );
+
+    // Invalidate existing sessions for customer so they must log in with temporary password
+    await db.query('DELETE FROM tokens WHERE user_id = $1;', [id]);
+
+    // Record audit log safely (WITHOUT sensitive plaintext password)
+    console.log(`[AUDIT EVENT] Customer password reset by Owner: Customer ID ${customer.id} (${customer.name}, ${customer.mobile}) by Owner ${req.user.name} at ${new Date().toISOString()}`);
+
+    try {
+      const nowStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+      await db.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+        ['ntf_' + Date.now(), 'OWNER', id, 'Customer Password Reset', `Password manually reset by Owner for customer ${customer.name} (${customer.mobile}).`, 'INFO', false, nowStr]
+      );
+    } catch (nErr) {
+      // Non-blocking audit log catch
+    }
+
+    res.json({
+      success: true,
+      temporaryPassword: tempPassword,
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        mobile: customer.mobile
+      },
+      message: "Customer password reset successfully."
+    });
+  } catch (err) {
+    console.error('Reset Customer Password Error:', err);
+    res.status(500).json({ success: false, message: "Error resetting customer password." });
   }
 });
 

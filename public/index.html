@@ -3327,6 +3327,77 @@
     </div>
   </div>
 
+  <!-- Owner Display Generated Temporary Password Modal -->
+  <div class="modal-backdrop" id="ownerTempPasswordModalBackdrop" onclick="app.closeOwnerTempPasswordModal()">
+    <div class="modal-card" style="max-width: 460px; width: 92%; text-align: center; padding: 1.75rem;" onclick="event.stopPropagation()">
+      <div style="font-size: 3rem; margin-bottom: 0.5rem; color: #4CAF50;">
+        <i class="fa-solid fa-circle-check"></i>
+      </div>
+      <h3 style="color: #FFF; font-size: 1.25rem; margin-bottom: 0.5rem;">Customer Password Reset Successfully</h3>
+      <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1rem;" id="ownerTempPassCustInfo">
+        Temporary password created for customer.
+      </p>
+
+      <div style="background: rgba(234, 162, 33, 0.1); border: 1px dashed var(--accent-gold); border-radius: 10px; padding: 1rem; margin-bottom: 1.25rem;">
+        <span style="font-size: 0.76rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px;">Temporary Password</span>
+        <div style="font-family: monospace; font-size: 1.8rem; font-weight: 800; color: var(--accent-gold); letter-spacing: 3px;" id="ownerDisplayTempPassword">--------</div>
+        <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; display: block;">Valid for 24 hours. Customer will be forced to set a new password on login.</span>
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+        <button class="btn-auth-primary" onclick="app.copyTempPassword()" style="flex: 1; min-width: 140px; background: var(--accent-gold); color: #000; font-weight: 700;">
+          <i class="fa-solid fa-copy"></i> Copy Password
+        </button>
+        <button class="btn-secondary-outline" onclick="app.closeOwnerTempPasswordModal()" style="flex: 1; min-width: 100px;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Forced Change Password Modal -->
+  <div class="modal-backdrop" id="forcedChangePasswordModalBackdrop" style="z-index: 10005;">
+    <div class="modal-card" style="max-width: 440px; width: 92%; padding: 1.75rem;" onclick="event.stopPropagation()">
+      <div style="text-align: center; margin-bottom: 1.25rem;">
+        <div style="font-size: 2.8rem; color: var(--accent-gold); margin-bottom: 0.5rem;">
+          <i class="fa-solid fa-lock"></i>
+        </div>
+        <h3 style="color: #FFF; font-size: 1.3rem; font-weight: 700; margin-bottom: 0.4rem;">🔐 Change Your Password</h3>
+        <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.45;">
+          Your password was reset by the Owner.<br>Please create a new password before continuing.
+        </p>
+      </div>
+
+      <form id="forcedChangePasswordForm" onsubmit="event.preventDefault(); app.submitForcedPasswordChange();">
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">New Password</label>
+          <div style="position: relative;">
+            <input type="password" id="forcedNewPassword" class="auth-input" placeholder="Enter new password (min 6 chars)" required style="width: 100%; padding-right: 40px;">
+            <i class="fa-solid fa-eye toggle-password-icon" onclick="app.togglePasswordVisibility('forcedNewPassword', this)" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"></i>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <label style="display: block; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Confirm New Password</label>
+          <div style="position: relative;">
+            <input type="password" id="forcedConfirmPassword" class="auth-input" placeholder="Re-enter new password" required style="width: 100%; padding-right: 40px;">
+            <i class="fa-solid fa-eye toggle-password-icon" onclick="app.togglePasswordVisibility('forcedConfirmPassword', this)" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); cursor: pointer;"></i>
+          </div>
+        </div>
+
+        <div id="forcedChangePasswordError" style="display: none; background: rgba(229,57,53,0.15); border: 1px solid #E53935; color: #FF5252; padding: 8px 12px; border-radius: 6px; font-size: 0.82rem; margin-bottom: 1rem; text-align: center;"></div>
+
+        <button type="submit" id="btnForcedChangePasswordSubmit" class="btn-auth-primary" style="width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 700; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #FFF; border: none; border-radius: 8px; cursor: pointer;">
+          🔐 Change Password
+        </button>
+      </form>
+
+      <div style="text-align: center; margin-top: 1rem;">
+        <button type="button" onclick="app.logout()" style="background: none; border: none; color: var(--text-muted); font-size: 0.82rem; cursor: pointer; text-decoration: underline;">
+          <i class="fa-solid fa-right-from-bracket"></i> Logout
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
 

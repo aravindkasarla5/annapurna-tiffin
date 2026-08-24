@@ -140,6 +140,16 @@ class TiffinApp {
           console.warn('401 Unauthorized returned for:', url, '- preserving user session state');
         }
       }
+      if (res.status === 403 && this.currentUser && this.currentUser.role === 'CUSTOMER') {
+        const clone = res.clone();
+        try {
+          const body = await clone.json();
+          if (body.code === 'PASSWORD_CHANGE_REQUIRED') {
+            this.currentUser.password_change_required = true;
+            this.checkPasswordChangeRequired();
+          }
+        } catch (e) {}
+      }
       return res;
     } catch (err) {
       console.error(`Fetch error for ${url}:`, err);
@@ -156,6 +166,7 @@ class TiffinApp {
         this.currentUser = json.user;
         this.currentRole = json.user.role;
         localStorage.setItem('tiffin_user', JSON.stringify(json.user));
+        this.checkPasswordChangeRequired();
       }
     } catch (err) {
       console.error('Error refreshing profile:', err);
@@ -178,6 +189,7 @@ class TiffinApp {
         this.activeView = this.currentRole === 'OWNER' ? 'secOwnerDashboard' : 'secCustomerHome';
         this.cart = this.currentUser.cart || [];
         this.favorites = this.currentUser.favorites || [];
+        this.checkPasswordChangeRequired();
       } catch (e) {
         console.error('Failed to parse saved user:', e);
       }
@@ -899,6 +911,10 @@ class TiffinApp {
         await this.loadCustomerUserData();
         this.renderNavigation();
         this.renderCurrentView();
+
+        if (this.currentRole === 'CUSTOMER' && (this.currentUser.password_change_required || json.passwordChangeRequired)) {
+          this.checkPasswordChangeRequired();
+        }
       } else {
         if (identifier.trim() === '9392874900' || identifier.trim().toLowerCase() === 'owner@annapurna.com') {
           this.showToast(json.message || 'Login failed', 'error');
@@ -10065,6 +10081,7 @@ class TiffinApp {
             <td style="padding: 12px 16px; text-align: right;">
               <div style="display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap;">
                 <button type="button" onclick="app.openCustomerDetailsModal('${c.id}')" style="background: rgba(234,162,33,0.15); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 4px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;" title="View Customer Details"><i class="fa-solid fa-eye"></i> View</button>
+                <button type="button" onclick="app.promptResetCustomerPassword('${c.id}', '${c.name.replace(/'/g, "\\'")}', '${c.mobile}')" style="background: rgba(234,162,33,0.15); color: var(--accent-gold); border: 1px solid var(--accent-gold); padding: 4px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;" title="Reset Customer Password"><i class="fa-solid fa-key"></i> 🔐 Reset Password</button>
                 ${isBlocked ? 
                   `<button type="button" onclick="app.promptUnblockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="background: rgba(76,175,80,0.15); color: #4CAF50; border: 1px solid #4CAF50; padding: 4px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;"><i class="fa-solid fa-user-check"></i> Unblock</button>` :
                   `<button type="button" onclick="app.promptBlockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="background: rgba(229,57,53,0.15); color: #E53935; border: 1px solid #E53935; padding: 4px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;"><i class="fa-solid fa-user-slash"></i> Block</button>`
@@ -10105,11 +10122,12 @@ class TiffinApp {
               <div style="grid-column: 1 / -1;"><span style="color: var(--text-muted); font-size: 0.72rem;">Joined: ${regDate} ${c.referral_code ? `• Code: ${c.referral_code}` : ''}</span></div>
             </div>
 
-            <div class="otc-footer" style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px;" onclick="event.stopPropagation()">
-              <button type="button" class="btn-secondary-outline" onclick="app.openCustomerDetailsModal('${c.id}')" style="padding: 6px 12px; font-size: 0.78rem; flex: 1;"><i class="fa-solid fa-eye"></i> Details</button>
+            <div class="otc-footer" style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap;" onclick="event.stopPropagation()">
+              <button type="button" class="btn-secondary-outline" onclick="app.openCustomerDetailsModal('${c.id}')" style="padding: 6px 10px; font-size: 0.78rem; flex: 1;"><i class="fa-solid fa-eye"></i> Details</button>
+              <button type="button" class="btn-secondary-outline" onclick="app.promptResetCustomerPassword('${c.id}', '${c.name.replace(/'/g, "\\'")}', '${c.mobile}')" style="padding: 6px 10px; font-size: 0.78rem; color: var(--accent-gold); border-color: var(--accent-gold); flex: 1;"><i class="fa-solid fa-key"></i> Reset</button>
               ${isBlocked ? 
-                `<button type="button" class="btn-secondary-outline" onclick="app.promptUnblockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 0.78rem; color: #4CAF50; border-color: #4CAF50; flex: 1;"><i class="fa-solid fa-user-check"></i> Unblock</button>` :
-                `<button type="button" class="btn-secondary-outline" onclick="app.promptBlockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 12px; font-size: 0.78rem; color: #E53935; border-color: #E53935; flex: 1;"><i class="fa-solid fa-user-slash"></i> Block</button>`
+                `<button type="button" class="btn-secondary-outline" onclick="app.promptUnblockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-size: 0.78rem; color: #4CAF50; border-color: #4CAF50; flex: 1;"><i class="fa-solid fa-user-check"></i> Unblock</button>` :
+                `<button type="button" class="btn-secondary-outline" onclick="app.promptBlockCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-size: 0.78rem; color: #E53935; border-color: #E53935; flex: 1;"><i class="fa-solid fa-user-slash"></i> Block</button>`
               }
               <button type="button" class="btn-secondary-outline" onclick="app.promptDeleteCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-size: 0.78rem; color: #9E9EB0; border-color: #9E9EB0;" title="Delete Account"><i class="fa-solid fa-trash-can"></i></button>
             </div>
@@ -10182,6 +10200,7 @@ class TiffinApp {
       if (actionsEl) {
         const safeName = customer.name.replace(/'/g, "\\'");
         actionsEl.innerHTML = `
+          <button type="button" class="btn-auth-primary" onclick="app.closeCustomerDetailsModal(); app.promptResetCustomerPassword('${customer.id}', '${safeName}', '${customer.mobile}')" style="background: linear-gradient(135deg, var(--primary), var(--accent-gold)); border-color: var(--accent-gold); color: #FFF; padding: 6px 14px; font-size: 0.8rem;"><i class="fa-solid fa-key"></i> 🔐 Reset Customer Password</button>
           ${isBlocked ?
             `<button type="button" class="btn-auth-primary" onclick="app.closeCustomerDetailsModal(); app.promptUnblockCustomer('${customer.id}', '${safeName}')" style="background: #4CAF50; border-color: #4CAF50; padding: 6px 14px; font-size: 0.8rem;"><i class="fa-solid fa-user-check"></i> Unblock Customer</button>` :
             `<button type="button" class="btn-auth-primary" onclick="app.closeCustomerDetailsModal(); app.promptBlockCustomer('${customer.id}', '${safeName}')" style="background: #E53935; border-color: #E53935; padding: 6px 14px; font-size: 0.8rem;"><i class="fa-solid fa-user-slash"></i> Block Customer</button>`
@@ -10269,6 +10288,37 @@ class TiffinApp {
     if (backdrop) backdrop.classList.add('open');
   }
 
+  promptResetCustomerPassword(customerId, customerName, customerMobile) {
+    this.pendingCustomerAction = {
+      type: 'RESET_PASSWORD',
+      id: customerId,
+      name: customerName,
+      mobile: customerMobile
+    };
+
+    const maskedMobile = customerMobile ? customerMobile.replace(/^(\d{2})\d{4}(\d{4})$/, '$1****$2') : (customerMobile || 'N/A');
+
+    document.getElementById('confirmModalIconBox').innerHTML = `<i class="fa-solid fa-key" style="color: var(--accent-gold);"></i>`;
+    document.getElementById('confirmModalTitle').innerText = 'Reset password for this customer?';
+    document.getElementById('confirmModalMessage').innerHTML = `
+      <div style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 12px 16px; border-radius: 8px; margin-top: 8px;">
+        <div style="margin-bottom: 6px;"><span style="color: var(--text-muted); font-size: 0.8rem;">Customer:</span> <strong style="color: #FFF;">${customerName}</strong></div>
+        <div><span style="color: var(--text-muted); font-size: 0.8rem;">Mobile:</span> <strong style="color: var(--accent-gold);">${maskedMobile} (${customerMobile})</strong></div>
+      </div>
+      <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 10px;">A secure temporary password will be generated for the customer. The customer will be forced to change it upon login.</p>
+    `;
+
+    const btnExecute = document.getElementById('btnConfirmModalExecute');
+    if (btnExecute) {
+      btnExecute.innerText = 'Confirm Reset';
+      btnExecute.style.background = 'linear-gradient(135deg, var(--primary), var(--accent-gold))';
+      btnExecute.style.borderColor = 'var(--accent-gold)';
+    }
+
+    const backdrop = document.getElementById('ownerCustomerConfirmModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
   closeCustomerConfirmModal() {
     this.pendingCustomerAction = null;
     const backdrop = document.getElementById('ownerCustomerConfirmModalBackdrop');
@@ -10294,11 +10344,28 @@ class TiffinApp {
         res = await this.fetchWithAuth(`${API_BASE}/owner/customers/${id}`, {
           method: 'DELETE'
         });
+      } else if (type === 'RESET_PASSWORD') {
+        res = await this.fetchWithAuth(`${API_BASE}/owner/customers/${id}/reset-password`, {
+          method: 'POST'
+        });
       }
 
       json = await res.json();
       if (json.success) {
-        this.showToast(json.message, 'success');
+        if (type === 'RESET_PASSWORD' && json.temporaryPassword) {
+          this.lastGeneratedTempPassword = json.temporaryPassword;
+          const infoEl = document.getElementById('ownerTempPassCustInfo');
+          if (infoEl) infoEl.innerHTML = `Temporary password generated for customer <strong>${name}</strong> (${json.customer?.mobile || ''}).`;
+          const passEl = document.getElementById('ownerDisplayTempPassword');
+          if (passEl) passEl.innerText = json.temporaryPassword;
+          
+          const tempBackdrop = document.getElementById('ownerTempPasswordModalBackdrop');
+          if (tempBackdrop) tempBackdrop.classList.add('open');
+          
+          this.showToast('✅ Customer password reset successfully.', 'success');
+        } else {
+          this.showToast(json.message, 'success');
+        }
         await this.fetchOwnerCustomers();
       } else {
         this.showToast(json.message || 'Action failed.', 'error');
@@ -10306,6 +10373,108 @@ class TiffinApp {
     } catch (err) {
       console.error('Error executing customer action:', err);
       this.showToast('Server error executing customer action.', 'error');
+    }
+  }
+
+  closeOwnerTempPasswordModal() {
+    this.lastGeneratedTempPassword = null;
+    const backdrop = document.getElementById('ownerTempPasswordModalBackdrop');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  async copyTempPassword() {
+    if (!this.lastGeneratedTempPassword) return;
+    try {
+      await navigator.clipboard.writeText(this.lastGeneratedTempPassword);
+      this.showToast('✅ Temporary password copied to clipboard!', 'success');
+    } catch (err) {
+      this.showToast(`Temporary password: ${this.lastGeneratedTempPassword}`, 'info');
+    }
+  }
+
+  checkPasswordChangeRequired() {
+    if (this.currentUser && this.currentUser.role === 'CUSTOMER' && (this.currentUser.password_change_required || this.currentUser.passwordChangeRequired)) {
+      this.showForcedChangePasswordModal();
+    }
+  }
+
+  showForcedChangePasswordModal() {
+    const errBox = document.getElementById('forcedChangePasswordError');
+    if (errBox) { errBox.style.display = 'none'; errBox.innerText = ''; }
+    
+    const input1 = document.getElementById('forcedNewPassword');
+    const input2 = document.getElementById('forcedConfirmPassword');
+    if (input1) input1.value = '';
+    if (input2) input2.value = '';
+
+    const backdrop = document.getElementById('forcedChangePasswordModalBackdrop');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  async submitForcedPasswordChange() {
+    const newPassword = (document.getElementById('forcedNewPassword')?.value || '').trim();
+    const confirmPassword = (document.getElementById('forcedConfirmPassword')?.value || '').trim();
+    const errBox = document.getElementById('forcedChangePasswordError');
+
+    const showError = (msg) => {
+      if (errBox) { errBox.innerText = msg; errBox.style.display = 'block'; }
+      else { this.showToast(msg, 'error'); }
+    };
+
+    if (!newPassword || !confirmPassword) {
+      showError('Please enter and confirm your new password.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showError('New password and confirm password do not match.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      showError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    const btn = document.getElementById('btnForcedChangePasswordSubmit');
+    if (btn) { btn.disabled = true; btn.innerText = 'Changing Password...'; }
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`,
+          'X-Auth-Token': this.authToken
+        },
+        body: JSON.stringify({ newPassword, confirmPassword })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        if (errBox) errBox.style.display = 'none';
+        
+        if (this.currentUser) {
+          this.currentUser.password_change_required = false;
+          this.currentUser.passwordChangeRequired = false;
+          if (json.user) this.currentUser = { ...this.currentUser, ...json.user };
+          localStorage.setItem('tiffin_user', JSON.stringify(this.currentUser));
+        }
+
+        const backdrop = document.getElementById('forcedChangePasswordModalBackdrop');
+        if (backdrop) backdrop.classList.remove('open');
+
+        this.showToast('✅ Password changed successfully.', 'success');
+        this.renderNavigation();
+        this.renderCurrentView();
+      } else {
+        showError(json.message || 'Error changing password.');
+      }
+    } catch (err) {
+      console.error('Error submitting forced password change:', err);
+      showError('Server communication error changing password.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerText = '🔐 Change Password'; }
     }
   }
 
