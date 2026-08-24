@@ -693,23 +693,12 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         });
         let data = await response.json();
 
-        // 2. If route=otp fails (e.g. pending website domain verification), fallback to Fast2SMS Quick SMS Route POST (route=q)
+        // 2. If route=otp fails (e.g. pending website domain verification), fallback to Fast2SMS Quick SMS Route GET (route=q)
         if (!response.ok || data.return !== true) {
-          console.warn('[Fast2SMS OTP Route Notice]:', JSON.stringify(data), '- Falling back to Fast2SMS Quick SMS POST route...');
-          const qResp = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-            method: 'POST',
-            headers: {
-              'authorization': cleanApiKey,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              route: 'q',
-              message: `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes.`,
-              language: 'english',
-              flash: 0,
-              numbers: cleanMobile
-            })
-          });
+          console.warn('[Fast2SMS OTP Route Notice]:', JSON.stringify(data), '- Falling back to Fast2SMS Quick SMS route (route=q)...');
+          const rawMsg = `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes.`;
+          const qUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${cleanApiKey}&route=q&message=${encodeURIComponent(rawMsg)}&language=english&flash=0&numbers=${cleanMobile}`;
+          const qResp = await fetch(qUrl, { method: 'GET' });
           const qData = await qResp.json();
           if (qResp.ok && (qData.return === true || qData.status_code === 200)) {
             data = qData;
@@ -725,7 +714,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
           console.error('[SMS Fast2SMS Error]:', JSON.stringify(data));
           const detailErr = Array.isArray(data.message) ? data.message.join(' ') : (data.message || 'Provider rejected delivery');
           if (detailErr.includes('website verification')) {
-            return { success: false, message: "Fast2SMS domain verification pending. Please complete domain verification in Fast2SMS dashboard under OTP Message menu." };
+            return { success: false, message: "Fast2SMS domain verification pending. Please complete domain verification in Fast2SMS dashboard under OTP Message / Smart OTP menu." };
           }
           return { success: false, message: `Unable to send OTP via SMS (${detailErr}).` };
         }
