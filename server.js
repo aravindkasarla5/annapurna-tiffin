@@ -605,7 +605,12 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
       }
     } else {
       console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in environment.');
-      return { success: false, message: "WhatsApp OTP service is currently not configured on server." };
+      const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
+      if (isDev) {
+        console.log(`[DEV OTP FALLBACK - WHATSAPP]: OTP code for customer ${user.mobile} is: ${otp}`);
+        return { success: true, devMode: true, message: "OTP sent successfully to your WhatsApp number (Development Mode)." };
+      }
+      return { success: false, message: "WhatsApp OTP service is not configured on server. Please set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID in Render Environment Variables." };
     }
   }
 
@@ -689,7 +694,12 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
       }
     } else {
       console.warn('[OTP Delivery Notice]: No SMS Gateway credentials configured in environment.');
-      return { success: false, message: "SMS delivery service is currently not configured on server." };
+      const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
+      if (isDev) {
+        console.log(`[DEV OTP FALLBACK - SMS]: OTP code for customer ${user.mobile} is: ${otp}`);
+        return { success: true, devMode: true, message: "OTP sent successfully via SMS (Development Mode)." };
+      }
+      return { success: false, message: "SMS delivery service is not configured on server. Please set FAST2SMS_API_KEY or TWILIO_ACCOUNT_SID in Render Environment Variables." };
     }
   }
 
