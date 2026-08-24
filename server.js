@@ -677,33 +677,32 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
       try {
         const cleanApiKey = smsApiKey.toString().trim();
         const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+        const rawMsg = `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes. Do not share this code.`;
         
-        // 1. Try Fast2SMS Dedicated OTP Route POST (route=otp)
-        let response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-          method: 'POST',
-          headers: {
-            'authorization': cleanApiKey,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            route: 'otp',
-            variables_values: otp,
-            numbers: cleanMobile
-          })
-        });
+        // 1. Primary Request: Fast2SMS Quick SMS Route GET (route=q - works instantly without domain/DLT verification)
+        const qUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${encodeURIComponent(cleanApiKey)}&route=q&message=${encodeURIComponent(rawMsg)}&language=english&flash=0&numbers=${cleanMobile}`;
+        let response = await fetch(qUrl, { method: 'GET' });
         let data = await response.json();
 
-        // 2. If route=otp fails (e.g. pending website domain verification), fallback to Fast2SMS Quick SMS Route GET (route=q)
+        // 2. Fallback: Fast2SMS Dedicated OTP Route POST (route=otp)
         if (!response.ok || data.return !== true) {
-          console.warn('[Fast2SMS OTP Route Notice]:', JSON.stringify(data), '- Falling back to Fast2SMS Quick SMS route (route=q)...');
-          const rawMsg = `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes.`;
-          const qUrl = `https://www.fast2sms.com/dev/bulkV2?authorization=${cleanApiKey}&route=q&message=${encodeURIComponent(rawMsg)}&language=english&flash=0&numbers=${cleanMobile}`;
-          const qResp = await fetch(qUrl, { method: 'GET' });
-          const qData = await qResp.json();
-          if (qResp.ok && (qData.return === true || qData.status_code === 200)) {
-            data = qData;
-            response = qResp;
-            console.log(`[Fast2SMS Quick Route Fallback Success]: Request ID: ${data.request_id || 'OK'}`);
+          console.warn('[Fast2SMS Quick Route Notice]:', JSON.stringify(data), '- Attempting route=otp POST fallback...');
+          const otpResp = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+            method: 'POST',
+            headers: {
+              'authorization': cleanApiKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              route: 'otp',
+              variables_values: otp,
+              numbers: cleanMobile
+            })
+          });
+          const otpData = await otpResp.json();
+          if (otpResp.ok && (otpData.return === true || otpData.status_code === 200)) {
+            data = otpData;
+            response = otpResp;
           }
         }
 
@@ -713,9 +712,6 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         } else {
           console.error('[SMS Fast2SMS Error]:', JSON.stringify(data));
           const detailErr = Array.isArray(data.message) ? data.message.join(' ') : (data.message || 'Provider rejected delivery');
-          if (detailErr.includes('website verification')) {
-            return { success: false, message: "Fast2SMS domain verification pending. Please complete domain verification in Fast2SMS dashboard under OTP Message / Smart OTP menu." };
-          }
           return { success: false, message: `Unable to send OTP via SMS (${detailErr}).` };
         }
       } catch (err) {
