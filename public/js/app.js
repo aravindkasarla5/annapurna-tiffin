@@ -1197,6 +1197,7 @@ class TiffinApp {
     const btn = isResend ? document.getElementById('btnForgotResendOtp') : document.getElementById('btnForgotSendOtp');
     const origHTML = btn ? btn.innerHTML : '<span>Send OTP</span> <i class="fa-solid fa-paper-plane"></i>';
 
+    let json = null;
     try {
       if (btn) {
         btn.disabled = true;
@@ -1208,7 +1209,7 @@ class TiffinApp {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mobile, method: selectedMethod })
       });
-      const json = await res.json();
+      json = await res.json();
 
       if (json.success) {
         this.showToast(json.message || 'OTP sent successfully.', 'success');
@@ -1234,7 +1235,7 @@ class TiffinApp {
       console.error('Error requesting OTP:', err);
       this.showToast('Unable to send OTP. Server communication error.', 'error');
     } finally {
-      if (btn && !isResend) {
+      if (btn && (!isResend || !json || !json.success)) {
         btn.disabled = false;
         btn.innerHTML = origHTML;
       }

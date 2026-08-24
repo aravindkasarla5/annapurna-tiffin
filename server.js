@@ -537,23 +537,40 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
 
     if (waToken && waPhoneId) {
       try {
-        const formattedMobile = user.mobile.length === 10 ? `91${user.mobile}` : user.mobile.replace(/[^0-9]/g, '');
+        const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+        const formattedMobile = `91${cleanMobile}`;
         const waUrl = `https://graph.facebook.com/v18.0/${waPhoneId}/messages`;
         
+        const payload = process.env.WHATSAPP_TEMPLATE_NAME ? {
+          messaging_product: 'whatsapp',
+          to: formattedMobile,
+          type: 'template',
+          template: {
+            name: process.env.WHATSAPP_TEMPLATE_NAME,
+            language: { code: process.env.WHATSAPP_TEMPLATE_LANG || 'en' },
+            components: [
+              {
+                type: 'body',
+                parameters: [{ type: 'text', text: otp }]
+              }
+            ]
+          }
+        } : {
+          messaging_product: 'whatsapp',
+          to: formattedMobile,
+          type: 'text',
+          text: {
+            body: `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes. Do not share this code.`
+          }
+        };
+
         const response = await fetch(waUrl, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${waToken}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            to: formattedMobile,
-            type: 'text',
-            text: {
-              body: `🔐 Your Sri Lakshmi Annapurna Tiffin password reset OTP is ${otp}. Valid for 5 minutes. Do not share this code.`
-            }
-          })
+          body: JSON.stringify(payload)
         });
 
         const data = await response.json();
@@ -570,8 +587,8 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
       }
     } else if (twilioSid && twilioToken && twilioWaFrom) {
       try {
-        const cleanNumber = user.mobile.replace(/[^0-9]/g, '');
-        const formattedMobile = cleanNumber.length === 10 ? `+91${cleanNumber}` : (cleanNumber.startsWith('91') ? `+${cleanNumber}` : `+91${cleanNumber}`);
+        const cleanNumber = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+        const formattedMobile = `+91${cleanNumber}`;
         const fromNum = twilioWaFrom.startsWith('whatsapp:') ? twilioWaFrom : `whatsapp:${twilioWaFrom}`;
         
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
@@ -604,13 +621,13 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         return { success: false, message: "Unable to send OTP via WhatsApp. Provider communication failed." };
       }
     } else {
-      console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in environment.');
+      console.warn('[OTP Delivery Notice]: WhatsApp API credentials not set in environment (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID).');
       const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
       if (isDev) {
         console.log(`[DEV OTP FALLBACK - WHATSAPP]: OTP code for customer ${user.mobile} is: ${otp}`);
         return { success: true, devMode: true, message: "OTP sent successfully to your WhatsApp number (Development Mode)." };
       }
-      return { success: false, message: "WhatsApp OTP service is not configured on server. Please set WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID in Render Environment Variables." };
+      return { success: false, message: "WhatsApp OTP is currently unavailable. Please try SMS OTP." };
     }
   }
 
@@ -625,8 +642,8 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
 
     if (twilioSid && twilioToken && twilioFrom) {
       try {
-        const cleanNumber = user.mobile.replace(/[^0-9]/g, '');
-        const formattedMobile = user.mobile.startsWith('+') ? user.mobile : (cleanNumber.length === 10 ? `+91${cleanNumber}` : `+${cleanNumber}`);
+        const cleanNumber = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+        const formattedMobile = `+91${cleanNumber}`;
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
         const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64');
 
@@ -692,6 +709,29 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         console.error('[SMS 2Factor Network Error]:', err.message);
         return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
       }
+    } else if (msg91AuthKey) {
+      try {
+        const cleanMobile = user.mobile.replace(/[^0-9]/g, '').slice(-10);
+        const msg91TemplateId = process.env.MSG91_TEMPLATE_ID || '';
+        const msg91Url = `https://control.msg91.com/api/v5/otp?template_id=${msg91TemplateId}&mobile=91${cleanMobile}&authkey=${msg91AuthKey}`;
+        const response = await fetch(msg91Url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ OTP: otp })
+        });
+        const data = await response.json();
+
+        if (response.ok && (data.type === 'success' || data.type === 'Success')) {
+          console.log(`[SMS MSG91 Success] Request ID: ${data.message}`);
+          return { success: true, message: "OTP sent successfully via SMS." };
+        } else {
+          console.error('[SMS MSG91 Error]:', data);
+          return { success: false, message: "Unable to send OTP via SMS. Provider rejected delivery." };
+        }
+      } catch (err) {
+        console.error('[SMS MSG91 Network Error]:', err.message);
+        return { success: false, message: "Unable to send OTP via SMS. Provider communication failed." };
+      }
     } else {
       console.warn('[OTP Delivery Notice]: No SMS Gateway credentials configured in environment.');
       const isDev = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_OTP_FALLBACK === 'true';
@@ -699,7 +739,7 @@ async function sendOtpViaProvider({ user, otp, method = 'SMS' }) {
         console.log(`[DEV OTP FALLBACK - SMS]: OTP code for customer ${user.mobile} is: ${otp}`);
         return { success: true, devMode: true, message: "OTP sent successfully via SMS (Development Mode)." };
       }
-      return { success: false, message: "SMS delivery service is not configured on server. Please set FAST2SMS_API_KEY or TWILIO_ACCOUNT_SID in Render Environment Variables." };
+      return { success: false, message: "Unable to send SMS OTP right now. Please try again later." };
     }
   }
 
@@ -785,16 +825,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
     // Cryptographically secure random 6-digit OTP
     const generatedOtp = crypto.randomInt(100000, 1000000).toString();
-    const now = Date.now();
 
-    await db.query(
-      `INSERT INTO password_resets (user_id, otp, mobile, created_at, attempts, is_verified)
-       VALUES ($1, $2, $3, $4, 0, false)
-       ON CONFLICT (user_id) DO UPDATE SET otp = EXCLUDED.otp, created_at = EXCLUDED.created_at, attempts = 0, is_verified = false;`,
-      [user.id, generatedOtp, user.mobile, now]
-    );
-
-    // Attempt actual delivery via configured provider
+    // Attempt actual delivery via configured provider FIRST before recording successful timestamp
     const deliveryResult = await sendOtpViaProvider({ user, otp: generatedOtp, method });
 
     if (!deliveryResult.success) {
@@ -803,6 +835,15 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         message: deliveryResult.message || "Unable to send OTP. Please try again."
       });
     }
+
+    // Only update database reset state & cooldown timestamp upon verified provider acceptance
+    const now = Date.now();
+    await db.query(
+      `INSERT INTO password_resets (user_id, otp, mobile, created_at, attempts, is_verified)
+       VALUES ($1, $2, $3, $4, 0, false)
+       ON CONFLICT (user_id) DO UPDATE SET otp = EXCLUDED.otp, created_at = EXCLUDED.created_at, attempts = 0, is_verified = false;`,
+      [user.id, generatedOtp, user.mobile, now]
+    );
 
     const maskedMobile = user.mobile.length >= 10 ? '******' + user.mobile.slice(-4) : user.mobile;
     res.json({
