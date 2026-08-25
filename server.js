@@ -3460,6 +3460,22 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
   const newRejectionReason = rejection_reason !== undefined ? rejection_reason : order.rejection_reason;
   let pinVerified = Boolean(order.pickup_pin_verified);
 
+  // 🚨 ONLINE PAYMENT VERIFICATION: Owner/Kitchen Operator cannot mark an ONLINE PAYMENT order as "Ready" until payment is verified!
+  if (newOrderStatus === 'Ready') {
+    const payMethod = (order.payment_method || '').toLowerCase().trim();
+    const isCod = payMethod.includes('cash') || payMethod.includes('cod');
+    if (!isCod) {
+      const payStatus = (order.payment_status || '').toLowerCase().trim();
+      const isVerified = payStatus.includes('paid') || payStatus.includes('verified') || payStatus === 'referral' || payMethod === 'referral';
+      if (!isVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "⚠️ Payment Verification Required\nPlease verify the online payment first, then mark this order as Ready to Serve."
+        });
+      }
+    }
+  }
+
   // 🚨 CRITICAL PIN ENFORCEMENT: Completing an order requires valid Pickup PIN verification!
   if (newOrderStatus === 'Completed') {
     if (!pinVerified) {

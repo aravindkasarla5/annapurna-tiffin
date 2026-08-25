@@ -339,7 +339,16 @@ class TiffinApp {
 
   async initPushNotifications() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      this.updatePushToggleUI();
       return;
+    }
+
+    if (!this._pushFocusListenersBound) {
+      this._pushFocusListenersBound = true;
+      window.addEventListener('focus', () => this.updatePushToggleUI());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.updatePushToggleUI();
+      });
     }
 
     try {
@@ -349,21 +358,64 @@ class TiffinApp {
       this.vapidPublicKey = json.publicKey;
 
       if (Notification.permission === 'granted') {
-        this.subscribeUserToPush();
+        await this.subscribeUserToPush();
       }
     } catch (err) {
       console.warn('[Push Engine] Init notice:', err.message);
+    } finally {
+      this.updatePushToggleUI();
+    }
+  }
+
+  async updatePushToggleUI() {
+    const btn = document.getElementById('btnTrayPushToggle');
+    if (!btn) return;
+
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      btn.style.display = 'none';
+      return;
+    }
+
+    const perm = Notification.permission;
+
+    if (perm === 'granted') {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub && this.vapidPublicKey && this.currentUser && this.authToken) {
+          await this.subscribeUserToPush();
+          sub = await reg.pushManager.getSubscription();
+        }
+        if (sub || perm === 'granted') {
+          btn.style.display = 'none';
+          return;
+        }
+      } catch (e) {
+        btn.style.display = 'none';
+        return;
+      }
+    }
+
+    btn.style.display = 'flex';
+    if (perm === 'denied') {
+      btn.title = 'Push Notifications are blocked in browser settings. Please enable them in site settings.';
+      btn.innerHTML = `<i class="fa-solid fa-bell-slash" style="color: var(--accent-red, #FF5252);"></i> <span>Push Blocked</span>`;
+    } else {
+      btn.title = 'Enable Real-Time Push Notifications';
+      btn.innerHTML = `<i class="fa-solid fa-tower-broadcast" style="color: var(--accent-gold);"></i> <span>Enable Push</span>`;
     }
   }
 
   async enablePushNotificationsPrompt() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       this.showToast('Push Notifications are not supported in this browser.', 'warning');
+      this.updatePushToggleUI();
       return;
     }
 
     if (Notification.permission === 'denied') {
       this.showToast('Notification permission is blocked in browser settings. Please enable it in site settings.', 'warning');
+      this.updatePushToggleUI();
       return;
     }
 
@@ -372,11 +424,15 @@ class TiffinApp {
       if (permission === 'granted') {
         await this.subscribeUserToPush();
         this.showToast('🔔 Real-Time Push Notifications Enabled!', 'success');
+      } else if (permission === 'denied') {
+        this.showToast('Notification permission was blocked in browser settings.', 'warning');
       } else {
         this.showToast('Notification permission was not granted.', 'info');
       }
     } catch (err) {
       console.error('[Push Engine] Permission error:', err);
+    } finally {
+      this.updatePushToggleUI();
     }
   }
 
@@ -405,6 +461,8 @@ class TiffinApp {
       console.log('[Push Engine] Push subscription saved on server.');
     } catch (err) {
       console.warn('[Push Engine] Subscribe notice:', err.message);
+    } finally {
+      this.updatePushToggleUI();
     }
   }
 
@@ -1871,6 +1929,7 @@ class TiffinApp {
   }
 
   renderNotificationsTray() {
+    this.updatePushToggleUI();
     const container = document.getElementById('notifListContainer');
     const badge = document.getElementById('notifBadgeCount');
     const subText = document.getElementById('notifSubCountText');
