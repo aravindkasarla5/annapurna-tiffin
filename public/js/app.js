@@ -345,9 +345,16 @@ class TiffinApp {
 
     if (!this._pushFocusListenersBound) {
       this._pushFocusListenersBound = true;
-      window.addEventListener('focus', () => this.updatePushToggleUI());
+      const syncOnFocus = () => {
+        this.updatePushToggleUI();
+        if (this.currentUser) {
+          this.fetchNotifications(true);
+          this.initWebSocket();
+        }
+      };
+      window.addEventListener('focus', syncOnFocus);
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') this.updatePushToggleUI();
+        if (document.visibilityState === 'visible') syncOnFocus();
       });
     }
 
