@@ -90,6 +90,15 @@ class TiffinApp {
     this.isFirstNotificationFetch = true;
     this.audioCtx = null;
 
+    // Real-Time WebSocket & Web Push State
+    this.ws = null;
+    this.wsReconnectTimer = null;
+    this.wsReconnectDelay = 1000;
+    this.wsPingInterval = null;
+    this.isWsIntentionallyClosed = false;
+    this.pushSubscription = null;
+    this.vapidPublicKey = null;
+
     // Track active/processing operations for order buttons
     this.processingOrders = new Set();
 
@@ -206,6 +215,8 @@ class TiffinApp {
       await this.fetchMe();
       await this.loadUserData();
       await this.handlePhonePeCallback();
+      this.initWebSocket();
+      this.initPushNotifications();
     }
 
     this.updateUserAuthBadgeUI();
@@ -226,6 +237,186 @@ class TiffinApp {
     ['mousedown', 'click', 'keydown', 'touchstart', 'pointerdown'].forEach(evt => {
       window.addEventListener(evt, () => this.initAudioContext(), { passive: true });
     });
+  }
+
+  // =========================================================================
+  // REAL-TIME WEBSOCKET & WEB PUSH DELIVERY ENGINE
+  // =========================================================================
+
+  initWebSocket() {
+    if (!this.currentUser || !this.authToken) return;
+
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    this.isWsIntentionallyClosed = false;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/ws?token=${encodeURIComponent(this.authToken)}`;
+
+    try {
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = () => {
+        console.log('[Real-Time WS] Connected to notification server.');
+        this.wsReconnectDelay = 1000;
+        
+        if (this.wsPingInterval) clearInterval(this.wsPingInterval);
+        this.wsPingInterval = setInterval(() => {
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            try { this.ws.send(JSON.stringify({ type: 'PING' })); } catch (e) {}
+          }
+        }, 25000);
+
+        if (this.knownNotificationIds && this.knownNotificationIds.size > 0) {
+          this.fetchNotifications(true);
+        }
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg && msg.type === 'NOTIFICATION' && msg.data) {
+            this.handleRealTimeNotificationReceived(msg.data);
+          }
+        } catch (err) {
+          console.error('[Real-Time WS] Message parse error:', err);
+        }
+      };
+
+      this.ws.onclose = (event) => {
+        if (this.wsPingInterval) clearInterval(this.wsPingInterval);
+        console.warn('[Real-Time WS] Connection closed:', event.code, event.reason);
+
+        if (this.isWsIntentionallyClosed || !this.currentUser) return;
+
+        if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer);
+        this.wsReconnectTimer = setTimeout(() => {
+          console.log(`[Real-Time WS] Reconnecting... (delay: ${this.wsReconnectDelay}ms)`);
+          this.initWebSocket();
+          this.wsReconnectDelay = Math.min(this.wsReconnectDelay * 2, 16000);
+        }, this.wsReconnectDelay);
+      };
+
+      this.ws.onerror = (err) => {
+        console.error('[Real-Time WS] Error:', err);
+        try { this.ws.close(); } catch (e) {}
+      };
+    } catch (err) {
+      console.error('[Real-Time WS] Initialization failed:', err);
+    }
+  }
+
+  closeWebSocket() {
+    this.isWsIntentionallyClosed = true;
+    if (this.wsReconnectTimer) clearTimeout(this.wsReconnectTimer);
+    if (this.wsPingInterval) clearInterval(this.wsPingInterval);
+    if (this.ws) {
+      try { this.ws.close(); } catch (e) {}
+      this.ws = null;
+    }
+  }
+
+  handleRealTimeNotificationReceived(notif) {
+    if (!notif) return;
+    const notifKey = this.getNotifKey(notif);
+
+    if (this.knownNotificationIds.has(notifKey)) {
+      return;
+    }
+
+    this.knownNotificationIds.add(notifKey);
+    this.notifications.unshift(notif);
+
+    if (this.isSoundEnabled()) {
+      this.playNotificationChime();
+    }
+
+    this.showNotificationPopup(notif);
+    this.renderNotificationsUI();
+  }
+
+  async initPushNotifications() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/push/vapid-public-key`);
+      const json = await res.json();
+      if (!json.success || !json.publicKey) return;
+      this.vapidPublicKey = json.publicKey;
+
+      if (Notification.permission === 'granted') {
+        this.subscribeUserToPush();
+      }
+    } catch (err) {
+      console.warn('[Push Engine] Init notice:', err.message);
+    }
+  }
+
+  async enablePushNotificationsPrompt() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      this.showToast('Push Notifications are not supported in this browser.', 'warning');
+      return;
+    }
+
+    if (Notification.permission === 'denied') {
+      this.showToast('Notification permission is blocked in browser settings. Please enable it in site settings.', 'warning');
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        await this.subscribeUserToPush();
+        this.showToast('🔔 Real-Time Push Notifications Enabled!', 'success');
+      } else {
+        this.showToast('Notification permission was not granted.', 'info');
+      }
+    } catch (err) {
+      console.error('[Push Engine] Permission error:', err);
+    }
+  }
+
+  async subscribeUserToPush() {
+    if (!this.vapidPublicKey || !this.currentUser || !this.authToken) return;
+
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+
+      if (!sub) {
+        const convertedKey = this.urlBase64ToUint8Array(this.vapidPublicKey);
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedKey
+        });
+      }
+
+      this.pushSubscription = sub;
+
+      await this.fetchWithAuth(`${API_BASE}/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription: sub })
+      });
+      console.log('[Push Engine] Push subscription saved on server.');
+    } catch (err) {
+      console.warn('[Push Engine] Subscribe notice:', err.message);
+    }
+  }
+
+  urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
   }
 
   bindGlobalQuickActionListeners() {
@@ -923,6 +1114,9 @@ class TiffinApp {
         this.renderNavigation();
         this.renderCurrentView();
 
+        this.initWebSocket();
+        this.initPushNotifications();
+
         if (this.currentRole === 'CUSTOMER' && (this.currentUser.password_change_required || json.passwordChangeRequired)) {
           this.checkPasswordChangeRequired();
         }
@@ -1457,6 +1651,7 @@ class TiffinApp {
     this.knownNotificationIds.clear();
     this.activePopupNotifIds.clear();
     this.isFirstNotificationFetch = true;
+    this.closeWebSocket();
 
     this.hideInactivityWarningModal();
     localStorage.removeItem('tiffin_token');
@@ -10728,6 +10923,7 @@ class TiffinApp {
     this.isLoadingStats = false;
     this.knownNotificationIds.clear();
     this.isFirstNotificationFetch = true;
+    this.closeWebSocket();
 
     localStorage.removeItem('tiffin_token');
     localStorage.removeItem('tiffin_user');

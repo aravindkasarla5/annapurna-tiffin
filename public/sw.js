@@ -91,3 +91,43 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+
+/* ==========================================================================
+   Real-Time Web Push Notification Handling
+   ========================================================================== */
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  try {
+    const payload = event.data.json();
+    const title = payload.title || 'Annapurna Tiffin Center';
+    const options = {
+      body: payload.message || payload.body || 'New notification received',
+      icon: payload.icon || '/images/tiffin_logo.png',
+      badge: '/images/icon-192.png',
+      tag: payload.id || ('notif_' + Date.now()),
+      data: payload
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (err) {
+    console.error('[PWA SW] Push notification error:', err);
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+

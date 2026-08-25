@@ -17,6 +17,291 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// =========================================================================
+// REAL-TIME NOTIFICATION DELIVERY LAYER (WebSocket + Web Push API)
+// =========================================================================
+
+const http = require('http');
+const { WebSocketServer } = require('ws');
+const webPush = require('web-push');
+
+const server = http.createServer(app);
+
+// Initialize Web Push VAPID keys safely
+let vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+let vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+
+if (!vapidPublicKey || !vapidPrivateKey) {
+  const vapidKeysPath = path.join(__dirname, 'vapid_keys.json');
+  if (fs.existsSync(vapidKeysPath)) {
+    try {
+      const keys = JSON.parse(fs.readFileSync(vapidKeysPath, 'utf8'));
+      vapidPublicKey = keys.publicKey;
+      vapidPrivateKey = keys.privateKey;
+    } catch (e) { }
+  }
+  if (!vapidPublicKey || !vapidPrivateKey) {
+    const generated = webPush.generateVAPIDKeys();
+    vapidPublicKey = generated.publicKey;
+    vapidPrivateKey = generated.privateKey;
+    try {
+      fs.writeFileSync(vapidKeysPath, JSON.stringify(generated, null, 2), 'utf8');
+    } catch (e) { }
+  }
+}
+
+try {
+  webPush.setVapidDetails(
+    'mailto:support@annapurnatiffin.com',
+    vapidPublicKey,
+    vapidPrivateKey
+  );
+} catch (e) {
+  console.warn('WebPush VAPID init notice:', e.message);
+}
+
+// Active WebSocket Clients Registry: Map<ws, { userId, role, isAlive }>
+const activeWsClients = new Map();
+
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+wss.on('connection', async (ws, req) => {
+  try {
+    const reqUrl = req.url || '';
+    const queryStr = reqUrl.includes('?') ? reqUrl.substring(reqUrl.indexOf('?') + 1) : '';
+    const urlParams = new URLSearchParams(queryStr);
+    const token = urlParams.get('token');
+
+    let authenticatedUser = null;
+    if (token) {
+      const tokenRes = await db.query('SELECT * FROM tokens WHERE token = $1;', [token]);
+      const tokenEntry = tokenRes.rows[0];
+      if (tokenEntry) {
+        const userRes = await db.query('SELECT id, role FROM users WHERE id = $1;', [tokenEntry.user_id]);
+        if (userRes.rows.length > 0) {
+          authenticatedUser = userRes.rows[0];
+        }
+      }
+      // Auto-heal matching token if tok_ format
+      if (!authenticatedUser && typeof token === 'string' && token.startsWith('tok_')) {
+        const usersRes = await db.query('SELECT id, role FROM users;');
+        const matchingUser = usersRes.rows
+          .sort((a, b) => b.id.length - a.id.length)
+          .find(u => token.startsWith('tok_' + u.id + '_'));
+        if (matchingUser) {
+          authenticatedUser = matchingUser;
+        }
+      }
+    }
+
+    if (!authenticatedUser) {
+      ws.close(4001, 'Unauthorized token');
+      return;
+    }
+
+    ws.isAlive = true;
+    activeWsClients.set(ws, {
+      userId: authenticatedUser.id,
+      role: authenticatedUser.role,
+      ws: ws
+    });
+
+    ws.send(JSON.stringify({ type: 'CONNECTED', message: 'WebSocket real-time connected successfully' }));
+
+    ws.on('pong', () => {
+      const client = activeWsClients.get(ws);
+      if (client) client.isAlive = true;
+    });
+
+    ws.on('message', (msg) => {
+      try {
+        const data = JSON.parse(msg.toString());
+        if (data && data.type === 'PING') {
+          ws.send(JSON.stringify({ type: 'PONG' }));
+        }
+      } catch (e) { }
+    });
+
+    ws.on('close', () => {
+      activeWsClients.delete(ws);
+    });
+
+    ws.on('error', () => {
+      activeWsClients.delete(ws);
+    });
+  } catch (err) {
+    console.error('WS Connection error:', err.message);
+    try { ws.close(1011, 'Internal Error'); } catch (e) { }
+  }
+});
+
+// Ping-Pong Heartbeat Timer (every 30 seconds)
+const heartbeatInterval = setInterval(() => {
+  activeWsClients.forEach((client, ws) => {
+    if (client.isAlive === false) {
+      activeWsClients.delete(ws);
+      return ws.terminate();
+    }
+    client.isAlive = false;
+    try {
+      ws.ping();
+    } catch (e) {
+      activeWsClients.delete(ws);
+      ws.terminate();
+    }
+  });
+}, 30000);
+
+// Real-Time Notification Dispatch Engine (WebSocket + Web Push)
+async function dispatchRealTimeNotification(notif) {
+  if (!notif || !notif.id) return;
+
+  const wsPayload = JSON.stringify({
+    type: 'NOTIFICATION',
+    data: notif
+  });
+
+  // 1. WebSocket Delivery
+  activeWsClients.forEach((client, ws) => {
+    if (ws.readyState === 1) { // 1 = OPEN
+      let isRecipient = false;
+      if (notif.target_role === 'OWNER') {
+        if (client.role === 'OWNER') isRecipient = true;
+      } else if (notif.target_role === 'CUSTOMER') {
+        if (client.role === 'CUSTOMER') {
+          if (!notif.customer_id || String(notif.customer_id) === String(client.userId)) {
+            isRecipient = true;
+          }
+        }
+      }
+      if (isRecipient) {
+        try {
+          ws.send(wsPayload);
+        } catch (err) {
+          console.error('WS Send error:', err.message);
+        }
+      }
+    }
+  });
+
+  // 2. Web Push Delivery
+  try {
+    let pushQuery = "";
+    let pushParams = [];
+
+    if (notif.target_role === 'OWNER') {
+      pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'OWNER';";
+    } else if (notif.customer_id) {
+      pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'CUSTOMER' AND user_id = $1;";
+      pushParams = [notif.customer_id];
+    } else {
+      pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'CUSTOMER';";
+    }
+
+    const subRes = await db.query(pushQuery, pushParams);
+    const subscriptions = subRes.rows || [];
+
+    const pushPayload = JSON.stringify({
+      id: notif.id,
+      title: notif.title,
+      message: notif.message,
+      type: notif.type,
+      created_at: notif.created_at || notif.date_time
+    });
+
+    for (const subRow of subscriptions) {
+      try {
+        let subObj = subRow.subscription;
+        if (typeof subObj === 'string') subObj = JSON.parse(subObj);
+        await webPush.sendNotification(subObj, pushPayload);
+      } catch (pushErr) {
+        if (pushErr.statusCode === 404 || pushErr.statusCode === 410) {
+          await db.query("DELETE FROM push_subscriptions WHERE id = $1;", [subRow.id]);
+        } else {
+          console.error('Web Push delivery notice:', pushErr.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Web Push Dispatch Notice:', err.message);
+  }
+}
+
+// WEB PUSH SUBSCRIPTION ENDPOINTS
+app.get('/api/push/vapid-public-key', (req, res) => {
+  res.json({ success: true, publicKey: vapidPublicKey });
+});
+
+app.post('/api/push/subscribe', authenticateToken, async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ success: false, message: "Invalid subscription payload." });
+    }
+
+    const subId = 'sub_' + crypto.randomBytes(12).toString('hex');
+    const endpoint = subscription.endpoint;
+    const subJson = JSON.stringify(subscription);
+
+    await db.query(
+      `INSERT INTO push_subscriptions (id, user_id, role, subscription, endpoint)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (endpoint) DO UPDATE SET subscription = EXCLUDED.subscription, user_id = EXCLUDED.user_id, role = EXCLUDED.role;`,
+      [subId, req.user.id, req.user.role, subJson, endpoint]
+    );
+
+    res.json({ success: true, message: "Push notification subscription saved." });
+  } catch (err) {
+    console.error('Push Subscribe Error:', err);
+    res.status(500).json({ success: false, message: "Failed to save push subscription." });
+  }
+});
+
+app.post('/api/push/unsubscribe', authenticateToken, async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (endpoint) {
+      await db.query('DELETE FROM push_subscriptions WHERE endpoint = $1;', [endpoint]);
+    } else {
+      await db.query('DELETE FROM push_subscriptions WHERE user_id = $1;', [req.user.id]);
+    }
+    res.json({ success: true, message: "Push subscription removed." });
+  } catch (err) {
+    console.error('Push Unsubscribe Error:', err);
+    res.status(500).json({ success: false, message: "Failed to remove push subscription." });
+  }
+});
+
+// Helper function to create notification record in database and dispatch via WebSocket & Web Push
+async function createAndDispatchNotification(notifData, dbClient = db) {
+  try {
+    const id = notifData.id || ('notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+    const target_role = notifData.target_role || 'CUSTOMER';
+    const customer_id = notifData.customer_id || null;
+    const title = notifData.title || 'Notification';
+    const message = notifData.message || '';
+    const type = notifData.type || 'INFO';
+    const is_read = notifData.is_read || false;
+    const date_time = notifData.date_time || new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    const notifObj = { id, target_role, customer_id, title, message, type, is_read, date_time };
+
+    await dbClient.query(
+      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+      [id, target_role, customer_id, title, message, type, is_read, date_time]
+    );
+
+    dispatchRealTimeNotification(notifObj);
+    return notifObj;
+  } catch (err) {
+    console.error('Error creating notification:', err);
+    return null;
+  }
+}
+
+
+
 /**
  * Saves a base64 encoded data URL or string to permanent disk storage
  * under public/uploads/<subfolder>/ and returns a relative URL path (/uploads/<subfolder>/...).
@@ -1475,6 +1760,23 @@ const handleSaveSettings = async (req, res) => {
     if (typeof updatedSettings.referral === 'string') {
       try { updatedSettings.referral = JSON.parse(updatedSettings.referral); } catch (e) { }
     }
+
+    // Real-Time Notification on Hotel Open/Close Status Toggle
+    if (s && s.is_open !== undefined && Boolean(s.is_open) !== newIsOpen) {
+      const statusText = newIsOpen ? 'OPEN 🟢' : 'CLOSED 🔴';
+      const notifObj = {
+        id: 'notif_' + Date.now(),
+        target_role: 'CUSTOMER',
+        customer_id: null,
+        title: `Tiffin Center is now ${statusText}`,
+        message: newIsOpen ? "Sri Lakshmi Annapurna Tiffin Center is now OPEN and accepting orders!" : "Sri Lakshmi Annapurna Tiffin Center is now CLOSED.",
+        type: 'INFO',
+        is_read: false,
+        date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      };
+      await createAndDispatchNotification(notifObj);
+    }
+
     res.json({ success: true, settings: updatedSettings, data: updatedSettings, message: "Business settings updated successfully." });
   } catch (err) {
     console.error('Update Settings Error:', err);
@@ -1554,6 +1856,20 @@ app.post('/api/menu', authenticateToken, requireRole('OWNER'), async (req, res) 
     [id, name.trim(), (description || '').trim(), Number(price), category || 'Breakfast', savedImage, is_available !== false]
   );
   const newItem = await db.query('SELECT * FROM tiffins WHERE id = $1;', [id]);
+  
+  // Real-Time Notification to Customers
+  const notifObj = {
+    id: 'notif_' + Date.now(),
+    target_role: 'CUSTOMER',
+    customer_id: null,
+    title: 'New Tiffin Available',
+    message: `${name.trim()} has been added to today's menu.`,
+    type: 'MENU',
+    is_read: false,
+    date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+  };
+  await createAndDispatchNotification(notifObj);
+
   res.json({ success: true, data: newItem.rows[0], message: "Tiffin item added to menu successfully." });
 });
 
@@ -1766,18 +2082,22 @@ app.post('/api/orders/:id/reorder', authenticateToken, requireRole('CUSTOMER'), 
       );
 
       // Notify Owner of NEW Order
+      const reorderOwnNotif = { id: 'notif_' + Date.now(), target_role: 'OWNER', customer_id: req.user.id, title: 'New Reorder Received', message: `New Reorder #${newOrderNum} placed by ${req.user.name} (₹${grandTotal}).`, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Reorder Received', `New Reorder #${newOrderNum} placed by ${req.user.name} (₹${grandTotal}).`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+        [reorderOwnNotif.id, reorderOwnNotif.target_role, reorderOwnNotif.customer_id, reorderOwnNotif.title, reorderOwnNotif.message, reorderOwnNotif.type, reorderOwnNotif.is_read, reorderOwnNotif.date_time]
       );
+      dispatchRealTimeNotification(reorderOwnNotif);
 
       // Notify Customer with Pickup PIN
+      const reorderCustNotif = { id: 'notif_c_' + Date.now(), target_role: 'CUSTOMER', customer_id: req.user.id, title: 'Reorder Placed Successfully', message: `🔐 Your Pickup PIN for New Reorder #${newOrderNum} is ${pickupPin}. Show this PIN when collecting your order.`, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        ['notif_c_' + Date.now(), 'CUSTOMER', req.user.id, 'Reorder Placed Successfully', `🔐 Your Pickup PIN for New Reorder #${newOrderNum} is ${pickupPin}. Show this PIN when collecting your order.`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+        [reorderCustNotif.id, reorderCustNotif.target_role, reorderCustNotif.customer_id, reorderCustNotif.title, reorderCustNotif.message, reorderCustNotif.type, reorderCustNotif.is_read, reorderCustNotif.date_time]
       );
+      dispatchRealTimeNotification(reorderCustNotif);
 
       const createdRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
       createdOrder = createdRes.rows[0];
@@ -2024,18 +2344,22 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
         ? `Order #${orderNum} placed by ${req.user.name} using Referral Wallet (₹${grand_total}).`
         : `Order #${orderNum} placed by ${req.user.name} (₹${netAmount}).`;
 
+      const orderOwnNotif = { id: 'notif_' + Date.now(), target_role: 'OWNER', customer_id: req.user.id, title: 'New Order Received', message: notifMsg, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Order Received', notifMsg, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+        [orderOwnNotif.id, orderOwnNotif.target_role, orderOwnNotif.customer_id, orderOwnNotif.title, orderOwnNotif.message, orderOwnNotif.type, orderOwnNotif.is_read, orderOwnNotif.date_time]
       );
+      dispatchRealTimeNotification(orderOwnNotif);
 
       // Notify Customer with Pickup PIN
+      const orderCustNotif = { id: 'notif_c_' + Date.now(), target_role: 'CUSTOMER', customer_id: req.user.id, title: 'Order Placed Successfully', message: `🔐 Your Pickup PIN for Order #${orderNum} is ${pickupPin}. Show this PIN when collecting your order.`, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        ['notif_c_' + Date.now(), 'CUSTOMER', req.user.id, 'Order Placed Successfully', `🔐 Your Pickup PIN for Order #${orderNum} is ${pickupPin}. Show this PIN when collecting your order.`, 'ORDER', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+        [orderCustNotif.id, orderCustNotif.target_role, orderCustNotif.customer_id, orderCustNotif.title, orderCustNotif.message, orderCustNotif.type, orderCustNotif.is_read, orderCustNotif.date_time]
       );
+      dispatchRealTimeNotification(orderCustNotif);
 
       // Fetch created order object
       const createdRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
@@ -2239,35 +2563,21 @@ app.put('/api/orders/:id/modify', authenticateToken, requireRole('CUSTOMER'), as
       );
 
       // Send Customer & Owner Notifications
+      const modCustNotif = { id: 'notif_' + Date.now() + '_cust', target_role: 'CUSTOMER', customer_id: req.user.id, title: 'Order Modified', message: `Order #${order.order_number} has been updated successfully. Total is now ₹${grandTotal}.`, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        [
-          'notif_' + Date.now() + '_cust',
-          'CUSTOMER',
-          req.user.id,
-          'Order Modified',
-          `Order #${order.order_number} has been updated successfully. Total is now ₹${grandTotal}.`,
-          'ORDER',
-          false,
-          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        ]
+        [modCustNotif.id, modCustNotif.target_role, modCustNotif.customer_id, modCustNotif.title, modCustNotif.message, modCustNotif.type, modCustNotif.is_read, modCustNotif.date_time]
       );
+      dispatchRealTimeNotification(modCustNotif);
 
+      const modOwnNotif = { id: 'notif_' + Date.now() + '_own', target_role: 'OWNER', customer_id: req.user.id, title: 'Order Modified by Customer', message: `Order #${order.order_number} modified by ${req.user.name}. New total: ₹${grandTotal}.`, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        [
-          'notif_' + Date.now() + '_own',
-          'OWNER',
-          req.user.id,
-          'Order Modified by Customer',
-          `Order #${order.order_number} modified by ${req.user.name}. New total: ₹${grandTotal}.`,
-          'ORDER',
-          false,
-          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        ]
+        [modOwnNotif.id, modOwnNotif.target_role, modOwnNotif.customer_id, modOwnNotif.title, modOwnNotif.message, modOwnNotif.type, modOwnNotif.is_read, modOwnNotif.date_time]
       );
+      dispatchRealTimeNotification(modOwnNotif);
 
       const finalRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
       updatedOrder = finalRes.rows[0];
@@ -2375,35 +2685,21 @@ app.post('/api/orders/:id/cancel', authenticateToken, requireRole('CUSTOMER'), a
       );
 
       // Send Customer & Owner Notifications
+      const cancelCustNotif = { id: 'notif_' + Date.now() + '_cust', target_role: 'CUSTOMER', customer_id: req.user.id, title: 'Order Cancelled', message: `Order #${order.order_number} has been cancelled successfully.`, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        [
-          'notif_' + Date.now() + '_cust',
-          'CUSTOMER',
-          req.user.id,
-          'Order Cancelled',
-          `Order #${order.order_number} has been cancelled successfully.`,
-          'ORDER',
-          false,
-          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        ]
+        [cancelCustNotif.id, cancelCustNotif.target_role, cancelCustNotif.customer_id, cancelCustNotif.title, cancelCustNotif.message, cancelCustNotif.type, cancelCustNotif.is_read, cancelCustNotif.date_time]
       );
+      dispatchRealTimeNotification(cancelCustNotif);
 
+      const cancelOwnNotif = { id: 'notif_' + Date.now() + '_own', target_role: 'OWNER', customer_id: req.user.id, title: 'Order Cancelled by Customer', message: `Order #${order.order_number} was cancelled by customer (${cancellationReason}).`, type: 'ORDER', is_read: false, date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       await tx.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        [
-          'notif_' + Date.now() + '_own',
-          'OWNER',
-          req.user.id,
-          'Order Cancelled by Customer',
-          `Order #${order.order_number} was cancelled by customer (${cancellationReason}).`,
-          'ORDER',
-          false,
-          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        ]
+        [cancelOwnNotif.id, cancelOwnNotif.target_role, cancelOwnNotif.customer_id, cancelOwnNotif.title, cancelOwnNotif.message, cancelOwnNotif.type, cancelOwnNotif.is_read, cancelOwnNotif.date_time]
       );
+      dispatchRealTimeNotification(cancelOwnNotif);
 
       const finalRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
       updatedOrder = finalRes.rows[0];
@@ -3201,20 +3497,22 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
     const notifMsg = order_status
       ? `Your order #${order.order_number} status is now "${newOrderStatus}".`
       : `Payment status for Order #${order.order_number} is updated to "${newPaymentStatus}".`;
+    const notifObj = {
+      id: 'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      target_role: 'CUSTOMER',
+      customer_id: order.customer_id,
+      title: notifTitle,
+      message: notifMsg,
+      type: 'ORDER',
+      is_read: false,
+      date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    };
     await db.query(
       `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-      [
-        'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-        'CUSTOMER',
-        order.customer_id,
-        notifTitle,
-        notifMsg,
-        'ORDER',
-        false,
-        new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-      ]
+      [notifObj.id, notifObj.target_role, notifObj.customer_id, notifObj.title, notifObj.message, notifObj.type, notifObj.is_read, notifObj.date_time]
     );
+    dispatchRealTimeNotification(notifObj);
   }
 
   const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
@@ -3241,20 +3539,22 @@ app.patch('/api/orders/:id/payment-verify', authenticateToken, requireRole('OWNE
 
   // Dispatch Customer Notification
   if (order.customer_id) {
+    const notifObj = {
+      id: 'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      target_role: 'CUSTOMER',
+      customer_id: order.customer_id,
+      title: 'Payment Status Updated',
+      message: `Payment status for Order #${order.order_number} updated to "${newPaymentStatus}".`,
+      type: 'ORDER',
+      is_read: false,
+      date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    };
     await db.query(
       `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-      [
-        'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-        'CUSTOMER',
-        order.customer_id,
-        'Payment Status Updated',
-        `Payment status for Order #${order.order_number} updated to "${newPaymentStatus}".`,
-        'ORDER',
-        false,
-        new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-      ]
+      [notifObj.id, notifObj.target_role, notifObj.customer_id, notifObj.title, notifObj.message, notifObj.type, notifObj.is_read, notifObj.date_time]
     );
+    dispatchRealTimeNotification(notifObj);
   }
 
   const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
@@ -3324,20 +3624,22 @@ app.post('/api/orders/:id/verify-pin', authenticateToken, requireRole('OWNER'), 
 
     // Notify Customer
     if (order.customer_id) {
+      const notifObj = {
+        id: 'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+        target_role: 'CUSTOMER',
+        customer_id: order.customer_id,
+        title: `Order #${order.order_number} Completed`,
+        message: `Your order #${order.order_number} has been verified with Pickup PIN and marked completed!`,
+        type: 'ORDER',
+        is_read: false,
+        date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      };
       await db.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        [
-          'notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-          'CUSTOMER',
-          order.customer_id,
-          `Order #${order.order_number} Completed`,
-          `Your order #${order.order_number} has been verified with Pickup PIN and marked completed!`,
-          'ORDER',
-          false,
-          new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        ]
+        [notifObj.id, notifObj.target_role, notifObj.customer_id, notifObj.title, notifObj.message, notifObj.type, notifObj.is_read, notifObj.date_time]
       );
+      dispatchRealTimeNotification(notifObj);
     }
 
     const updatedRes = await db.query('SELECT * FROM orders WHERE id = $1;', [order.id]);
@@ -3565,10 +3867,21 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
         );
 
         // Send Notification to Referrer
+        const refNotif = {
+          id: 'notif_' + Date.now(),
+          target_role: 'CUSTOMER',
+          customer_id: refRecord.referrer_id,
+          title: 'Referral Reward Earned! 🎉',
+          message: `You earned ₹${rewardAmt} because ${refRecord.referred_name || 'your friend'} placed their first order!`,
+          type: 'REFERRAL',
+          is_read: false,
+          date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        };
         await db.query(
           "INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
-          ['notif_' + Date.now(), 'CUSTOMER', refRecord.referrer_id, 'Referral Reward Earned! 🎉', `You earned ₹${rewardAmt} because ${refRecord.referred_name || 'your friend'} placed their first order!`, 'REFERRAL', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+          [refNotif.id, refNotif.target_role, refNotif.customer_id, refNotif.title, refNotif.message, refNotif.type, refNotif.is_read, refNotif.date_time]
         );
+        dispatchRealTimeNotification(refNotif);
       }
     }
   } catch (err) {
@@ -3849,10 +4162,21 @@ app.post('/api/owner/customers/:id/reset-password', authenticateToken, async (re
 
     try {
       const nowStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const resetNotif = {
+        id: 'ntf_' + Date.now(),
+        target_role: 'OWNER',
+        customer_id: id,
+        title: 'Customer Password Reset',
+        message: `Password manually reset by Owner for customer ${customer.name} (${customer.mobile}).`,
+        type: 'INFO',
+        is_read: false,
+        date_time: nowStr
+      };
       await db.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        ['ntf_' + Date.now(), 'OWNER', id, 'Customer Password Reset', `Password manually reset by Owner for customer ${customer.name} (${customer.mobile}).`, 'INFO', false, nowStr]
+        [resetNotif.id, resetNotif.target_role, resetNotif.customer_id, resetNotif.title, resetNotif.message, resetNotif.type, resetNotif.is_read, resetNotif.date_time]
       );
+      dispatchRealTimeNotification(resetNotif);
     } catch (nErr) {
       // Non-blocking audit log catch
     }
@@ -3935,11 +4259,22 @@ app.post('/api/support/tickets', authenticateToken, async (req, res) => {
     );
 
     // Notify Owner
+    const tktNotif = {
+      id: 'notif_' + Date.now(),
+      target_role: 'OWNER',
+      customer_id: req.user.id,
+      title: 'New Support Ticket',
+      message: `Ticket #${ticketNum} created by ${req.user.name}: "${subject}"`,
+      type: 'SUPPORT',
+      is_read: false,
+      date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    };
     await db.query(
       `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-      ['notif_' + Date.now(), 'OWNER', req.user.id, 'New Support Ticket', `Ticket #${ticketNum} created by ${req.user.name}: "${subject}"`, 'SUPPORT', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+      [tktNotif.id, tktNotif.target_role, tktNotif.customer_id, tktNotif.title, tktNotif.message, tktNotif.type, tktNotif.is_read, tktNotif.date_time]
     );
+    dispatchRealTimeNotification(tktNotif);
 
     const createdRes = await db.query('SELECT * FROM support_tickets WHERE id = $1;', [ticketId]);
     res.json({ success: true, data: createdRes.rows[0], message: `Support ticket #${ticketNum} created successfully.` });
@@ -3987,17 +4322,39 @@ app.post('/api/support/tickets/:id/messages', authenticateToken, async (req, res
 
     // Send Notification to recipient
     if (senderRole === 'OWNER' && ticket.customer_id) {
+      const respNotif = {
+        id: 'notif_' + Date.now(),
+        target_role: 'CUSTOMER',
+        customer_id: ticket.customer_id,
+        title: 'Support Ticket Response',
+        message: `Hotel Owner replied to ticket #${ticket.ticket_number}: "${message.slice(0, 50)}..."`,
+        type: 'SUPPORT',
+        is_read: false,
+        date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      };
       await db.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        ['notif_' + Date.now(), 'CUSTOMER', ticket.customer_id, 'Support Ticket Response', `Hotel Owner replied to ticket #${ticket.ticket_number}: "${message.slice(0, 50)}..."`, 'SUPPORT', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+        [respNotif.id, respNotif.target_role, respNotif.customer_id, respNotif.title, respNotif.message, respNotif.type, respNotif.is_read, respNotif.date_time]
       );
+      dispatchRealTimeNotification(respNotif);
     } else if (senderRole === 'CUSTOMER') {
+      const replyNotif = {
+        id: 'notif_' + Date.now(),
+        target_role: 'OWNER',
+        customer_id: ticket.customer_id,
+        title: 'New Support Ticket Reply',
+        message: `${ticket.customer_name} replied to ticket #${ticket.ticket_number}`,
+        type: 'SUPPORT',
+        is_read: false,
+        date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+      };
       await db.query(
         `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        ['notif_' + Date.now(), 'OWNER', ticket.customer_id, 'New Support Ticket Reply', `${ticket.customer_name} replied to ticket #${ticket.ticket_number}`, 'SUPPORT', false, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+        [replyNotif.id, replyNotif.target_role, replyNotif.customer_id, replyNotif.title, replyNotif.message, replyNotif.type, replyNotif.is_read, replyNotif.date_time]
       );
+      dispatchRealTimeNotification(replyNotif);
     }
 
     const updatedMsgs = await db.query('SELECT * FROM support_messages WHERE ticket_id = $1 ORDER BY created_at ASC;', [ticket.id]);
@@ -4328,7 +4685,7 @@ app.get('*', (req, res) => {
 });
 
 // Start Server & Initialize PostgreSQL Database
-app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   console.log(`✅ Server running on port ${PORT}`);
   try {
     await db.initDatabase();

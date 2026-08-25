@@ -213,6 +213,11 @@
         </div>
 
         <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+          <button type="button" class="btn-tray-push-toggle" id="btnTrayPushToggle"
+            onclick="app.enablePushNotificationsPrompt()" title="Enable Real-Time Push Notifications"
+            style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 8px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+            <i class="fa-solid fa-tower-broadcast" style="color: var(--accent-gold);"></i> <span>Enable Push</span>
+          </button>
           <button type="button" class="btn-tray-sound-toggle" id="btnTraySoundToggle"
             onclick="app.toggleSoundPreference()" title="Toggle Notification Sound"
             style="background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: #FFF; padding: 4px 8px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 5px;">
