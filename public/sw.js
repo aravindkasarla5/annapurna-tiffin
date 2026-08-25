@@ -93,7 +93,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 /* ==========================================================================
-   Real-Time Web Push Notification Handling
+   Real-Time Web Push Notification Handling (Closed PWA / Website Background Support)
    ========================================================================== */
 
 self.addEventListener('push', (event) => {
@@ -103,8 +103,10 @@ self.addEventListener('push', (event) => {
     icon: '/images/tiffin_logo.png',
     badge: '/images/icon-192.png',
     tag: 'notif_' + Date.now(),
-    vibrate: [100, 50, 100],
+    vibrate: [200, 100, 200, 100, 200],
     renotify: true,
+    requireInteraction: true,
+    timestamp: Date.now(),
     data: { url: '/' }
   };
 
@@ -126,7 +128,10 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+      .catch((err) => console.error('[PWA SW] showNotification error:', err))
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {

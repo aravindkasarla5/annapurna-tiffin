@@ -161,7 +161,8 @@ async function dispatchRealTimeNotification(notif) {
     data: notif
   });
 
-  // 1. WebSocket Delivery
+  // 1. WebSocket Delivery (Instant when user is active & connected)
+  let wsSentCount = 0;
   activeWsClients.forEach((client, ws) => {
     if (ws.readyState === 1) { // 1 = OPEN
       let isRecipient = false;
@@ -177,29 +178,32 @@ async function dispatchRealTimeNotification(notif) {
       if (isRecipient) {
         try {
           ws.send(wsPayload);
+          wsSentCount++;
         } catch (err) {
-          console.error('WS Send error:', err.message);
+          console.error('[Notification Engine] WS Send error:', err.message);
         }
       }
     }
   });
 
-  // 2. Web Push Delivery
+  // 2. Web Push Delivery (Background / Closed PWA & Closed Website Delivery)
   try {
     let pushQuery = "";
     let pushParams = [];
 
     if (notif.target_role === 'OWNER') {
-      pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'OWNER';";
+      pushQuery = "SELECT * FROM push_subscriptions WHERE UPPER(role) = 'OWNER' OR user_id IN (SELECT id FROM users WHERE UPPER(role) = 'OWNER');";
     } else if (notif.customer_id) {
-      pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'CUSTOMER' AND user_id = $1;";
+      pushQuery = "SELECT * FROM push_subscriptions WHERE user_id = $1;";
       pushParams = [String(notif.customer_id)];
     } else {
-      pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'CUSTOMER';";
+      pushQuery = "SELECT * FROM push_subscriptions WHERE UPPER(role) = 'CUSTOMER' OR role IS NULL;";
     }
 
     const subRes = await db.query(pushQuery, pushParams);
     const subscriptions = subRes.rows || [];
+
+    console.log(`[Notification Engine] Dispatching ID: ${notif.id} | Target: ${notif.target_role} | WS Connected: ${wsSentCount} | Push Subscriptions Found: ${subscriptions.length}`);
 
     const pushPayload = JSON.stringify({
       id: notif.id,
@@ -215,16 +219,18 @@ async function dispatchRealTimeNotification(notif) {
         let subObj = subRow.subscription;
         if (typeof subObj === 'string') subObj = JSON.parse(subObj);
         await webPush.sendNotification(subObj, pushPayload, { TTL: 86400, urgency: 'high' });
+        console.log(`[Web Push Engine] Push delivered successfully to sub_id: ${subRow.id} (user: ${subRow.user_id}, role: ${subRow.role})`);
       } catch (pushErr) {
-        if (pushErr.statusCode === 404 || pushErr.statusCode === 410) {
+        const statusCode = pushErr.statusCode || pushErr.status;
+        console.warn(`[Web Push Engine] Push deliver notice for sub_id: ${subRow.id} (user: ${subRow.user_id}): ${pushErr.message} (HTTP ${statusCode || 'N/A'})`);
+        if (statusCode === 400 || statusCode === 401 || statusCode === 403 || statusCode === 404 || statusCode === 410) {
           await db.query("DELETE FROM push_subscriptions WHERE id = $1;", [subRow.id]);
-        } else {
-          console.error('Web Push delivery notice:', pushErr.message);
+          console.log(`[Web Push Engine] Cleaned invalid/expired push subscription: ${subRow.id}`);
         }
       }
     }
   } catch (err) {
-    console.error('Web Push Dispatch Notice:', err.message);
+    console.error('[Web Push Engine] Push Dispatch Error:', err.message);
   }
 }
 

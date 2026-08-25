@@ -353,6 +353,7 @@ class TiffinApp {
         }
       };
       window.addEventListener('focus', syncOnFocus);
+      window.addEventListener('online', syncOnFocus);
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') syncOnFocus();
       });
@@ -393,13 +394,12 @@ class TiffinApp {
           await this.subscribeUserToPush();
           sub = await reg.pushManager.getSubscription();
         }
-        if (sub || perm === 'granted') {
+        if (sub) {
           btn.style.display = 'none';
           return;
         }
       } catch (e) {
-        btn.style.display = 'none';
-        return;
+        console.warn('[Push Engine] Check push sub notice:', e.message);
       }
     }
 
