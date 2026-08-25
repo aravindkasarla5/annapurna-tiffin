@@ -442,9 +442,32 @@ class TiffinApp {
     try {
       const reg = await navigator.serviceWorker.ready;
       let sub = await reg.pushManager.getSubscription();
+      const convertedKey = this.urlBase64ToUint8Array(this.vapidPublicKey);
+
+      // Auto-heal VAPID key mismatch if server key regenerated on restart/redeploy
+      if (sub && sub.options && sub.options.applicationServerKey) {
+        try {
+          const currentSubKey = new Uint8Array(sub.options.applicationServerKey);
+          let keyMismatch = currentSubKey.length !== convertedKey.length;
+          if (!keyMismatch) {
+            for (let i = 0; i < convertedKey.length; i++) {
+              if (currentSubKey[i] !== convertedKey[i]) {
+                keyMismatch = true;
+                break;
+              }
+            }
+          }
+          if (keyMismatch) {
+            console.log('[Push Engine] VAPID key mismatch detected. Auto-refreshing push subscription...');
+            try { await sub.unsubscribe(); } catch (e) { }
+            sub = null;
+          }
+        } catch (subKeyErr) {
+          console.warn('[Push Engine] Key check notice:', subKeyErr.message);
+        }
+      }
 
       if (!sub) {
-        const convertedKey = this.urlBase64ToUint8Array(this.vapidPublicKey);
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: convertedKey

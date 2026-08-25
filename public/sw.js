@@ -4,7 +4,7 @@
    CRITICAL: Never cache API requests, authentication, payments, or referrals!
    ========================================================================== */
 
-const CACHE_NAME = 'annapurna-tiffin-v41';
+const CACHE_NAME = 'annapurna-tiffin-v42';
 
 // Static Shell Assets to Pre-cache for Fast Loading & Offline Shell
 const STATIC_ASSETS = [
@@ -98,20 +98,35 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   if (!event.data) return;
+
+  let title = 'Annapurna Tiffin Center';
+  let options = {
+    body: 'New real-time notification received',
+    icon: '/images/tiffin_logo.png',
+    badge: '/images/icon-192.png',
+    tag: 'notif_' + Date.now(),
+    vibrate: [100, 50, 100],
+    renotify: true,
+    data: { url: '/' }
+  };
+
   try {
     const payload = event.data.json();
-    const title = payload.title || 'Annapurna Tiffin Center';
-    const options = {
-      body: payload.message || payload.body || 'New notification received',
-      icon: payload.icon || '/images/tiffin_logo.png',
-      badge: '/images/icon-192.png',
-      tag: payload.id || ('notif_' + Date.now()),
-      data: payload
-    };
-    event.waitUntil(self.registration.showNotification(title, options));
+    if (payload.title) title = payload.title;
+    options.body = payload.message || payload.body || options.body;
+    options.icon = payload.icon || options.icon;
+    options.badge = payload.badge || options.badge;
+    options.tag = payload.id || options.tag;
+    options.data = payload;
+    if (!options.data.url) options.data.url = '/';
   } catch (err) {
-    console.error('[PWA SW] Push notification error:', err);
+    try {
+      const rawText = event.data.text();
+      if (rawText) options.body = rawText;
+    } catch (e2) { }
   }
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -121,6 +136,9 @@ self.addEventListener('notificationclick', (event) => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if (client.url && 'focus' in client) {
+          if ('navigate' in client && targetUrl !== '/') {
+            client.navigate(targetUrl);
+          }
           return client.focus();
         }
       }

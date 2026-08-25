@@ -193,7 +193,7 @@ async function dispatchRealTimeNotification(notif) {
       pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'OWNER';";
     } else if (notif.customer_id) {
       pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'CUSTOMER' AND user_id = $1;";
-      pushParams = [notif.customer_id];
+      pushParams = [String(notif.customer_id)];
     } else {
       pushQuery = "SELECT * FROM push_subscriptions WHERE role = 'CUSTOMER';";
     }
@@ -203,10 +203,11 @@ async function dispatchRealTimeNotification(notif) {
 
     const pushPayload = JSON.stringify({
       id: notif.id,
-      title: notif.title,
-      message: notif.message,
-      type: notif.type,
-      created_at: notif.created_at || notif.date_time
+      title: notif.title || 'Annapurna Tiffin Center',
+      message: notif.message || '',
+      type: notif.type || 'INFO',
+      created_at: notif.created_at || notif.date_time || new Date().toISOString(),
+      url: '/'
     });
 
     for (const subRow of subscriptions) {
