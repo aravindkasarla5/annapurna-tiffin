@@ -31,6 +31,5 @@ local_postgres.db
 
 public/images/qr_uploads/*
 !public/images/qr_uploads/.gitkeep
-vapid_keys.json
 
 

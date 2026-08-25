@@ -279,6 +279,75 @@ app.post('/api/push/unsubscribe', authenticateToken, async (req, res) => {
   }
 });
 
+// DIRECT END-TO-END BACKEND PUSH TEST ENDPOINT
+app.post('/api/push/test-send', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    const subRes = await db.query(
+      "SELECT * FROM push_subscriptions WHERE user_id = $1 OR (UPPER(role) = $2 AND role IS NOT NULL);",
+      [String(userId), String(userRole).toUpperCase()]
+    );
+    const subscriptions = subRes.rows || [];
+
+    if (subscriptions.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No active push subscription found for ${userRole} (ID: ${userId}). Please enable push notifications on your device first.`
+      });
+    }
+
+    const testNotif = {
+      id: 'notif_test_' + Date.now(),
+      title: `🔔 Test Push Alert (${userRole})`,
+      message: `Direct backend background push delivered successfully to your device! (${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })})`,
+      type: 'INFO',
+      created_at: new Date().toISOString(),
+      url: '/'
+    };
+
+    const pushPayload = JSON.stringify(testNotif);
+    let successCount = 0;
+    const errors = [];
+
+    for (const subRow of subscriptions) {
+      try {
+        let subObj = subRow.subscription;
+        if (typeof subObj === 'string') subObj = JSON.parse(subObj);
+        await webPush.sendNotification(subObj, pushPayload, { TTL: 86400, urgency: 'high' });
+        successCount++;
+        console.log(`[Direct Test Push] Success to sub_id: ${subRow.id}`);
+      } catch (pushErr) {
+        const statusCode = pushErr.statusCode || pushErr.status;
+        errors.push({ subId: subRow.id, error: pushErr.message, statusCode });
+        console.warn(`[Direct Test Push] Error for sub_id ${subRow.id}: ${pushErr.message} (HTTP ${statusCode})`);
+        if (statusCode === 400 || statusCode === 401 || statusCode === 403 || statusCode === 404 || statusCode === 410) {
+          await db.query("DELETE FROM push_subscriptions WHERE id = $1;", [subRow.id]);
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      res.json({
+        success: true,
+        message: `Direct background push sent to ${successCount} device subscription(s). Close your browser/PWA now to test closed-app delivery!`,
+        sentCount: successCount,
+        totalSubscriptions: subscriptions.length
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: "Failed to send background push notification.",
+        errors: errors
+      });
+    }
+  } catch (err) {
+    console.error('Direct Test Push Error:', err);
+    res.status(500).json({ success: false, message: "Internal error during direct push test." });
+  }
+});
+
 // Helper function to create notification record in database and dispatch via WebSocket & Web Push
 async function createAndDispatchNotification(notifData, dbClient = db) {
   try {
