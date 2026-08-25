@@ -214,7 +214,7 @@ async function dispatchRealTimeNotification(notif) {
       try {
         let subObj = subRow.subscription;
         if (typeof subObj === 'string') subObj = JSON.parse(subObj);
-        await webPush.sendNotification(subObj, pushPayload);
+        await webPush.sendNotification(subObj, pushPayload, { TTL: 86400, urgency: 'high' });
       } catch (pushErr) {
         if (pushErr.statusCode === 404 || pushErr.statusCode === 410) {
           await db.query("DELETE FROM push_subscriptions WHERE id = $1;", [subRow.id]);

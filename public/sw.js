@@ -4,7 +4,7 @@
    CRITICAL: Never cache API requests, authentication, payments, or referrals!
    ========================================================================== */
 
-const CACHE_NAME = 'annapurna-tiffin-v43';
+const CACHE_NAME = 'annapurna-tiffin-v44';
 
 // Static Shell Assets to Pre-cache for Fast Loading & Offline Shell
 const STATIC_ASSETS = [
@@ -97,8 +97,6 @@ self.addEventListener('fetch', (event) => {
    ========================================================================== */
 
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
-
   let title = 'Annapurna Tiffin Center';
   let options = {
     body: 'New real-time notification received',
@@ -110,20 +108,22 @@ self.addEventListener('push', (event) => {
     data: { url: '/' }
   };
 
-  try {
-    const payload = event.data.json();
-    if (payload.title) title = payload.title;
-    options.body = payload.message || payload.body || options.body;
-    options.icon = payload.icon || options.icon;
-    options.badge = payload.badge || options.badge;
-    options.tag = payload.id || options.tag;
-    options.data = payload;
-    if (!options.data.url) options.data.url = '/';
-  } catch (err) {
+  if (event && event.data) {
     try {
-      const rawText = event.data.text();
-      if (rawText) options.body = rawText;
-    } catch (e2) { }
+      const payload = event.data.json();
+      if (payload.title) title = payload.title;
+      options.body = payload.message || payload.body || options.body;
+      options.icon = payload.icon || options.icon;
+      options.badge = payload.badge || options.badge;
+      options.tag = payload.id || options.tag;
+      options.data = payload;
+      if (!options.data.url) options.data.url = '/';
+    } catch (err) {
+      try {
+        const rawText = event.data.text();
+        if (rawText) options.body = rawText;
+      } catch (e2) { }
+    }
   }
 
   event.waitUntil(self.registration.showNotification(title, options));
