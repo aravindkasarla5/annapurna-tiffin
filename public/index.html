@@ -936,6 +936,29 @@
       </div>
     </section>
 
+    <!-- 🍽️ Customer Premium Food Member Card Section -->
+    <section id="secCustomerMemberCard" class="view-section hidden">
+      <div class="container" style="max-width: 800px; margin: 0 auto; padding: 20px 15px;">
+        
+        <!-- Header Banner -->
+        <div class="member-hero-banner" style="background: linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%); color: #FFF; padding: 25px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); text-align: center; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: -20px; right: -20px; width: 120px; height: 120px; background: rgba(255, 215, 0, 0.1); border-radius: 50%; filter: blur(20px);"></div>
+          <h2 style="margin: 0 0 8px 0; font-size: 1.8rem; font-weight: 700; color: #FFD700; display: flex; align-items: center; justify-content: center; gap: 10px;">
+            <i class="fa-solid fa-id-card"></i> 🍽️ Premium Food Member Card
+          </h2>
+          <p style="margin: 0; color: #E0E0E0; font-size: 0.95rem;">
+            Get ₹5 OFF on every order + Priority Express Delivery!
+          </p>
+        </div>
+
+        <!-- Dynamic Content Body Container -->
+        <div id="memberCardContent">
+          <!-- Rendered via JavaScript -->
+        </div>
+
+      </div>
+    </section>
+
     <!-- Customer Profile Section -->
     <section id="secCustomerProfile" class="view-section hidden">
       <div class="profile-container">
@@ -1601,7 +1624,7 @@
 
         <!-- Filter Tabs Bar -->
         <div class="owner-order-tabs-bar"
-          style="display: flex; gap: 6px; background: rgba(10,10,14,0.6); padding: 4px; border-radius: var(--radius-full); border: 1px solid var(--border-color);">
+          style="display: flex; gap: 6px; background: rgba(10,10,14,0.6); padding: 4px; border-radius: var(--radius-full); border: 1px solid var(--border-color); flex-wrap: wrap;">
           <button type="button" class="tab-pill active" id="tabMgmtFilterAll"
             onclick="app.setOwnerOrderFilter('ALL')">All (<span id="cntMgmtTabAll">0</span>)</button>
           <button type="button" class="tab-pill" id="tabMgmtFilterActive"
@@ -1610,6 +1633,12 @@
             onclick="app.setOwnerOrderFilter('COMPLETED')">Completed (<span id="cntMgmtTabCompleted">0</span>)</button>
           <button type="button" class="tab-pill" id="tabMgmtFilterRejected"
             onclick="app.setOwnerOrderFilter('REJECTED')">Rejected (<span id="cntMgmtTabRejected">0</span>)</button>
+          
+          <!-- Premium Member Filter Tabs -->
+          <button type="button" class="tab-pill" id="btnFilterMemberPremium"
+            onclick="app.setOwnerMemberTypeFilter('PREMIUM')" style="background: rgba(255, 215, 0, 0.15); color: #FFD700; border: 1px solid #FFD700; font-weight: 700;">⭐ Premium Members</button>
+          <button type="button" class="tab-pill" id="btnFilterMemberRegular"
+            onclick="app.setOwnerMemberTypeFilter('REGULAR')">Regular</button>
         </div>
       </div>
 
@@ -2528,6 +2557,51 @@
       <!-- Mobile Customer Cards Container -->
       <div class="owner-tickets-grid mobile-cust-grid" id="ownerCustomersCardsContainer">
         <!-- Rendered dynamically by JS -->
+      </div>
+    </section>
+
+    <!-- 🍽️ Owner Premium Food Card Approvals Section -->
+    <section id="secOwnerMemberCardApprovals" class="view-section hidden">
+      <div class="container" style="max-width: 1000px; margin: 0 auto; padding: 20px 15px;">
+        
+        <div class="card" style="padding: 24px; border-radius: 16px; background: var(--card-bg, #FFF); box-shadow: 0 4px 20px rgba(0,0,0,0.06); margin-bottom: 24px;">
+          <!-- Header Row: Title on Left, Delete All Button on Top Right -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; margin-bottom: 16px;">
+            <div>
+              <h2 style="margin: 0; font-size: 1.5rem; color: var(--text-color, #1A1A2E); display: flex; align-items: center; gap: 10px;">
+                <i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 🍽️ Premium Food Card Approvals
+              </h2>
+              <p style="margin: 4px 0 0 0; color: var(--text-muted, #666); font-size: 0.88rem;">Review customer ₹10 membership payments and issue 3-Month Digital Member Cards.</p>
+            </div>
+            
+            <div>
+              <button type="button" class="member-filter-btn" style="color: #EF5350 !important; border-color: #EF5350 !important; background: rgba(239, 83, 80, 0.1) !important; font-weight: 700; padding: 8px 16px;" onclick="app.openDeleteAllMemberAppsModal()" title="Clear All Membership Records">
+                <i class="fa-solid fa-trash-can"></i> Delete All
+              </button>
+            </div>
+          </div>
+
+          <!-- Filter Bar Row: Filter Tabs Grouped Below Title -->
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color, #EEE); padding-bottom: 15px;">
+            <button type="button" class="member-filter-btn active" id="btnFilterMemberAppsAll" onclick="app.filterOwnerMemberApps('ALL')">
+              <i class="fa-solid fa-layer-group"></i> ALL <span class="count-badge" id="cntMemberAppsAll">(0)</span>
+            </button>
+            <button type="button" class="member-filter-btn" id="btnFilterMemberAppsPending" onclick="app.filterOwnerMemberApps('PENDING_APPROVAL')">
+              <i class="fa-solid fa-hourglass-half"></i> PENDING <span class="count-badge" id="cntMemberAppsPending">(0)</span>
+            </button>
+            <button type="button" class="member-filter-btn" id="btnFilterMemberAppsApproved" onclick="app.filterOwnerMemberApps('APPROVED')">
+              <i class="fa-solid fa-circle-check"></i> APPROVED <span class="count-badge" id="cntMemberAppsApproved">(0)</span>
+            </button>
+            <button type="button" class="member-filter-btn" id="btnFilterMemberAppsRejected" onclick="app.filterOwnerMemberApps('REJECTED')">
+              <i class="fa-solid fa-circle-xmark"></i> REJECTED <span class="count-badge" id="cntMemberAppsRejected">(0)</span>
+            </button>
+          </div>
+
+          <div id="ownerMemberAppsList">
+            <p style="text-align: center; color: #888; padding: 30px;">Loading membership applications...</p>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -4416,12 +4490,88 @@
           </button>
         </div>
       </div>
+    <!-- View Payment Proof Screenshot Preview Modal (Owner) -->
+    <div class="modal-backdrop" id="modalViewPaymentProof" onclick="if(event.target === this) app.closeViewPaymentProofModal()">
+      <div class="modal-card" style="max-width: 650px; width: 92%; padding: 20px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 10px;">
+          <h3 style="margin: 0; font-size: 1.15rem; color: var(--accent-gold, #FFD700);"><i class="fa-solid fa-image"></i> Payment Proof Screenshot</h3>
+          <button type="button" onclick="app.closeViewPaymentProofModal()" style="background: none; border: none; font-size: 1.4rem; color: #AAA; cursor: pointer;">&times;</button>
+        </div>
+        <div style="max-height: 68vh; overflow: auto; margin-bottom: 14px; background: #000; border-radius: 10px; padding: 10px; display: flex; justify-content: center; align-items: center;">
+          <img id="imgPaymentProofZoom" src="" alt="Payment Proof" style="max-width: 100%; height: auto; border-radius: 6px; transition: transform 0.2s ease;">
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button type="button" class="btn-secondary-outline" onclick="app.zoomPaymentProof(1.2)" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-magnifying-glass-plus"></i> Zoom In</button>
+          <button type="button" class="btn-secondary-outline" onclick="app.zoomPaymentProof(0.8)" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-magnifying-glass-minus"></i> Zoom Out</button>
+          <button type="button" class="btn-secondary-outline" onclick="app.zoomPaymentProof(1.0)" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+          <button type="button" class="btn-primary-block" onclick="app.closeViewPaymentProofModal()" style="max-width: 120px; padding: 6px 14px;">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reject Payment Proof Modal (Owner) -->
+    <div class="modal-backdrop" id="modalRejectMemberPayment" onclick="if(event.target === this) app.closeRejectPaymentModal()">
+      <div class="modal-card" style="max-width: 460px; width: 92%; padding: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 10px;">
+          <h3 style="margin: 0; font-size: 1.15rem; color: #EF5350;"><i class="fa-solid fa-circle-xmark"></i> Reject Payment Proof</h3>
+          <button type="button" onclick="app.closeRejectPaymentModal()" style="background: none; border: none; font-size: 1.4rem; color: #AAA; cursor: pointer;">&times;</button>
+        </div>
+        <p style="font-size: 0.9rem; color: var(--text-muted, #AAA); margin-bottom: 14px;">
+          Please specify the reason for rejecting this ₹10 membership payment proof. This reason will be communicated to the customer:
+        </p>
+        <div style="margin-bottom: 16px;">
+          <label style="font-size: 0.82rem; font-weight: 700; color: #FFF; display: block; margin-bottom: 6px;">Rejection Reason (Required):</label>
+          <textarea id="txtPaymentRejectionReason" placeholder="e.g. UTR mismatch, screenshot unclear, incorrect amount paid..." style="width: 100%; height: 80px; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: #FFF; font-size: 0.9rem; box-sizing: border-box; resize: vertical;" required></textarea>
+        </div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" class="btn-secondary-outline" onclick="app.closeRejectPaymentModal()" style="padding: 8px 16px;">Cancel</button>
+          <button type="button" id="btnConfirmPaymentRejection" class="btn-primary" onclick="app.submitPaymentRejection()" style="background: #D32F2F; padding: 8px 20px; font-weight: 700;">
+            <i class="fa-solid fa-xmark"></i> Confirm Rejection
+          </button>
+        </div>
+      </div>
+    <!-- Confirm Individual Member Record Delete Modal (Owner) -->
+    <div class="modal-backdrop" id="modalConfirmDeleteMemberApp" onclick="if(event.target === this) app.closeDeleteMemberAppModal()">
+      <div class="modal-card" style="max-width: 420px; width: 92%; padding: 20px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
+        <div style="font-size: 2.8rem; margin-bottom: 8px; color: #EF5350;">⚠️</div>
+        <h3 style="margin: 0 0 8px 0; color: #FFF; font-size: 1.25rem;">Delete Member Record?</h3>
+        <p style="color: var(--text-muted, #AAA); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.4;">
+          Are you sure you want to delete this Premium Food Member application record? This action cannot be undone.
+        </p>
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <button type="button" class="btn-secondary-outline" onclick="app.closeDeleteMemberAppModal()" style="flex: 1; padding: 10px;">
+            Cancel
+          </button>
+          <button type="button" id="btnConfirmDeleteMemberApp" class="btn-primary" onclick="app.executeDeleteMemberApp()" style="flex: 1; padding: 10px; background: #D32F2F; font-weight: 700;">
+            <i class="fa-solid fa-trash-can"></i> Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm Delete All Member Records Modal (Owner) -->
+    <div class="modal-backdrop" id="modalConfirmDeleteAllMemberApps" onclick="if(event.target === this) app.closeDeleteAllMemberAppsModal()">
+      <div class="modal-card" style="max-width: 450px; width: 92%; padding: 22px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
+        <div style="font-size: 3rem; margin-bottom: 8px; color: #D32F2F;">🚨</div>
+        <h3 style="margin: 0 0 8px 0; color: #EF5350; font-size: 1.3rem;">DELETE ALL MEMBER RECORDS?</h3>
+        <p style="color: var(--text-muted, #CCC); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.4;">
+          This will clear ALL Premium Food Member Card application & card records from the database. Financial payment records will be preserved.
+        </p>
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <button type="button" class="btn-secondary-outline" onclick="app.closeDeleteAllMemberAppsModal()" style="flex: 1; padding: 10px;">
+            Cancel
+          </button>
+          <button type="button" id="btnConfirmDeleteAllMemberApps" class="btn-primary" onclick="app.executeDeleteAllMemberApps()" style="flex: 1; padding: 10px; background: linear-gradient(135deg, #D32F2F, #B71C1C); font-weight: 800;">
+            <i class="fa-solid fa-trash-can"></i> DELETE ALL
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=2"></script>
+    <script src="/js/app.js?v=3"></script>
 </body>
 
 </html>

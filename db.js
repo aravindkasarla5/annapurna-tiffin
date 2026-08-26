@@ -363,6 +363,51 @@ async function initDatabase() {
       response_body TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS food_member_applications (
+      id VARCHAR(100) PRIMARY KEY,
+      customer_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      customer_name VARCHAR(255) NOT NULL,
+      customer_mobile VARCHAR(50) NOT NULL,
+      fee_amount NUMERIC(10, 2) NOT NULL DEFAULT 10.00,
+      payment_method VARCHAR(100) DEFAULT 'UPI',
+      payment_status VARCHAR(50) DEFAULT 'VERIFIED',
+      payment_reference VARCHAR(100),
+      screenshot_url TEXT,
+      status VARCHAR(50) DEFAULT 'PENDING_APPROVAL',
+      rejection_reason TEXT,
+      refund_status VARCHAR(50) DEFAULT 'NOT_APPLICABLE',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS food_member_cards (
+      id VARCHAR(100) PRIMARY KEY,
+      member_id VARCHAR(100) NOT NULL UNIQUE,
+      customer_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      customer_name VARCHAR(255) NOT NULL,
+      customer_mobile VARCHAR(50) NOT NULL,
+      application_id VARCHAR(100) REFERENCES food_member_applications(id) ON DELETE SET NULL,
+      status VARCHAR(50) DEFAULT 'ACTIVE',
+      valid_from TIMESTAMPTZ NOT NULL,
+      valid_until TIMESTAMPTZ NOT NULL,
+      discount_amount NUMERIC(10, 2) DEFAULT 5.00,
+      express_delivery_eligible BOOLEAN DEFAULT true,
+      qr_verification_code VARCHAR(255) NOT NULL UNIQUE,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS member_card_audit_logs (
+      id VARCHAR(100) PRIMARY KEY,
+      customer_id VARCHAR(100),
+      member_id VARCHAR(100),
+      action VARCHAR(100) NOT NULL,
+      actor_role VARCHAR(50),
+      actor_id VARCHAR(100),
+      details TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`
   ];
 
@@ -374,7 +419,7 @@ async function initDatabase() {
     }
   }
 
-  // Initialize order_counter and ticket_counter if missing
+  // Initialize order_counter, ticket_counter, and member_counter if missing
   try {
     const orderCounterRes = await query(`SELECT current_value FROM counters WHERE name = 'order_counter';`);
     if (!orderCounterRes.rows || orderCounterRes.rows.length === 0) {
@@ -383,6 +428,10 @@ async function initDatabase() {
     const ticketCounterRes = await query(`SELECT current_value FROM counters WHERE name = 'ticket_counter';`);
     if (!ticketCounterRes.rows || ticketCounterRes.rows.length === 0) {
       await query(`INSERT INTO counters (name, current_value) VALUES ('ticket_counter', 1001);`);
+    }
+    const memberCounterRes = await query(`SELECT current_value FROM counters WHERE name = 'member_counter';`);
+    if (!memberCounterRes.rows || memberCounterRes.rows.length === 0) {
+      await query(`INSERT INTO counters (name, current_value) VALUES ('member_counter', 100001);`);
     }
     // PostgreSQL/SQLite schema column migration adjustments
     if (usePg) {
@@ -401,6 +450,12 @@ async function initDatabase() {
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_pin VARCHAR(10);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_pin_verified BOOLEAN DEFAULT false;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_discount NUMERIC(10, 2) DEFAULT 0.00;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS food_member_discount NUMERIC(10, 2) DEFAULT 0.00;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_express_delivery BOOLEAN DEFAULT false;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_premium_member BOOLEAN DEFAULT false;`);
+        await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_card_per_customer ON food_member_cards(customer_id) WHERE status = 'ACTIVE';`);
+        await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_app_per_customer ON food_member_applications(customer_id) WHERE status = 'PENDING_APPROVAL';`);
+        await query(`CREATE INDEX IF NOT EXISTS idx_member_app_pay_ref ON food_member_applications(payment_reference);`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
@@ -436,6 +491,12 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE orders ADD COLUMN pickup_pin TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN pickup_pin_verified INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN loyalty_discount NUMERIC(10, 2) DEFAULT 0.00;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN food_member_discount NUMERIC(10, 2) DEFAULT 0.00;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN is_express_delivery INTEGER DEFAULT 0;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN is_premium_member INTEGER DEFAULT 0;`);
+      await safeAlter(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_card_per_customer ON food_member_cards(customer_id) WHERE status = 'ACTIVE';`);
+      await safeAlter(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_app_per_customer ON food_member_applications(customer_id) WHERE status = 'PENDING_APPROVAL';`);
+      await safeAlter(`CREATE INDEX IF NOT EXISTS idx_member_app_pay_ref ON food_member_applications(payment_reference);`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active';`);

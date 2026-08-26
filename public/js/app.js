@@ -2186,6 +2186,7 @@ class TiffinApp {
           desktopNav.innerHTML = `
             <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')"><i class="fa-solid fa-house"></i> Customer Home</a>
             <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.scrollToMenu()"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
+            <a class="nav-item ${this.activeView === 'secCustomerMemberCard' ? 'active' : ''}" onclick="app.switchView('secCustomerMemberCard')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 🍽️ Member Card</a>
             <a class="nav-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.switchView('secCustomerFavorites')"><i class="fa-solid fa-heart" style="color: #E53935;"></i> My Favorites ❤️</a>
             <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
             <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
@@ -2200,6 +2201,7 @@ class TiffinApp {
           const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read && n.target_role === 'OWNER').length;
           desktopNav.innerHTML = `
             <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
+            <a class="nav-item ${this.activeView === 'secOwnerMemberCardApprovals' ? 'active' : ''}" onclick="app.switchView('secOwnerMemberCardApprovals')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 🍽️ Member Card Approvals</a>
             <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
             <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders Management</a>
             <a class="nav-item ${this.activeView === 'secOwnerCustomers' ? 'active' : ''}" onclick="app.switchView('secOwnerCustomers')"><i class="fa-solid fa-users-gear" style="color: var(--accent-gold);"></i> Customer Accounts</a>
@@ -2507,6 +2509,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secCustomerMemberCard' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerMemberCard');">
+            <div class="drawer-icon-box gold" style="background: rgba(255, 215, 0, 0.2); color: #FFD700;"><i class="fa-solid fa-id-card"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Food Member Card 🍽️</strong>
+              <span class="drawer-item-sub">₹5 OFF & Express Delivery</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleNotificationsTray();">
             <div class="drawer-icon-box orange"><i class="fa-solid fa-bell"></i></div>
             <div class="drawer-text-group">
@@ -2589,6 +2600,15 @@ class TiffinApp {
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Dashboard & Analytics</strong>
               <span class="drawer-item-sub">Real-time sales & order stats</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerMemberCardApprovals' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerMemberCardApprovals');">
+            <div class="drawer-icon-box gold" style="background: rgba(255, 215, 0, 0.2); color: #FFD700;"><i class="fa-solid fa-id-card"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Member Card Approvals 🍽️</strong>
+              <span class="drawer-item-sub">Review ₹10 payments & approve</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
@@ -2762,8 +2782,8 @@ class TiffinApp {
   switchView(viewId) {
     // Access Control Guard - Require login for features
     if (!this.currentUser) {
-      if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites' || viewId === 'secCustomerLoyalty') {
-        this.showToast('Please Login or Register to view favorites, orders, payments, referral rewards & loyalty points.', 'error');
+      if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites' || viewId === 'secCustomerLoyalty' || viewId === 'secCustomerMemberCard') {
+        this.showToast('Please Login or Register to view favorites, orders, payments, referral rewards, loyalty points & member card.', 'error');
         this.openAuthModal('CUSTOMER', 'LOGIN');
         return;
       }
@@ -2840,6 +2860,9 @@ class TiffinApp {
     if (this.activeView === 'secCustomerLoyalty') {
       this.loadLoyaltyRewardsPage();
     }
+    if (this.activeView === 'secCustomerMemberCard') {
+      this.loadFoodMemberCardState();
+    }
     if (this.activeView === 'secCustomerSupport') {
       this.fetchSupportTickets();
       this.renderFaqs();
@@ -2850,6 +2873,9 @@ class TiffinApp {
     if (this.activeView === 'secOwnerDashboard') {
       this.fetchStats();
       this.renderOrders();
+    }
+    if (this.activeView === 'secOwnerMemberCardApprovals') {
+      this.loadOwnerMemberApprovals();
     }
     if (this.activeView === 'secOwnerTiffins') this.renderMenu();
     if (this.activeView === 'secOwnerOrders') this.renderOrders();
@@ -5044,6 +5070,15 @@ class TiffinApp {
     this.renderOrders();
   }
 
+  setOwnerMemberTypeFilter(type) {
+    this.ownerMemberTypeFilter = type;
+    const btnPrem = document.getElementById('btnFilterMemberPremium');
+    const btnReg = document.getElementById('btnFilterMemberRegular');
+    if (btnPrem) btnPrem.classList.toggle('active', type === 'PREMIUM');
+    if (btnReg) btnReg.classList.toggle('active', type === 'REGULAR');
+    this.renderOrders();
+  }
+
   renderSalesAnalytics() {
     if (!this.orders && !this.isLoadingOrders) return;
 
@@ -5551,10 +5586,17 @@ class TiffinApp {
         filtered = this.orders.filter(o => ['Rejected', 'Cancelled'].includes(o.order_status));
       }
 
+      // Apply owner member type filter (ALL / PREMIUM / REGULAR)
+      if (this.ownerMemberTypeFilter === 'PREMIUM') {
+        filtered = filtered.filter(o => Boolean(o.is_premium_member || (o.food_member_discount && Number(o.food_member_discount) > 0)));
+      } else if (this.ownerMemberTypeFilter === 'REGULAR') {
+        filtered = filtered.filter(o => !o.is_premium_member && (!o.food_member_discount || Number(o.food_member_discount) === 0));
+      }
+
       // Apply owner search & multi-filter controls
       filtered = filtered.filter(o => this.filterSingleOrder(o, true));
 
-      const emptyMsg = (this.ownerOrderSearch || this.ownerFilterOrderStatus !== 'ALL' || this.ownerFilterPaymentStatus !== 'ALL' || this.ownerFilterPaymentMethod !== 'ALL' || this.ownerFilterDatePreset !== 'ALL')
+      const emptyMsg = (this.ownerOrderSearch || this.ownerFilterOrderStatus !== 'ALL' || this.ownerFilterPaymentStatus !== 'ALL' || this.ownerFilterPaymentMethod !== 'ALL' || this.ownerFilterDatePreset !== 'ALL' || (this.ownerMemberTypeFilter && this.ownerMemberTypeFilter !== 'ALL'))
         ? 'No matching orders found for your search and filter criteria.'
         : (this.ownerOrderFilter === 'ALL' ? 'No orders found.' : `No ${this.ownerOrderFilter.toLowerCase()} orders found.`);
 
@@ -5844,6 +5886,16 @@ class TiffinApp {
         <div class="co-card-top-bar">
           <div class="co-top-left" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="co-row-num"><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> Order #${order.order_number}</span>
+            ${(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0)) ? `
+              <span class="badge-premium-member" style="background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%); color: #1A1A2E; padding: 3px 10px; border-radius: 12px; font-weight: 800; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);">
+                ⭐ PREMIUM MEMBER
+              </span>
+            ` : ''}
+            ${order.is_express_delivery ? `
+              <span class="badge-express-priority" style="background: linear-gradient(135deg, #1A1A2E 0%, #0F3460 100%); color: #64B5F6; border: 1px solid #64B5F6; padding: 3px 10px; border-radius: 12px; font-weight: 800; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 4px;">
+                🚀 PRIORITY EXPRESS
+              </span>
+            ` : ''}
             <span class="co-row-type"><i class="fa-solid ${typeIcon}"></i> ${order.order_type}</span>
             <span class="co-row-status-badge" style="border-color: ${statusColor}; color: ${statusColor};">
               <i class="fa-solid ${statusIcon}"></i> ${statusLabel}
@@ -11727,6 +11779,932 @@ class TiffinApp {
       if (breakdown) breakdown.classList.add('hidden');
     }
     this.updateCheckoutTotalsUI();
+  }
+
+  // =========================================================================
+  // PREMIUM FOOD MEMBER CARD SYSTEM CLIENT CONTROLLER (₹10 / 3-MONTH)
+  // =========================================================================
+
+  async loadFoodMemberCardState() {
+    const container = document.getElementById('memberCardContent');
+    if (!container) return;
+
+    if (!this.currentUser) {
+      container.innerHTML = `
+        <div class="card" style="padding: 30px; text-align: center; border-radius: 16px; background: var(--card-bg, #FFF);">
+          <i class="fa-solid fa-lock" style="font-size: 2.5rem; color: var(--primary, #E53935); margin-bottom: 15px;"></i>
+          <h3>Authentication Required</h3>
+          <p style="color: #666; margin-bottom: 20px;">Please login or register as a customer to apply for or view your Premium Food Member Card.</p>
+          <button class="btn-primary" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')"><i class="fa-solid fa-right-to-bracket"></i> Login / Register</button>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `<div style="text-align: center; padding: 40px; color: #888;"><i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem;"></i><p style="margin-top: 10px;">Loading membership status...</p></div>`;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/status`);
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to fetch status');
+      }
+
+      this.currentMemberState = data;
+      this.renderFoodMemberCardUI(data);
+    } catch (err) {
+      console.error('Error loading food member status:', err);
+      container.innerHTML = `
+        <div class="card" style="padding: 30px; text-align: center; border-radius: 16px;">
+          <p style="color: #E53935;"><i class="fa-solid fa-circle-exclamation"></i> ${err.message || 'Error loading membership.'}</p>
+          <button class="btn-secondary-outline" onclick="app.loadFoodMemberCardState()">Retry</button>
+        </div>
+      `;
+    }
+  }
+
+  renderFoodMemberCardUI(data) {
+    const container = document.getElementById('memberCardContent');
+    if (!container) return;
+
+    const { status, card, application, benefits } = data;
+
+    // STATE 1: NO APPLICATION or EXPIRED (Allows purchase / repurchase)
+    if (status === 'NO_APPLICATION') {
+      container.innerHTML = `
+        <div class="card" style="padding: 24px; border-radius: 16px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <span style="background: rgba(255, 215, 0, 0.15); color: var(--accent-gold, #FFD700); padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              ⭐ Join Exclusive Food Club
+            </span>
+            <h3 style="margin: 15px 0 8px 0; font-size: 1.5rem; color: var(--text-main, #FFF);">₹10 Premium Food Member Card</h3>
+            <p style="color: var(--text-muted, #AAA); margin: 0; font-size: 0.95rem;">Pay ₹10 once and enjoy exclusive dining privileges for <strong style="color: var(--text-main, #FFF);">3 Calendar Months</strong>!</p>
+          </div>
+
+          <div class="member-pricing-box" style="background: rgba(255, 215, 0, 0.06); border: 2px dashed var(--accent-gold, #FFD700); border-radius: 14px; padding: 18px; margin-bottom: 24px; display: flex; justify-content: space-around; text-align: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+              <div style="font-size: 0.8rem; color: var(--text-muted, #AAA); text-transform: uppercase; font-weight: 600;">Membership Fee</div>
+              <div style="font-size: 1.8rem; font-weight: 800; color: var(--accent-gold, #FFD700);">₹10 <span style="font-size: 0.85rem; font-weight: 400; color: var(--text-muted, #AAA);">(One-Time)</span></div>
+            </div>
+            <div style="border-left: 1px solid var(--border-color, #333);"></div>
+            <div>
+              <div style="font-size: 0.8rem; color: var(--text-muted, #AAA); text-transform: uppercase; font-weight: 600;">Validity Period</div>
+              <div style="font-size: 1.8rem; font-weight: 800; color: var(--text-main, #FFF);">3 Months</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 28px;">
+            <h4 style="margin: 0 0 14px 0; font-size: 1rem; color: var(--text-main, #FFF);"><i class="fa-solid fa-circle-check" style="color: #4CAF50;"></i> Exclusive Member Benefits:</h4>
+            <ul style="list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+              <li style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--text-main, #FFF);"><i class="fa-solid fa-check" style="color: #4CAF50;"></i> <strong>₹5 OFF</strong> on every eligible order</li>
+              <li style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--text-main, #FFF);"><i class="fa-solid fa-check" style="color: #4CAF50;"></i> <strong>🚀 Express Delivery</strong> eligibility</li>
+              <li style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--text-main, #FFF);"><i class="fa-solid fa-check" style="color: #4CAF50;"></i> Digital Member Card with QR code</li>
+              <li style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--text-main, #FFF);"><i class="fa-solid fa-check" style="color: #4CAF50;"></i> Downloadable Food Member Card</li>
+              <li style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; color: var(--text-main, #FFF);"><i class="fa-solid fa-check" style="color: #4CAF50;"></i> Printable Food Member Card</li>
+            </ul>
+          </div>
+
+          <button class="btn-primary" style="width: 100%; padding: 14px; font-size: 1.05rem; font-weight: 700; background: linear-gradient(135deg, #E53935 0%, #D32F2F 100%); border-radius: 12px; box-shadow: 0 6px 18px rgba(229, 57, 53, 0.3); cursor: pointer;" onclick="app.openApplyMemberCardModal()">
+            <i class="fa-solid fa-id-card"></i> Apply for Premium Food Member Card (₹10)
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    // STATE 2: PENDING_APPROVAL
+    if (status === 'PENDING_APPROVAL') {
+      const payRef = application ? (application.payment_reference || 'Verified') : 'Verified';
+      container.innerHTML = `
+        <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
+          <div style="width: 70px; height: 70px; background: rgba(255, 152, 0, 0.15); color: #FB8C00; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
+            ⏳
+          </div>
+
+          <h3 style="margin: 0 0 10px 0; color: var(--text-main, #FFF); font-size: 1.4rem;">PREMIUM FOOD MEMBER APPLICATION</h3>
+          
+          <div style="background: rgba(255, 193, 7, 0.12); border: 1px solid #FFC107; padding: 12px 18px; border-radius: 10px; display: inline-block; margin-bottom: 20px;">
+            <span style="color: #FFC107; font-weight: 700;"><i class="fa-solid fa-circle-check"></i> ₹10 Payment: VERIFIED</span> 
+            <span style="color: var(--text-muted, #AAA); font-size: 0.85rem; margin-left: 8px;">(Ref: ${payRef})</span>
+          </div>
+
+          <p style="font-size: 1rem; color: var(--text-muted, #CCC); max-width: 500px; margin: 0 auto 20px auto; line-height: 1.5;">
+            Your Premium Food Member Card application has been submitted successfully. Please wait for Owner approval.
+          </p>
+
+          <div style="font-size: 0.88rem; color: var(--text-muted, #888);">
+            Submitted on: ${application ? new Date(application.created_at).toLocaleString('en-IN') : 'Recently'}
+          </div>
+
+          <div style="margin-top: 25px;">
+            <button class="btn-secondary-outline" onclick="app.loadFoodMemberCardState()" style="padding: 10px 20px; font-weight: 700; cursor: pointer;"><i class="fa-solid fa-rotate"></i> Check Status</button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // STATE 3: ACTIVE CARD
+    if (status === 'ACTIVE' && card) {
+      const validUntilDate = new Date(card.valid_until);
+      const formattedUntil = validUntilDate.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const formattedFrom = new Date(card.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      
+      const diffMs = validUntilDate.getTime() - Date.now();
+      const remainingDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+      const verifyUrl = `${window.location.origin}/api/food-member/verify/${encodeURIComponent(card.qr_verification_code)}`;
+      const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(verifyUrl)}`;
+
+      container.innerHTML = `
+        <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div style="background: rgba(76, 175, 80, 0.15); color: #81C784; border: 1px solid #4CAF50; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-circle-check"></i> Premium Member Active
+          </div>
+          <div style="font-size: 0.9rem; color: var(--text-muted, #AAA);">
+            Valid Until: <strong style="color: var(--accent-gold, #FFD700);">${formattedUntil}</strong> (${remainingDays} days remaining)
+          </div>
+        </div>
+
+        <!-- 🍽️ DIGITAL MEMBER CARD CONTAINER FOR DISPLAY, DOWNLOAD & PRINT -->
+        <div id="printableFoodMemberCard" class="food-member-card-wrapper" style="background: linear-gradient(135deg, #1A1A2E 0%, #16213E 50%, #0F3460 100%); color: #FFFFFF; border-radius: 20px; padding: 20px; box-shadow: 0 12px 35px rgba(0,0,0,0.3); border: 2px solid #FFD700; position: relative; overflow: hidden; margin-bottom: 24px; box-sizing: border-box; width: 100%; overflow-wrap: break-word; word-break: break-word;">
+          
+          <div style="position: absolute; top: -40px; right: -40px; width: 160px; height: 160px; background: rgba(255, 215, 0, 0.08); border-radius: 50%; filter: blur(30px); pointer-events: none;"></div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 215, 0, 0.3); padding-bottom: 12px; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 1.1rem; font-weight: 800; color: #FFD700; letter-spacing: 1px; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-utensils"></i> FOOD MEMBER
+            </div>
+            <div style="background: #FFD700; color: #1A1A2E; padding: 3px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">
+              ⭐ PREMIUM MEMBER
+            </div>
+          </div>
+
+          <div class="food-member-grid-layout" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; align-items: center;">
+            <div style="min-width: 0;">
+              <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.72rem; color: #A0A0A0; text-transform: uppercase; letter-spacing: 0.5px;">Member Name</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: #FFF; margin-top: 2px; overflow-wrap: break-word;">${card.customer_name}</div>
+              </div>
+
+              <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.72rem; color: #A0A0A0; text-transform: uppercase; letter-spacing: 0.5px;">Member ID</div>
+                <div style="font-size: 1.2rem; font-weight: 800; color: #FFD700; font-family: monospace; letter-spacing: 1px; margin-top: 2px;">${card.member_id}</div>
+              </div>
+
+              <div style="display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-size: 0.7rem; color: #A0A0A0; text-transform: uppercase;">Valid From</div>
+                  <div style="font-size: 0.88rem; font-weight: 600; color: #E0E0E0; margin-top: 1px;">${formattedFrom}</div>
+                </div>
+                <div>
+                  <div style="font-size: 0.7rem; color: #A0A0A0; text-transform: uppercase;">Valid Until</div>
+                  <div style="font-size: 0.88rem; font-weight: 600; color: #FFD700; margin-top: 1px;">${formattedUntil}</div>
+                </div>
+                <div>
+                  <div style="font-size: 0.7rem; color: #A0A0A0; text-transform: uppercase;">Status</div>
+                  <div style="font-size: 0.88rem; font-weight: 700; color: #4CAF50; margin-top: 1px;">● ACTIVE</div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <span style="background: rgba(76, 175, 80, 0.2); color: #81C784; border: 1px solid rgba(76, 175, 80, 0.4); padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700;">
+                  ✓ ₹5 OFF ON ORDERS
+                </span>
+                <span style="background: rgba(33, 150, 243, 0.2); color: #64B5F6; border: 1px solid rgba(33, 150, 243, 0.4); padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700;">
+                  🚀 EXPRESS DELIVERY
+                </span>
+              </div>
+            </div>
+
+            <!-- QR Code Section -->
+            <div style="text-align: center; background: #FFF; padding: 10px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-width: 140px; margin: 0 auto;">
+              <img src="${qrImgSrc}" alt="QR Verification Code" style="width: 105px; height: 105px; display: block; margin: 0 auto 4px auto; max-width: 100%;">
+              <span style="font-size: 0.65rem; color: #333; font-weight: 800; text-transform: uppercase; display: block;">SCAN TO VERIFY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SIDE-BY-SIDE DOWNLOAD & PRINT BUTTONS -->
+        <div class="card-actions-row" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <button class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #1976D2; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.downloadMemberCard()">
+            <i class="fa-solid fa-download"></i> ⬇ Download
+          </button>
+          <button class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #388E3C; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.printMemberCard()">
+            <i class="fa-solid fa-print"></i> 🖨 Print
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    // STATE 4: EXPIRED
+    if (status === 'EXPIRED') {
+      container.innerHTML = `
+        <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
+          <div style="width: 70px; height: 70px; background: rgba(244, 67, 54, 0.15); color: #E53935; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
+            ⚠️
+          </div>
+
+          <h3 style="margin: 0 0 10px 0; color: var(--text-main, #FFF); font-size: 1.4rem;">Premium Food Membership Expired</h3>
+          <p style="font-size: 1rem; color: var(--text-muted, #CCC); max-width: 500px; margin: 0 auto 24px auto;">
+            Your 3-month membership has expired. Renew your membership now to restore your ₹5 discount and Express Delivery benefits!
+          </p>
+
+          <button class="btn-primary" style="padding: 14px 28px; font-size: 1rem; font-weight: 700; background: linear-gradient(135deg, #E53935 0%, #D32F2F 100%); border-radius: 12px; cursor: pointer;" onclick="app.openApplyMemberCardModal()">
+            <i class="fa-solid fa-arrows-rotate"></i> Buy Again ₹10
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    // STATE 5: REJECTED
+    if (status === 'REJECTED') {
+      const reason = application ? application.rejection_reason : '';
+      container.innerHTML = `
+        <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
+          <div style="width: 70px; height: 70px; background: rgba(244, 67, 54, 0.15); color: #E53935; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
+            ❌
+          </div>
+
+          <h3 style="margin: 0 0 10px 0; color: var(--text-main, #FFF); font-size: 1.4rem;">Premium Food Member Card Application Rejected</h3>
+          
+          <div style="background: rgba(244, 67, 54, 0.12); border: 1px solid #EF5350; padding: 12px 18px; border-radius: 10px; display: inline-block; margin-bottom: 20px;">
+            <span style="color: #EF5350; font-weight: 700;">Membership Payment: ₹10 PAID</span> | 
+            <span style="color: var(--text-muted, #AAA); font-size: 0.88rem;">Refund Status: PENDING / COMPLETED</span>
+          </div>
+
+          <p style="font-size: 1rem; color: var(--text-muted, #CCC); max-width: 500px; margin: 0 auto 24px auto;">
+            "Please contact the Owner regarding your ₹10 membership payment."
+            ${reason ? `<br><small style="color: var(--text-muted, #888);">(Note: ${reason})</small>` : ''}
+          </p>
+
+          <button class="btn-secondary-outline" style="padding: 10px 20px; font-weight: 700; cursor: pointer;" onclick="app.openApplyMemberCardModal()">
+            Re-apply with New Payment
+          </button>
+        </div>
+      `;
+    }
+  }
+
+  // Open Modal for ₹10 Membership Payment & Application Submission
+  openApplyMemberCardModal() {
+    if (!this.currentUser) {
+      this.showToast('Please Login or Register to apply for Premium Food Membership.', 'error');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
+
+    this.currentMemberScreenshotBase64 = null;
+    const upiId = this.settings ? (this.settings.upi_id || '9392974900@ybl') : '9392974900@ybl';
+    const qrImg = this.settings?.upi_qr_code || '/images/tiffin_logo.png';
+
+    const modalHtml = `
+      <div id="modalApplyMemberCard" class="modal-overlay" onclick="if(event.target === this) app.closeApplyMemberCardModal()">
+        <div class="modal-card" style="max-width: 500px; width: 92%; padding: 24px; border-radius: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333);">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 12px;">
+            <h3 style="margin: 0; font-size: 1.3rem; color: var(--text-main, #FFF); display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-id-card" style="color: var(--accent-gold, #FFD700);"></i> Apply for Premium Member Card
+            </h3>
+            <button onclick="app.closeApplyMemberCardModal()" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted, #AAA);">&times;</button>
+          </div>
+
+          <div style="background: rgba(255, 215, 0, 0.08); border-radius: 12px; padding: 14px; margin-bottom: 18px; font-size: 0.9rem; border: 1px solid rgba(255,215,0,0.2);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span>Membership Tier:</span> <strong style="color: var(--accent-gold, #FFD700);">Premium Food Member</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span>Membership Fee:</span> <strong style="color: #4CAF50; font-size: 1.1rem;">₹10</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span>Validity:</span> <strong>Exact 3 Calendar Months</strong>
+            </div>
+          </div>
+
+          <!-- Payment Options -->
+          <form onsubmit="event.preventDefault(); app.submitMemberCardApplication();">
+            <div style="margin-bottom: 16px;">
+              <label style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 6px; color: var(--text-main, #FFF);">Select Payment Method:</label>
+              <select id="memberPayMethod" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.2); color: var(--text-main, #FFF);" onchange="app.toggleMemberPayFields()">
+                <option value="UPI (QR Pay)">UPI QR Pay / Google Pay / PhonePe / Paytm</option>
+                <option value="PhonePe">PhonePe Gateway</option>
+              </select>
+            </div>
+
+            <!-- UPI QR Pay Details Box -->
+            <div id="boxMemberUpiQr" style="background: rgba(0,0,0,0.2); border: 1px dashed var(--accent-gold, #FFD700); border-radius: 12px; padding: 14px; text-align: center; margin-bottom: 16px;">
+              <p style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">Scan QR or pay <strong style="color: var(--accent-gold, #FFD700);">₹10</strong> to UPI ID:</p>
+              <div style="font-family: monospace; font-weight: 700; color: var(--accent-gold, #FFD700); font-size: 1.05rem; margin-bottom: 8px;">${upiId}</div>
+              <img src="${qrImg}" alt="UPI QR Code" style="width: 130px; height: 130px; object-fit: contain; margin: 0 auto 8px auto; display: block; border-radius: 8px; border: 1px solid var(--border-color, #444); background: #FFF; padding: 4px;">
+              
+              <div style="text-align: left; margin-top: 12px;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 4px;">Enter UTR / Transaction Reference Number (Required):</label>
+                <input type="text" id="memberUtrInput" placeholder="e.g. 4235XXXXXXXX" style="width: 100%; padding: 9px; border-radius: 6px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.9rem;" required>
+              </div>
+
+              <!-- Payment Proof Screenshot Input -->
+              <div style="text-align: left; margin-top: 14px;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 4px;">
+                  📎 Upload Payment Proof Screenshot (Optional/Recommended):
+                </label>
+                <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="width: 100%; font-size: 0.85rem; color: var(--text-muted, #AAA);" onchange="app.handleScreenshotSelect(this)">
+                <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
+                  <img id="memberScreenshotPreviewImg" src="" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #555;">
+                  <div style="flex: 1; min-width: 0;">
+                    <div id="memberScreenshotFileName" style="font-size: 0.8rem; font-weight: 700; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+                    <div id="memberScreenshotFileSize" style="font-size: 0.75rem; color: var(--text-muted, #AAA);"></div>
+                  </div>
+                  <button type="button" onclick="app.removeSelectedScreenshot()" style="color: #EF5350; border: none; background: none; font-size: 1rem; cursor: pointer;" title="Remove screenshot"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+              <button type="button" class="btn-secondary-outline" onclick="app.closeApplyMemberCardModal()">Cancel</button>
+              <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="padding: 10px 24px; font-weight: 700; background: #388E3C; cursor: pointer;">
+                <i class="fa-solid fa-paper-plane"></i> Pay ₹10 & Submit Proof
+              </button>
+            </div>
+          </form>
+
+        </div>
+      </div>
+    `;
+
+    const existing = document.getElementById('modalApplyMemberCard');
+    if (existing) existing.remove();
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  }
+
+  closeApplyMemberCardModal() {
+    const modal = document.getElementById('modalApplyMemberCard');
+    if (modal) modal.remove();
+    this.currentMemberScreenshotBase64 = null;
+  }
+
+  handleScreenshotSelect(input) {
+    const file = input.files ? input.files[0] : null;
+    if (!file) return;
+
+    if (!file.type.match('image.*')) {
+      this.showToast('Please select a valid image file (JPG, JPEG, PNG, WEBP).', 'error');
+      input.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      this.showToast('Image file size exceeds 5MB limit. Please select a smaller image.', 'error');
+      input.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.currentMemberScreenshotBase64 = e.target.result;
+      const previewContainer = document.getElementById('memberScreenshotPreviewContainer');
+      const previewImg = document.getElementById('memberScreenshotPreviewImg');
+      const fileNameEl = document.getElementById('memberScreenshotFileName');
+      const fileSizeEl = document.getElementById('memberScreenshotFileSize');
+
+      if (previewContainer && previewImg) {
+        previewImg.src = e.target.result;
+        if (fileNameEl) fileNameEl.textContent = file.name;
+        if (fileSizeEl) fileSizeEl.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+        previewContainer.style.display = 'flex';
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  removeSelectedScreenshot() {
+    this.currentMemberScreenshotBase64 = null;
+    const input = document.getElementById('memberScreenshotInput');
+    if (input) input.value = '';
+    const container = document.getElementById('memberScreenshotPreviewContainer');
+    if (container) container.style.display = 'none';
+  }
+
+  toggleMemberPayFields() {
+    const method = document.getElementById('memberPayMethod')?.value;
+    const box = document.getElementById('boxMemberUpiQr');
+    const utrInput = document.getElementById('memberUtrInput');
+    if (box && utrInput) {
+      if (method === 'PhonePe') {
+        box.style.display = 'none';
+        utrInput.required = false;
+      } else {
+        box.style.display = 'block';
+        utrInput.required = true;
+      }
+    }
+  }
+
+  async submitMemberCardApplication() {
+    const method = document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)';
+    const utr = document.getElementById('memberUtrInput')?.value || '';
+    const btn = document.getElementById('btnSubmitMemberApp');
+
+    if (method !== 'PhonePe' && !utr.trim()) {
+      this.showToast('Please enter the 12-digit UTR/Transaction Reference Number.', 'error');
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Submitting...`;
+    }
+
+    try {
+      const isResubmission = this.currentMemberState?.status === 'REJECTED' || this.currentMemberState?.application?.payment_status === 'REJECTED';
+      const endpoint = isResubmission ? `${API_BASE}/food-member/resubmit-proof` : `${API_BASE}/food-member/apply`;
+
+      const res = await this.fetchWithAuth(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_method: method,
+          utr_number: utr.trim(),
+          payment_screenshot: this.currentMemberScreenshotBase64 || null
+        })
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Application submission failed.');
+      }
+
+      this.showToast('🎉 Payment proof submitted successfully! Awaiting Owner verification.', 'success');
+      this.closeApplyMemberCardModal();
+      await this.loadFoodMemberCardState();
+    } catch (err) {
+      console.error('Member Card Application Submission Error:', err);
+      this.showToast(err.message || 'Failed to submit payment proof.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Pay ₹10 & Submit Proof`;
+      }
+    }
+  }
+
+  // Print Member Card (Isolates Card via @media print)
+  printMemberCard() {
+    const cardEl = document.getElementById('printableFoodMemberCard');
+    if (!cardEl) {
+      this.showToast('No active Member Card available to print.', 'error');
+      return;
+    }
+    window.print();
+  }
+
+  // Download Member Card (Downloads HTML container as PDF/Image)
+  async downloadMemberCard() {
+    const cardEl = document.getElementById('printableFoodMemberCard');
+    if (!cardEl) {
+      this.showToast('No active Member Card available to download.', 'error');
+      return;
+    }
+
+    this.showToast('Generating high-resolution Food Member Card download...', 'info');
+
+    if (window.html2pdf) {
+      const opt = {
+        margin:       10,
+        filename:     `Food_Member_Card_${this.currentMemberState?.card?.member_id || 'Premium'}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'mm', format: 'a5', orientation: 'landscape' }
+      };
+      window.html2pdf().set(opt).from(cardEl).save().then(() => {
+        this.showToast('✅ Member Card downloaded successfully!', 'success');
+      }).catch(err => {
+        console.error('html2pdf error:', err);
+        window.print();
+      });
+    } else {
+      window.print();
+    }
+  }
+
+  // =========================================================================
+  // OWNER SIDE - FOOD MEMBER CARD APPROVALS CONTROLLER
+  // =========================================================================
+
+  async loadOwnerMemberApprovals() {
+    const listContainer = document.getElementById('ownerMemberAppsList');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = `<div style="text-align: center; padding: 40px; color: #888;"><i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem;"></i><p style="margin-top: 10px;">Loading membership applications...</p></div>`;
+
+    try {
+      const filter = this.ownerMemberFilter || 'ALL';
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/applications?status=${encodeURIComponent(filter)}`);
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to load applications.');
+      }
+
+      if (data.counts) {
+        const cntAll = document.getElementById('cntMemberAppsAll');
+        const cntPending = document.getElementById('cntMemberAppsPending');
+        const cntApproved = document.getElementById('cntMemberAppsApproved');
+        const cntRejected = document.getElementById('cntMemberAppsRejected');
+        if (cntAll) cntAll.textContent = `(${data.counts.all || 0})`;
+        if (cntPending) cntPending.textContent = `(${data.counts.pending || 0})`;
+        if (cntApproved) cntApproved.textContent = `(${data.counts.approved || 0})`;
+        if (cntRejected) cntRejected.textContent = `(${data.counts.rejected || 0})`;
+      }
+
+      this.renderOwnerMemberAppsUI(data.data || []);
+    } catch (err) {
+      console.error('Error loading owner member applications:', err);
+      listContainer.innerHTML = `<p style="color: #E53935; text-align: center; padding: 20px;">Failed to load applications: ${err.message}</p>`;
+    }
+  }
+
+  filterOwnerMemberApps(status) {
+    this.ownerMemberFilter = status;
+    const btnMap = {
+      'ALL': 'btnFilterMemberAppsAll',
+      'PENDING_APPROVAL': 'btnFilterMemberAppsPending',
+      'APPROVED': 'btnFilterMemberAppsApproved',
+      'REJECTED': 'btnFilterMemberAppsRejected'
+    };
+
+    Object.keys(btnMap).forEach(key => {
+      const btn = document.getElementById(btnMap[key]);
+      if (btn) {
+        btn.classList.toggle('active', key === status);
+      }
+    });
+
+    this.loadOwnerMemberApprovals();
+  }
+
+  renderOwnerMemberAppsUI(apps) {
+    const listContainer = document.getElementById('ownerMemberAppsList');
+    if (!listContainer) return;
+
+    if (!apps || apps.length === 0) {
+      listContainer.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px; color: var(--text-muted, #888);">
+          <i class="fa-solid fa-id-card" style="font-size: 2.5rem; opacity: 0.3; margin-bottom: 10px;"></i>
+          <p style="margin: 0; font-size: 0.95rem;">No membership applications found in this view.</p>
+        </div>
+      `;
+      return;
+    }
+
+    listContainer.innerHTML = `
+      <div style="display: grid; gap: 16px;">
+        ${apps.map(appItem => {
+          const isPending = appItem.status === 'PENDING_APPROVAL';
+          const isApproved = appItem.status === 'APPROVED';
+          const isRejected = appItem.status === 'REJECTED';
+          const cardStatus = appItem.card_status || (isApproved ? 'ACTIVE' : appItem.status);
+          const isPayVerified = appItem.payment_status === 'VERIFIED';
+          const isPayRejected = appItem.payment_status === 'REJECTED';
+
+          const statusBadge = isApproved 
+            ? `<span style="background: rgba(46, 125, 50, 0.15); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">✅ APPROVED (${appItem.member_id || 'Active'})</span>`
+            : isRejected 
+            ? `<span style="background: rgba(198, 40, 40, 0.15); color: #EF5350; border: 1px solid rgba(239, 83, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">❌ REJECTED</span>`
+            : `<span style="background: rgba(230, 81, 0, 0.15); color: #FF9800; border: 1px solid rgba(255, 152, 0, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">⏳ PENDING APPROVAL</span>`;
+
+          const payStatusBadge = isPayVerified
+            ? `<span style="color: #4CAF50; font-weight: 700;">✓ VERIFIED</span>`
+            : isPayRejected
+            ? `<span style="color: #EF5350; font-weight: 700;">❌ REJECTED</span>`
+            : `<span style="color: #FFC107; font-weight: 700;">⏳ VERIFICATION PENDING</span>`;
+
+          const validFromFormatted = appItem.valid_from ? new Date(appItem.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
+          const validUntilFormatted = appItem.valid_until ? new Date(appItem.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
+          const appDateFormatted = appItem.created_at ? new Date(appItem.created_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
+          const utrVal = appItem.payment_reference || 'N/A';
+
+          return `
+            <div class="card-item" style="border: 1px solid var(--border-color, #333); border-radius: 14px; padding: 18px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word; min-width: 0;">
+              
+              <div style="flex: 1; min-width: 240px; max-width: 100%;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
+                  <strong style="font-size: 1.15rem; color: var(--text-main, #FFF); font-weight: 700;">${appItem.customer_name}</strong>
+                  ${statusBadge}
+                  ${appItem.member_id ? `<span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800; background: rgba(255,215,0,0.12); padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">ID: ${appItem.member_id}</span>` : ''}
+                </div>
+
+                <div style="font-size: 0.88rem; color: var(--text-muted, #AAA); display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 16px; margin-bottom: 12px;">
+                  <span><i class="fa-solid fa-phone" style="color: var(--accent-gold, #FFD700);"></i> <strong>Mobile:</strong> ${appItem.customer_mobile}</span>
+                  <span><i class="fa-solid fa-calendar-plus" style="color: var(--accent-gold, #FFD700);"></i> <strong>Applied:</strong> ${appDateFormatted}</span>
+                  ${isApproved ? `
+                    <span><i class="fa-solid fa-calendar-check" style="color: #4CAF50;"></i> <strong>Valid From:</strong> ${validFromFormatted}</span>
+                    <span><i class="fa-solid fa-hourglass-end" style="color: var(--accent-gold, #FFD700);"></i> <strong>Valid Until:</strong> ${validUntilFormatted}</span>
+                  ` : ''}
+                  ${appItem.rejection_reason ? `
+                    <span style="grid-column: 1 / -1; color: #EF5350;"><i class="fa-solid fa-circle-info"></i> <strong>Rejection Reason:</strong> ${appItem.rejection_reason}</span>
+                  ` : ''}
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.06); padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); flex-wrap: wrap; color: var(--text-main, #FFF);">
+                  <span>Fee: <strong style="color: #4CAF50;">₹${appItem.fee_amount}</strong></span>
+                  <span>Payment Proof: ${payStatusBadge}</span>
+                  <span>Method: <strong>${appItem.payment_method || 'UPI'}</strong></span>
+                  <span>Ref/UTR: <strong style="font-family: monospace; color: var(--accent-gold, #FFD700);">${utrVal}</strong>
+                    ${utrVal !== 'N/A' ? `
+                      <button type="button" onclick="app.copyUtrToClipboard('${utrVal}')" style="background: none; border: none; color: var(--accent-gold, #FFD700); cursor: pointer; padding: 2px 4px; margin-left: 4px;" title="Copy UTR">
+                        <i class="fa-solid fa-copy"></i>
+                      </button>
+                    ` : ''}
+                  </span>
+                  ${appItem.screenshot_url ? `
+                    <button class="btn-sm btn-outline" style="padding: 3px 10px; font-size: 0.78rem; font-weight: 700; color: #FFD700; border-color: #FFD700; cursor: pointer;" onclick="app.viewPaymentProof('${appItem.screenshot_url}')">
+                      <i class="fa-solid fa-image"></i> 👁 View Screenshot
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
+                ${!isPayVerified && !isApproved ? `
+                  <button class="btn-sm btn-primary" style="background: #1976D2; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer; color: #FFF;" onclick="app.verifyMemberPayment('${appItem.id}')" title="Verify ₹10 Payment Proof">
+                    <i class="fa-solid fa-circle-check"></i> Verify Payment
+                  </button>
+                  <button class="btn-sm btn-outline" style="color: #EF5350; border-color: #EF5350; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.openRejectPaymentModal('${appItem.id}')" title="Reject Payment Proof">
+                    <i class="fa-solid fa-xmark"></i> Reject Payment
+                  </button>
+                ` : ''}
+                ${isPending ? `
+                  <button class="btn-sm btn-primary" style="background: #388E3C; padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer; color: #FFF;" onclick="app.approveMemberCard('${appItem.id}')">
+                    <i class="fa-solid fa-check"></i> Approve Card
+                  </button>
+                  <button class="btn-sm btn-outline" style="color: #EF5350; border-color: #EF5350; padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.rejectMemberCard('${appItem.id}')">
+                    <i class="fa-solid fa-xmark"></i> Reject Card
+                  </button>
+                ` : ''}
+                ${isApproved ? `
+                  ${cardStatus === 'ACTIVE' ? `
+                    <button class="btn-sm btn-outline" style="color: #FF9800; border-color: #FF9800; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.suspendMemberCard('${appItem.id}')">
+                      <i class="fa-solid fa-pause"></i> Suspend
+                    </button>
+                  ` : cardStatus === 'SUSPENDED' ? `
+                    <button class="btn-sm btn-outline" style="color: #4CAF50; border-color: #4CAF50; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.reactivateMemberCard('${appItem.id}')">
+                      <i class="fa-solid fa-play"></i> Reactivate
+                    </button>
+                  ` : ''}
+                ` : ''}
+                <button class="btn-sm btn-outline" style="color: #EF5350; border-color: #EF5350; padding: 8px 12px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.confirmDeleteMemberApp('${appItem.id}')" title="Delete Member Record">
+                  <i class="fa-solid fa-trash-can"></i> Delete
+                </button>
+              </div>
+
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  copyUtrToClipboard(utr) {
+    if (!utr || utr === 'N/A') return;
+    navigator.clipboard.writeText(utr).then(() => {
+      this.showToast('📋 UTR copied to clipboard!', 'info');
+    }).catch(err => {
+      console.error('Clipboard copy error:', err);
+      this.showToast('Failed to copy UTR.', 'error');
+    });
+  }
+
+  confirmDeleteMemberApp(appId) {
+    this.pendingDeleteMemberAppId = appId;
+    const modal = document.getElementById('modalConfirmDeleteMemberApp');
+    if (modal) modal.classList.add('visible');
+  }
+
+  closeDeleteMemberAppModal() {
+    const modal = document.getElementById('modalConfirmDeleteMemberApp');
+    if (modal) modal.classList.remove('visible');
+    this.pendingDeleteMemberAppId = null;
+  }
+
+  async executeDeleteMemberApp() {
+    if (!this.pendingDeleteMemberAppId) return;
+    const btn = document.getElementById('btnConfirmDeleteMemberApp');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Deleting...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/application/${this.pendingDeleteMemberAppId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Deletion failed.');
+
+      this.showToast('🗑 Membership record deleted successfully.', 'info');
+      this.closeDeleteMemberAppModal();
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      console.error('Delete member application error:', err);
+      this.showToast(err.message || 'Failed to delete record.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-trash-can"></i> Delete`;
+      }
+    }
+  }
+
+  openDeleteAllMemberAppsModal() {
+    const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
+    if (modal) modal.classList.add('visible');
+  }
+
+  closeDeleteAllMemberAppsModal() {
+    const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
+    if (modal) modal.classList.remove('visible');
+  }
+
+  async executeDeleteAllMemberApps() {
+    const btn = document.getElementById('btnConfirmDeleteAllMemberApps');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Clearing All...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/applications/all`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Failed to clear records.');
+
+      this.showToast('🗑 All Premium Food Member records cleared successfully.', 'info');
+      this.closeDeleteAllMemberAppsModal();
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      console.error('Delete all member applications error:', err);
+      this.showToast(err.message || 'Failed to clear records.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-trash-can"></i> DELETE ALL`;
+      }
+    }
+  }
+
+  viewPaymentProof(imgUrl) {
+    const modal = document.getElementById('modalViewPaymentProof');
+    const img = document.getElementById('imgPaymentProofZoom');
+    if (modal && img) {
+      this.zoomScale = 1.0;
+      img.style.transform = `scale(1.0)`;
+      img.src = imgUrl;
+      modal.classList.add('visible');
+    }
+  }
+
+  closeViewPaymentProofModal() {
+    const modal = document.getElementById('modalViewPaymentProof');
+    if (modal) modal.classList.remove('visible');
+  }
+
+  zoomPaymentProof(delta) {
+    const img = document.getElementById('imgPaymentProofZoom');
+    if (!img) return;
+    if (delta === 1.0) {
+      this.zoomScale = 1.0;
+    } else {
+      this.zoomScale = Math.min(3.0, Math.max(0.5, (this.zoomScale || 1.0) * delta));
+    }
+    img.style.transform = `scale(${this.zoomScale})`;
+  }
+
+  async verifyMemberPayment(appId) {
+    if (!confirm('Verify this customer ₹10 membership payment proof?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/verify-payment/${appId}`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Payment verification failed.');
+      this.showToast(`🎉 ${data.message}`, 'success');
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      console.error('Verify payment error:', err);
+      this.showToast(err.message || 'Failed to verify payment.', 'error');
+    }
+  }
+
+  openRejectPaymentModal(appId) {
+    this.pendingRejectAppId = appId;
+    const modal = document.getElementById('modalRejectMemberPayment');
+    const txt = document.getElementById('txtPaymentRejectionReason');
+    if (txt) txt.value = '';
+    if (modal) modal.classList.add('visible');
+  }
+
+  closeRejectPaymentModal() {
+    const modal = document.getElementById('modalRejectMemberPayment');
+    if (modal) modal.classList.remove('visible');
+    this.pendingRejectAppId = null;
+  }
+
+  async submitPaymentRejection() {
+    if (!this.pendingRejectAppId) return;
+    const reasonEl = document.getElementById('txtPaymentRejectionReason');
+    const reason = reasonEl ? reasonEl.value.trim() : '';
+
+    if (!reason) {
+      this.showToast('Please enter a rejection reason for the customer.', 'error');
+      return;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reject-payment/${this.pendingRejectAppId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rejection_reason: reason })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Rejection failed.');
+
+      this.showToast('Payment proof rejected.', 'info');
+      this.closeRejectPaymentModal();
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      console.error('Reject payment error:', err);
+      this.showToast(err.message || 'Failed to reject payment proof.', 'error');
+    }
+  }
+
+  async suspendMemberCard(appId) {
+    if (!confirm('Suspend this active Premium Food Member Card?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/suspend/${appId}`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Suspension failed.');
+      this.showToast('Card suspended successfully.', 'info');
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      this.showToast(err.message || 'Failed to suspend card.', 'error');
+    }
+  }
+
+  async reactivateMemberCard(appId) {
+    if (!confirm('Reactivate this suspended Premium Food Member Card?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reactivate/${appId}`, { method: 'POST' });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Reactivation failed.');
+      this.showToast('Card reactivated successfully!', 'success');
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      this.showToast(err.message || 'Failed to reactivate card.', 'error');
+    }
+  }
+
+  async approveMemberCard(appId) {
+    if (!confirm('Approve this customer application and issue an active 3-Month Premium Food Member Card?')) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/approve/${appId}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Approval failed.');
+      }
+      this.showToast(`🎉 ${data.message}`, 'success');
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      console.error('Approve member card error:', err);
+      this.showToast(err.message || 'Failed to approve application.', 'error');
+    }
+  }
+
+  async rejectMemberCard(appId) {
+    const reason = prompt('Enter rejection reason for customer (Optional):', 'Details mismatch');
+    if (reason === null) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reject/${appId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rejection_reason: reason })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Rejection failed.');
+      }
+      this.showToast('Application rejected.', 'info');
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      console.error('Reject member card error:', err);
+      this.showToast(err.message || 'Failed to reject application.', 'error');
+    }
   }
 }
 

@@ -2965,6 +2965,43 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
         finalPayStatus = 'Pending';
       }
 
+      // Check Active Premium Food Member Card Benefits (₹5 Discount & Express Delivery)
+      let foodMemberDiscount = 0.00;
+      let isExpressDelivery = false;
+      let isPremiumMember = false;
+      const requestedExpress = Boolean(req.body.is_express_delivery);
+
+      const cardCheckRes = await tx.query(
+        `SELECT * FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE';`,
+        [req.user.id]
+      );
+      if (cardCheckRes.rows && cardCheckRes.rows.length > 0) {
+        const activeMemberCard = cardCheckRes.rows[0];
+        const expiryMs = new Date(activeMemberCard.valid_until).getTime();
+        if (expiryMs > Date.now()) {
+          foodMemberDiscount = 5.00;
+          isPremiumMember = true;
+          if (requestedExpress && activeMemberCard.express_delivery_eligible) {
+            isExpressDelivery = true;
+          }
+          // Audit Log Member Discount Application
+          logMemberCardAudit({
+            customer_id: req.user.id,
+            member_id: activeMemberCard.member_id,
+            action: 'MEMBER_DISCOUNT_APPLIED',
+            actor_role: 'CUSTOMER',
+            actor_id: req.user.id,
+            details: JSON.stringify({ discount_amount: 5.00, is_express: isExpressDelivery })
+          });
+        } else {
+          await tx.query(`UPDATE food_member_cards SET status = 'EXPIRED', updated_at = $1 WHERE id = $2;`, [new Date().toISOString(), activeMemberCard.id]);
+        }
+      }
+
+      if (foodMemberDiscount > 0) {
+        netAmount = Math.max(0, netAmount - foodMemberDiscount);
+      }
+
       // Create Order Record
       const nowIso = new Date().toISOString();
       const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
@@ -2973,14 +3010,16 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
           id, order_number, customer_id, customer_name, customer_mobile, 
           order_type, delivery_address, notes, total_amount, used_wallet_amount, 
           net_amount, payment_method, payment_status, order_status, items,
-          utr_number, payment_screenshot, screenshot_url, pickup_pin, pickup_pin_verified, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21);`,
+          utr_number, payment_screenshot, screenshot_url, pickup_pin, pickup_pin_verified,
+          food_member_discount, is_express_delivery, is_premium_member, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24);`,
         [
           newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
           order_type || 'Takeaway', delivery_address || null, notes || null,
           grand_total, walletDeducted, netAmount, finalPayMethod,
           finalPayStatus, 'Received', JSON.stringify(formattedItems),
-          cleanUtr, savedScreenshotUrl, savedScreenshotUrl, pickupPin, false, nowIso
+          cleanUtr, savedScreenshotUrl, savedScreenshotUrl, pickupPin, false,
+          foodMemberDiscount, isExpressDelivery ? 1 : 0, isPremiumMember ? 1 : 0, nowIso
         ]
       );
 
@@ -2993,9 +3032,10 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       );
 
       // Notify Owner
+      const memberTag = isPremiumMember ? (isExpressDelivery ? ' ⭐ PREMIUM MEMBER 🚀 EXPRESS' : ' ⭐ PREMIUM MEMBER') : '';
       const notifMsg = isReferralPayment
-        ? `Order #${orderNum} placed by ${req.user.name} using Referral Wallet (₹${grand_total}).`
-        : `Order #${orderNum} placed by ${req.user.name} (₹${netAmount}).`;
+        ? `Order #${orderNum}${memberTag} placed by ${req.user.name} using Referral Wallet (₹${grand_total}).`
+        : `Order #${orderNum}${memberTag} placed by ${req.user.name} (₹${netAmount}).`;
 
       await createAndDispatchNotification({
         target_role: 'OWNER',
@@ -4612,6 +4652,758 @@ app.get('/api/referrals/leaderboard', async (req, res) => {
   } catch (err) {
     console.error('Fetch Leaderboard Error:', err);
     res.json({ success: true, data: [] });
+  }
+});
+
+// =========================================================================
+// PREMIUM FOOD MEMBER CARD SYSTEM ENGINE (₹10 / 3-MONTH MEMBERSHIP)
+// =========================================================================
+
+function addExactThreeCalendarMonths(fromDate = new Date()) {
+  const target = new Date(fromDate);
+  const currentMonth = target.getMonth();
+  const currentDay = target.getDate();
+  
+  target.setMonth(currentMonth + 3);
+  if (target.getDate() !== currentDay && target.getDate() < 5) {
+    target.setDate(0);
+  }
+  return target;
+}
+
+async function logMemberCardAudit({ customer_id, member_id, action, actor_role, actor_id, details }) {
+  try {
+    const id = 'audit_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    await db.query(
+      `INSERT INTO member_card_audit_logs (id, customer_id, member_id, action, actor_role, actor_id, details, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+      [id, customer_id || null, member_id || null, action, actor_role || 'SYSTEM', actor_id || null, details || null, new Date().toISOString()]
+    );
+  } catch (err) {
+    console.error('Audit log error:', err.message);
+  }
+}
+
+// 1. GET /api/food-member/status - Fetch Customer Membership & Application State with Dynamic Expiration
+app.get('/api/food-member/status', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    // Check for Active / Expired / Suspended Card
+    const cardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1;`,
+      [customerId]
+    );
+
+    let card = cardRes.rows && cardRes.rows.length > 0 ? cardRes.rows[0] : null;
+
+    if (card && card.status === 'ACTIVE') {
+      const expiryMs = new Date(card.valid_until).getTime();
+      if (expiryMs <= nowMs) {
+        // Automatically expire card if valid_until has passed
+        await db.query(
+          `UPDATE food_member_cards SET status = 'EXPIRED', updated_at = $1 WHERE id = $2;`,
+          [nowIso, card.id]
+        );
+        card.status = 'EXPIRED';
+        await logMemberCardAudit({
+          customer_id: customerId,
+          member_id: card.member_id,
+          action: 'MEMBERSHIP_EXPIRED',
+          actor_role: 'SYSTEM',
+          details: 'Membership auto-expired past 3 calendar months.'
+        });
+        await createAndDispatchNotification({
+          target_role: 'CUSTOMER',
+          customer_id: customerId,
+          title: '⚠️ Premium Food Membership Expired',
+          message: 'Your 3-month Premium Food Membership has expired. Click Buy Again ₹10 to renew!',
+          type: 'MEMBER_CARD',
+          priority: 'NORMAL',
+          action_url: '/#secCustomerMemberCard'
+        });
+      }
+    }
+
+    // Fetch Latest Application
+    const appRes = await db.query(
+      `SELECT * FROM food_member_applications WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1;`,
+      [customerId]
+    );
+    let application = appRes.rows && appRes.rows.length > 0 ? appRes.rows[0] : null;
+
+    let overallStatus = 'NO_APPLICATION';
+    if (card && card.status === 'ACTIVE') {
+      overallStatus = 'ACTIVE';
+    } else if (card && card.status === 'SUSPENDED') {
+      overallStatus = 'SUSPENDED';
+    } else if (application && application.status === 'PENDING_APPROVAL') {
+      overallStatus = 'PENDING_APPROVAL';
+    } else if (card && card.status === 'EXPIRED') {
+      overallStatus = 'EXPIRED';
+    } else if (application && application.status === 'REJECTED') {
+      overallStatus = 'REJECTED';
+    }
+
+    res.json({
+      success: true,
+      status: overallStatus,
+      card,
+      application,
+      benefits: {
+        discount_amount: 5.00,
+        express_delivery_eligible: true
+      }
+    });
+  } catch (err) {
+    console.error('Fetch Food Member Status Error:', err);
+    res.status(500).json({ success: false, message: "Failed to load member status." });
+  }
+});
+
+// 2. POST /api/food-member/apply - Customer Application with ₹10 Verified Payment
+app.post('/api/food-member/apply', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { payment_method, utr_number, payment_screenshot } = req.body;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    // Verification 1: Customer does not currently have an ACTIVE unexpired card
+    const activeCardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE';`,
+      [customerId]
+    );
+    if (activeCardRes.rows && activeCardRes.rows.length > 0) {
+      const c = activeCardRes.rows[0];
+      if (new Date(c.valid_until).getTime() > nowMs) {
+        return res.status(400).json({
+          success: false,
+          code: 'ALREADY_ACTIVE',
+          message: `You already have an active Premium Food Member Card valid until ${new Date(c.valid_until).toLocaleDateString('en-IN')}.`
+        });
+      }
+    }
+
+    // Verification 2: Customer does not already have a pending application
+    const pendingAppRes = await db.query(
+      `SELECT * FROM food_member_applications WHERE customer_id = $1 AND status = 'PENDING_APPROVAL';`,
+      [customerId]
+    );
+    if (pendingAppRes.rows && pendingAppRes.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'PENDING_EXISTS',
+        message: 'Your Premium Food Member Card application is already submitted and pending Owner approval.'
+      });
+    }
+
+    // Verification 3: Duplicate Payment UTR check
+    const cleanUtr = utr_number ? utr_number.trim() : null;
+    if (cleanUtr) {
+      const dupRes = await db.query(
+        `SELECT id FROM food_member_applications WHERE payment_reference = $1 AND id != $2;`,
+        [cleanUtr, 'NO_EXCLUDE']
+      );
+      if (dupRes.rows && dupRes.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `⚠️ This Payment UTR (${cleanUtr}) has already been submitted for a membership application.`
+        });
+      }
+    }
+
+    let savedScreenshotUrl = null;
+    if (payment_screenshot) {
+      if (!payment_screenshot.startsWith('data:image/')) {
+        return res.status(400).json({ success: false, message: "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP." });
+      }
+      try {
+        savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+      } catch (uploadErr) {
+        console.error('Member screenshot upload error:', uploadErr);
+      }
+    }
+
+    const appId = 'app_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const payRef = cleanUtr || ('PAY_FM_' + Date.now());
+
+    try {
+      await db.executeTransaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO food_member_applications (
+            id, customer_id, customer_name, customer_mobile, fee_amount, 
+            payment_method, payment_status, payment_reference, screenshot_url, status, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+          [
+            appId, customerId, req.user.name, req.user.mobile, 10.00,
+            payment_method || 'UPI', 'VERIFICATION_PENDING', payRef, savedScreenshotUrl,
+            'PENDING_APPROVAL', nowIso, nowIso
+          ]
+        );
+
+        // Record in payments table so Owner payment history shows the ₹10 fee
+        const payId = 'pay_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        await tx.query(
+          `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, screenshot_url, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+          [
+            payId, 'MEMBERSHIP_₹10', appId, customerId, req.user.name, req.user.mobile,
+            10.00, payment_method || 'UPI', 'Pending Verification', payRef, savedScreenshotUrl,
+            'Premium Food Member Card Membership Fee (₹10)'
+          ]
+        );
+      });
+    } catch (txErr) {
+      await logMemberCardAudit({
+        customer_id: customerId,
+        action: 'DUPLICATE_REQUEST_BLOCKED',
+        actor_role: 'CUSTOMER',
+        actor_id: customerId,
+        details: `Duplicate application request blocked by database constraint (Ref: ${payRef})`
+      });
+      return res.status(400).json({
+        success: false,
+        code: 'DUPLICATE_APPLICATION_BLOCKED',
+        message: 'A membership application is already in progress for your account.'
+      });
+    }
+
+    await logMemberCardAudit({
+      customer_id: customerId,
+      action: 'APPLICATION_CREATED',
+      actor_role: 'CUSTOMER',
+      actor_id: customerId,
+      details: `Submitted ₹10 membership application (Ref: ${payRef})`
+    });
+
+    await logMemberCardAudit({
+      customer_id: customerId,
+      action: 'MEMBERSHIP_PAYMENT_VERIFIED',
+      actor_role: 'SYSTEM',
+      details: `₹10 payment verified for application ${appId}`
+    });
+
+    // Notify Owner
+    await createAndDispatchNotification({
+      target_role: 'OWNER',
+      title: '🍽️ New Food Member Application',
+      message: `New Premium Food Member Card application submitted by ${req.user.name} (₹10 Paid).`,
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secOwnerMemberCardApprovals'
+    });
+
+    const newAppRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+
+    res.json({
+      success: true,
+      message: "Your Premium Food Member Card application has been submitted successfully. Please wait for Owner approval.",
+      application: newAppRes.rows[0]
+    });
+  } catch (err) {
+    console.error('Apply Food Member Error:', err);
+    res.status(500).json({ success: false, message: err.message || "Failed to submit membership application." });
+  }
+});
+
+// 3. GET /api/food-member/owner/applications - Owner List Applications
+app.get('/api/food-member/owner/applications', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { status } = req.query;
+    let querySql = `
+      SELECT a.*, 
+             c.member_id, c.status as card_status, c.valid_from, c.valid_until, c.qr_verification_code
+      FROM food_member_applications a
+      LEFT JOIN food_member_cards c ON c.application_id = a.id
+    `;
+    const params = [];
+    if (status && status !== 'ALL') {
+      querySql += ` WHERE a.status = $1`;
+      params.push(status);
+    }
+    querySql += ` ORDER BY a.created_at DESC;`;
+
+    const result = await db.query(querySql, params);
+
+    // Calculate count stats across all status categories
+    const countsRes = await db.query(`
+      SELECT 
+        COUNT(*) as total_all,
+        COUNT(CASE WHEN status = 'PENDING_APPROVAL' THEN 1 END) as total_pending,
+        COUNT(CASE WHEN status = 'APPROVED' THEN 1 END) as total_approved,
+        COUNT(CASE WHEN status = 'REJECTED' THEN 1 END) as total_rejected
+      FROM food_member_applications;
+    `);
+
+    const counts = (countsRes.rows && countsRes.rows.length > 0) ? {
+      all: parseInt(countsRes.rows[0].total_all || 0, 10),
+      pending: parseInt(countsRes.rows[0].total_pending || 0, 10),
+      approved: parseInt(countsRes.rows[0].total_approved || 0, 10),
+      rejected: parseInt(countsRes.rows[0].total_rejected || 0, 10)
+    } : { all: 0, pending: 0, approved: 0, rejected: 0 };
+
+    res.json({ success: true, counts, data: result.rows || [] });
+  } catch (err) {
+    console.error('Fetch Owner Applications Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch membership applications." });
+  }
+});
+
+// 4. POST /api/food-member/owner/approve/:id - Owner Approve Application
+app.post('/api/food-member/owner/approve/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const appId = req.params.id;
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    const appRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Application not found." });
+    }
+    const application = appRes.rows[0];
+
+    if (application.status !== 'PENDING_APPROVAL') {
+      return res.status(400).json({ success: false, message: `Application status is already ${application.status}.` });
+    }
+
+    let createdCard = null;
+
+    await db.executeTransaction(async (tx) => {
+      // 1. Update application status to APPROVED
+      await tx.query(
+        `UPDATE food_member_applications SET status = 'APPROVED', updated_at = $1 WHERE id = $2;`,
+        [nowIso, appId]
+      );
+
+      // 2. Generate unique Member ID via atomic counter (e.g., FM-000125)
+      const memberSeq = await db.getNextCounter('member_counter');
+      const memberId = 'FM-' + String(memberSeq).padStart(6, '0');
+
+      // 3. Calculate exact 3 CALENDAR MONTHS validity
+      const validFrom = now;
+      const validUntil = addExactThreeCalendarMonths(now);
+
+      const qrCode = 'QR_FM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+      const cardId = 'card_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+      // 4. Create Food Member Card
+      await tx.query(
+        `INSERT INTO food_member_cards (
+          id, member_id, customer_id, customer_name, customer_mobile, application_id,
+          status, valid_from, valid_until, discount_amount, express_delivery_eligible,
+          qr_verification_code, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+        [
+          cardId, memberId, application.customer_id, application.customer_name, application.customer_mobile,
+          appId, 'ACTIVE', validFrom.toISOString(), validUntil.toISOString(), 5.00, true,
+          qrCode, nowIso, nowIso
+        ]
+      );
+
+      const cardResult = await tx.query(`SELECT * FROM food_member_cards WHERE id = $1;`, [cardId]);
+      createdCard = cardResult.rows[0];
+    });
+
+    const formattedExpiry = new Date(createdCard.valid_until).toLocaleDateString('en-IN');
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      member_id: createdCard.member_id,
+      action: 'APPLICATION_APPROVED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: `Approved application ${appId}`
+    });
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      member_id: createdCard.member_id,
+      action: 'CARD_GENERATED',
+      actor_role: 'SYSTEM',
+      details: `Generated card ${createdCard.member_id} valid until ${formattedExpiry}`
+    });
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      member_id: createdCard.member_id,
+      action: 'MEMBERSHIP_ACTIVATED',
+      actor_role: 'OWNER',
+      details: `Membership activated`
+    });
+
+    // Notify Customer
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: application.customer_id,
+      title: '🎉 Premium Food Member Card Approved!',
+      message: `Your Premium Food Member Card (${createdCard.member_id}) is now active until ${formattedExpiry}. Enjoy ₹5 OFF & Express Delivery!`,
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secCustomerMemberCard'
+    });
+
+    res.json({
+      success: true,
+      message: `Premium Food Member Card (${createdCard.member_id}) approved and activated successfully!`,
+      card: createdCard
+    });
+  } catch (err) {
+    console.error('Approve Member Card Error:', err);
+    res.status(500).json({ success: false, message: err.message || "Failed to approve member card." });
+  }
+});
+
+// 5. POST /api/food-member/owner/reject/:id - Owner Reject Application
+app.post('/api/food-member/owner/reject/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const appId = req.params.id;
+    const { rejection_reason } = req.body;
+    const nowIso = new Date().toISOString();
+
+    const appRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Application not found." });
+    }
+    const application = appRes.rows[0];
+
+    await db.query(
+      `UPDATE food_member_applications 
+       SET status = 'REJECTED', rejection_reason = $1, refund_status = 'PENDING', updated_at = $2 
+       WHERE id = $3;`,
+      [rejection_reason || 'Rejected by Owner', nowIso, appId]
+    );
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      action: 'APPLICATION_REJECTED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: `Rejected application ${appId}. Reason: ${rejection_reason || 'None'}`
+    });
+
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: application.customer_id,
+      title: '❌ Premium Food Member Application Rejected',
+      message: 'Your Premium Food Member Card application was rejected. Please contact the Owner regarding your ₹10 membership payment.',
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secCustomerMemberCard'
+    });
+
+    res.json({
+      success: true,
+      message: "Application rejected."
+    });
+  } catch (err) {
+    console.error('Reject Member Application Error:', err);
+    res.status(500).json({ success: false, message: "Failed to reject application." });
+  }
+});
+
+// 5B. POST /api/food-member/owner/verify-payment/:id - Owner Verify ₹10 Payment Proof
+app.post('/api/food-member/owner/verify-payment/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const appId = req.params.id;
+    const nowIso = new Date().toISOString();
+
+    const appRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Application not found." });
+    }
+    const application = appRes.rows[0];
+
+    if (application.payment_status === 'VERIFIED') {
+      return res.status(400).json({ success: false, message: "Payment proof is already verified." });
+    }
+
+    await db.executeTransaction(async (tx) => {
+      await tx.query(
+        `UPDATE food_member_applications SET payment_status = 'VERIFIED', updated_at = $1 WHERE id = $2;`,
+        [nowIso, appId]
+      );
+      await tx.query(
+        `UPDATE payments SET payment_status = 'Verified', notes = '₹10 Membership Payment Proof VERIFIED by Owner' WHERE order_id = $1;`,
+        [appId]
+      );
+    });
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      action: 'MEMBERSHIP_PAYMENT_VERIFIED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: `₹10 payment proof verified for application ${appId}`
+    });
+
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: application.customer_id,
+      title: '🎉 ₹10 Premium Food Card Payment Verified!',
+      message: 'Your ₹10 Premium Food Member Card payment proof has been verified by the Owner. Your membership card is awaiting final approval.',
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secCustomerMemberCard'
+    });
+
+    res.json({
+      success: true,
+      message: "₹10 Payment proof verified successfully! Application is ready for final approval."
+    });
+  } catch (err) {
+    console.error('Verify Payment Proof Error:', err);
+    res.status(500).json({ success: false, message: "Failed to verify payment proof." });
+  }
+});
+
+// 5C. POST /api/food-member/owner/reject-payment/:id - Owner Reject Payment Proof
+app.post('/api/food-member/owner/reject-payment/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const appId = req.params.id;
+    const { rejection_reason } = req.body;
+    const nowIso = new Date().toISOString();
+
+    if (!rejection_reason || !rejection_reason.trim()) {
+      return res.status(400).json({ success: false, message: "Please provide a rejection reason." });
+    }
+
+    const appRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Application not found." });
+    }
+    const application = appRes.rows[0];
+
+    await db.executeTransaction(async (tx) => {
+      await tx.query(
+        `UPDATE food_member_applications SET payment_status = 'REJECTED', rejection_reason = $1, updated_at = $2 WHERE id = $3;`,
+        [rejection_reason.trim(), nowIso, appId]
+      );
+      await tx.query(
+        `UPDATE payments SET payment_status = 'Rejected', notes = $1 WHERE order_id = $2;`,
+        [`₹10 Payment Proof REJECTED: ${rejection_reason.trim()}`, appId]
+      );
+    });
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      action: 'MEMBERSHIP_PAYMENT_REJECTED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: `Payment proof rejected for application ${appId}. Reason: ${rejection_reason.trim()}`
+    });
+
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: application.customer_id,
+      title: '❌ Premium Food Card Payment Proof Rejected',
+      message: `Your ₹10 payment proof was rejected. Reason: ${rejection_reason.trim()}. Please submit a valid payment screenshot and UTR.`,
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secCustomerMemberCard'
+    });
+
+    res.json({
+      success: true,
+      message: "Payment proof rejected."
+    });
+  } catch (err) {
+    console.error('Reject Payment Proof Error:', err);
+    res.status(500).json({ success: false, message: "Failed to reject payment proof." });
+  }
+});
+
+// 5D. POST /api/food-member/resubmit-proof - Customer Resubmit Payment Proof
+app.post('/api/food-member/resubmit-proof', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { payment_method, utr_number, payment_screenshot } = req.body;
+    const nowIso = new Date().toISOString();
+
+    const appRes = await db.query(
+      `SELECT * FROM food_member_applications WHERE customer_id = $1 AND (payment_status = 'REJECTED' OR status = 'REJECTED');`,
+      [customerId]
+    );
+
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "No rejected application eligible for resubmission." });
+    }
+
+    const application = appRes.rows[0];
+    const cleanUtr = utr_number ? utr_number.trim() : null;
+
+    if (cleanUtr) {
+      const dupRes = await db.query(
+        `SELECT id FROM food_member_applications WHERE payment_reference = $1 AND id != $2;`,
+        [cleanUtr, application.id]
+      );
+      if (dupRes.rows && dupRes.rows.length > 0) {
+        return res.status(400).json({ success: false, message: `⚠️ This Payment UTR (${cleanUtr}) has already been used by another application.` });
+      }
+    }
+
+    let savedScreenshotUrl = application.screenshot_url;
+    if (payment_screenshot) {
+      if (!payment_screenshot.startsWith('data:image/')) {
+        return res.status(400).json({ success: false, message: "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP." });
+      }
+      savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+    }
+
+    const payRef = cleanUtr || application.payment_reference;
+
+    await db.executeTransaction(async (tx) => {
+      await tx.query(
+        `UPDATE food_member_applications SET 
+          payment_method = $1, payment_status = 'VERIFICATION_PENDING', payment_reference = $2, 
+          screenshot_url = $3, status = 'PENDING_APPROVAL', rejection_reason = NULL, updated_at = $4 
+         WHERE id = $5;`,
+        [payment_method || 'UPI', payRef, savedScreenshotUrl, nowIso, application.id]
+      );
+    });
+
+    await logMemberCardAudit({
+      customer_id: customerId,
+      action: 'PAYMENT_PROOF_RESUBMITTED',
+      actor_role: 'CUSTOMER',
+      actor_id: customerId,
+      details: `Resubmitted ₹10 payment proof for application ${application.id} (Ref: ${payRef})`
+    });
+
+    await createAndDispatchNotification({
+      target_role: 'OWNER',
+      title: '🔔 Resubmitted Payment Proof',
+      message: `Resubmitted ₹10 Premium Food Card payment proof by ${req.user.name} requires verification.`,
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secOwnerMemberCardApprovals'
+    });
+
+    res.json({
+      success: true,
+      message: "Your payment proof has been re-submitted successfully. Please wait for Owner verification."
+    });
+  } catch (err) {
+    console.error('Resubmit Payment Proof Error:', err);
+    res.status(500).json({ success: false, message: "Failed to resubmit payment proof." });
+  }
+});
+
+// 6. POST /api/food-member/owner/suspend/:id & reactivate/:id - Owner Card Controls
+app.post('/api/food-member/owner/suspend/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const cardId = req.params.id;
+    const nowIso = new Date().toISOString();
+    await db.query(`UPDATE food_member_cards SET status = 'SUSPENDED', updated_at = $1 WHERE id = $2;`, [nowIso, cardId]);
+    res.json({ success: true, message: "Member card suspended." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to suspend card." });
+  }
+});
+
+app.post('/api/food-member/owner/reactivate/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const cardId = req.params.id;
+    const nowIso = new Date().toISOString();
+    await db.query(`UPDATE food_member_cards SET status = 'ACTIVE', updated_at = $1 WHERE id = $2;`, [nowIso, cardId]);
+    res.json({ success: true, message: "Member card reactivated." });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to reactivate card." });
+  }
+});
+
+// 6B. DELETE /api/food-member/owner/application/:id - Owner Delete Individual Member Application/Card Record
+app.delete('/api/food-member/owner/application/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const appId = req.params.id;
+
+    const appRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Application record not found." });
+    }
+    const application = appRes.rows[0];
+
+    await db.executeTransaction(async (tx) => {
+      await tx.query(`DELETE FROM food_member_cards WHERE application_id = $1 OR customer_id = $2;`, [appId, application.customer_id]);
+      await tx.query(`DELETE FROM food_member_applications WHERE id = $1;`, [appId]);
+    });
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      action: 'APPLICATION_DELETED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: `Owner deleted membership record ${appId}`
+    });
+
+    res.json({
+      success: true,
+      message: "Premium Food Member record deleted successfully."
+    });
+  } catch (err) {
+    console.error('Delete Member Record Error:', err);
+    res.status(500).json({ success: false, message: "Failed to delete membership record." });
+  }
+});
+
+// 6C. DELETE /api/food-member/owner/applications/all - Owner Delete All Member Applications/Cards Records
+app.delete('/api/food-member/owner/applications/all', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    await db.executeTransaction(async (tx) => {
+      await tx.query(`DELETE FROM food_member_cards;`);
+      await tx.query(`DELETE FROM food_member_applications;`);
+    });
+
+    await logMemberCardAudit({
+      customer_id: null,
+      action: 'ALL_APPLICATIONS_DELETED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: `Owner cleared all Premium Food Member Card records`
+    });
+
+    res.json({
+      success: true,
+      message: "All Premium Food Member Card records cleared successfully."
+    });
+  } catch (err) {
+    console.error('Delete All Member Records Error:', err);
+    res.status(500).json({ success: false, message: "Failed to clear membership records." });
+  }
+});
+
+// 7. GET /api/food-member/verify/:code - Public Verification Endpoint
+app.get('/api/food-member/verify/:code', async (req, res) => {
+  try {
+    const code = req.params.code;
+    const cardRes = await db.query(
+      `SELECT member_id, customer_name, status, valid_from, valid_until, discount_amount, express_delivery_eligible
+       FROM food_member_cards 
+       WHERE qr_verification_code = $1 OR member_id = $1;`,
+      [code]
+    );
+
+    if (!cardRes.rows || cardRes.rows.length === 0) {
+      return res.json({ valid: false, message: "Invalid or non-existent Food Member Card." });
+    }
+
+    const card = cardRes.rows[0];
+    const isExpired = new Date(card.valid_until).getTime() <= Date.now();
+    const isVerifiedActive = card.status === 'ACTIVE' && !isExpired;
+
+    res.json({
+      valid: isVerifiedActive,
+      status: isExpired ? 'EXPIRED' : card.status,
+      member_id: card.member_id,
+      customer_name: card.customer_name,
+      valid_from: card.valid_from,
+      valid_until: card.valid_until,
+      benefits: "₹5 OFF + Express Delivery"
+    });
+  } catch (err) {
+    res.status(500).json({ valid: false, message: "Verification error." });
   }
 });
 

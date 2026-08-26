@@ -7390,4 +7390,155 @@ body.guest-mode #btnMobileMenuToggle {
   cursor: not-allowed !important;
 }
 
+/* =========================================================================
+   PREMIUM FOOD MEMBER CARD & PRINT STYLES
+   ========================================================================= */
+.food-member-card-wrapper {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.food-member-card-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.3) !important;
+}
 
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #secCustomerMemberCard,
+  #secCustomerMemberCard *,
+  #printableFoodMemberCard,
+  #printableFoodMemberCard * {
+    visibility: visible !important;
+  }
+  #printableFoodMemberCard {
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 90% !important;
+    max-width: 650px !important;
+    box-shadow: none !important;
+    border: 2px solid #000 !important;
+    background: #1A1A2E !important;
+    color: #FFF !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .card-actions-row,
+  .member-hero-banner,
+  .app-header,
+  .desktop-sidebar,
+  .mobile-bottom-nav,
+  .app-footer,
+  .floating-support-container,
+  .mobile-drawer-overlay {
+    display: none !important;
+  }
+}
+
+/* Premium Member Order Marker Badges */
+.badge-premium-member {
+  animation: goldGlowPulse 2.5s infinite ease-in-out;
+}
+@keyframes goldGlowPulse {
+  0% { box-shadow: 0 0 4px rgba(255, 215, 0, 0.4); }
+  50% { box-shadow: 0 0 12px rgba(255, 215, 0, 0.8); }
+  100% { box-shadow: 0 0 4px rgba(255, 215, 0, 0.4); }
+}
+
+.badge-express-priority {
+  animation: expressBluePulse 2.5s infinite ease-in-out;
+}
+@keyframes expressBluePulse {
+  0% { border-color: rgba(100, 181, 246, 0.5); }
+  50% { border-color: rgba(100, 181, 246, 1); box-shadow: 0 0 8px rgba(100, 181, 246, 0.5); }
+  100% { border-color: rgba(100, 181, 246, 0.5); }
+}
+
+/* Responsive scoping for Food Member Card sections */
+#secCustomerMemberCard,
+#secOwnerMemberCardApprovals {
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.food-member-card-wrapper {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+}
+
+@media (max-width: 600px) {
+  .food-member-grid-layout {
+    grid-template-columns: 1fr !important;
+    text-align: center;
+  }
+  .food-member-grid-layout > div {
+    margin: 0 auto;
+  }
+  .card-actions-row {
+    flex-direction: column;
+    width: 100%;
+  }
+  .card-actions-row button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .member-pricing-box {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .member-pricing-box > div {
+    border-left: none !important;
+    border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    padding-top: 10px;
+  }
+}
+
+/* Premium Food Member Card Top Filter Tab Buttons */
+.member-filter-btn {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: 1px solid var(--border-color, #444);
+  background: var(--bg-surface-elevated, rgba(255, 255, 255, 0.08));
+  color: var(--text-main, #FFFFFF) !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  outline: none;
+}
+
+.member-filter-btn:hover {
+  background: rgba(255, 215, 0, 0.15) !important;
+  border-color: var(--accent-gold, #FFD700) !important;
+  color: var(--accent-gold, #FFD700) !important;
+  transform: translateY(-1px);
+}
+
+.member-filter-btn.active {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%) !important;
+  color: #1A1A2E !important;
+  border-color: #FFD700 !important;
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.35) !important;
+}
+
+.member-filter-btn .count-badge {
+  background: rgba(0, 0, 0, 0.25);
+  color: currentColor;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.member-filter-btn.active .count-badge {
+  background: rgba(26, 26, 46, 0.2);
+  color: #1A1A2E !important;
+}
