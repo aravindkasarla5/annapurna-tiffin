@@ -4823,48 +4823,65 @@ app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
       });
     }
 
-    // 1. UTR Validation: MUST BE REQUIRED AND STRICTLY NUMERIC ONLY (/^\d+$/)
-    if (!utr_number || !utr_number.toString().trim()) {
-      return res.status(400).json({ success: false, message: "❌ UTR / Transaction ID is required." });
-    }
-    const cleanUtr = utr_number.toString().trim();
-    if (!/^\d+$/.test(cleanUtr)) {
-      return res.status(400).json({ success: false, message: "❌ Please enter a valid numeric UTR / Transaction ID." });
-    }
+    const isCashPaid = payment_method === 'Cash Paid' || is_cash_paid === true;
 
-    // 2. Duplicate UTR Check (Cross-checks Applications & Payment Ledger)
-    const dupAppRes = await db.query(
-      `SELECT id FROM food_member_applications WHERE payment_reference = $1;`,
-      [cleanUtr]
-    );
-    const dupPayRes = await db.query(
-      `SELECT id FROM payments WHERE utr_number = $1;`,
-      [cleanUtr]
-    );
-    if ((dupAppRes.rows && dupAppRes.rows.length > 0) || (dupPayRes.rows && dupPayRes.rows.length > 0)) {
-      return res.status(400).json({
-        success: false,
-        message: "❌ This UTR / Transaction ID has already been used."
-      });
-    }
-
-    // 3. Payment Screenshot Validation: STRICTLY MANDATORY
-    if (!payment_screenshot) {
-      return res.status(400).json({ success: false, message: "❌ Payment screenshot is required." });
-    }
-    if (!payment_screenshot.startsWith('data:image/')) {
-      return res.status(400).json({ success: false, message: "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP." });
-    }
-
+    let cleanUtr = '';
     let savedScreenshotUrl = null;
-    try {
-      savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
-    } catch (uploadErr) {
-      console.error('Member screenshot upload error:', uploadErr);
-      return res.status(400).json({ success: false, message: "Failed to upload payment screenshot." });
-    }
-    const finalPayMethod = payment_method || 'UPI (QR Pay)';
 
+    if (isCashPaid) {
+      // Cash Paid Payment Method: Generates cash reference
+      cleanUtr = (utr_number && /^\d+$/.test(utr_number.toString().trim())) 
+        ? utr_number.toString().trim() 
+        : Date.now().toString();
+      
+      if (payment_screenshot && payment_screenshot.startsWith('data:image/')) {
+        try {
+          savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+        } catch (e) {}
+      }
+    } else {
+      // Online UPI Payment Method: Mandatory Numeric UTR + Screenshot
+      if (!utr_number || !utr_number.toString().trim()) {
+        return res.status(400).json({ success: false, message: "❌ UTR / Transaction ID is required." });
+      }
+      cleanUtr = utr_number.toString().trim();
+      if (!/^\d+$/.test(cleanUtr)) {
+        return res.status(400).json({ success: false, message: "❌ Please enter a valid numeric UTR / Transaction ID." });
+      }
+
+      // Duplicate UTR Check (Cross-checks Applications & Payment Ledger)
+      const dupAppRes = await db.query(
+        `SELECT id FROM food_member_applications WHERE payment_reference = $1;`,
+        [cleanUtr]
+      );
+      const dupPayRes = await db.query(
+        `SELECT id FROM payments WHERE utr_number = $1;`,
+        [cleanUtr]
+      );
+      if ((dupAppRes.rows && dupAppRes.rows.length > 0) || (dupPayRes.rows && dupPayRes.rows.length > 0)) {
+        return res.status(400).json({
+          success: false,
+          message: "❌ This UTR / Transaction ID has already been used."
+        });
+      }
+
+      // Payment Screenshot Validation: STRICTLY MANDATORY for Online Payments
+      if (!payment_screenshot) {
+        return res.status(400).json({ success: false, message: "⚠️ Payment screenshot is required." });
+      }
+      if (!payment_screenshot.startsWith('data:image/')) {
+        return res.status(400).json({ success: false, message: "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP." });
+      }
+
+      try {
+        savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+      } catch (uploadErr) {
+        console.error('Member screenshot upload error:', uploadErr);
+        return res.status(400).json({ success: false, message: "Failed to upload payment screenshot." });
+      }
+    }
+
+    const finalPayMethod = isCashPaid ? 'Cash Paid' : (payment_method || 'UPI (QR Pay)');
     const appId = 'app_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
     const payRef = cleanUtr;
 

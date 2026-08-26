@@ -12309,21 +12309,17 @@ class TiffinApp {
             <button type="button" onclick="app.closeApplyMemberCardModal()" style="background: rgba(255,255,255,0.1); border: none; font-size: 1.3rem; cursor: pointer; color: #FFF; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1;" title="Close Modal">&times;</button>
           </div>
 
-          <div style="background: rgba(255, 215, 0, 0.08); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; font-size: 0.88rem; border: 1px solid rgba(255,215,0,0.25);">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
-              <span style="color: var(--text-muted, #AAA);">Membership Tier:</span> <strong style="color: var(--accent-gold, #FFD700);">Premium Food Member</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
-              <span style="color: var(--text-muted, #AAA);">Membership Fee:</span> <strong style="color: #4CAF50; font-size: 1.1rem;">₹10 (One-Time)</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-              <span style="color: var(--text-muted, #AAA);">Validity Period:</span> <strong style="color: #FFF;">3 Calendar Months</strong>
-            </div>
-          </div>
-
-          <!-- Payment Options -->
+          <div style="background: rgba(255, 215, 0, 0.08); border-radiu          <!-- Payment Options -->
           <form onsubmit="event.preventDefault(); app.submitMemberCardApplication();">
             
+            <!-- Cash Paid Checkbox (Alternative Payment Method) -->
+            <div style="margin-bottom: 14px; background: rgba(255, 255, 255, 0.05); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.92rem; font-weight: 700; color: #FFF; margin: 0;">
+                <input type="checkbox" id="chkMemberCashPaid" onchange="app.toggleMemberCashPaid()" style="width: 18px; height: 18px; accent-color: #4CAF50; cursor: pointer;">
+                <span>💵 Cash Paid (Alternative Payment Method)</span>
+              </label>
+            </div>
+
             <div id="boxMemberOnlinePayGroup">
               <div style="margin-bottom: 14px;">
                 <label style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 6px; color: var(--text-main, #FFF);">Select Payment Method:</label>
@@ -12359,17 +12355,31 @@ class TiffinApp {
 
                 <!-- Payment Proof Screenshot Input (Required) -->
                 <div style="text-align: left; margin-top: 14px;">
-                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">
+                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 8px;">
                     📷 Payment Screenshot / Proof (Required):
                   </label>
-                  <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="width: 100%; font-size: 0.85rem; color: var(--text-muted, #AAA); box-sizing: border-box;" onchange="app.handleScreenshotSelect(this)">
-                  <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
-                    <img id="memberScreenshotPreviewImg" src="" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #555;">
-                    <div style="flex: 1; min-width: 0;">
-                      <div id="memberScreenshotFileName" style="font-size: 0.8rem; font-weight: 700; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
-                      <div id="memberScreenshotFileSize" style="font-size: 0.75rem; color: var(--text-muted, #AAA);"></div>
+
+                  <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="display: none;" onchange="app.handleScreenshotSelect(this)">
+
+                  <label for="memberScreenshotInput" id="lblMemberScreenshotUpload" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; border-radius: 10px; background: rgba(255, 215, 0, 0.08); border: 1.5px dashed var(--accent-gold, #FFD700); color: var(--accent-gold, #FFD700); font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; box-sizing: border-box; text-align: center;">
+                    <i class="fa-solid fa-camera" style="font-size: 1rem;"></i>
+                    <span id="txtMemberScreenshotUploadLabel">📷 Upload Payment Screenshot</span>
+                  </label>
+
+                  <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 12px; background: rgba(255,255,255,0.06); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.15)); flex-wrap: wrap;">
+                    <img id="memberScreenshotPreviewImg" src="" style="width: 52px; height: 52px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold, #FFD700);">
+                    <div style="flex: 1; min-width: 120px; overflow: hidden;">
+                      <div id="memberScreenshotFileName" style="font-size: 0.85rem; font-weight: 700; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+                      <div id="memberScreenshotFileSize" style="font-size: 0.78rem; color: #4CAF50; font-weight: 600; margin-top: 2px;"></div>
                     </div>
-                    <button type="button" onclick="app.removeSelectedScreenshot()" style="color: #EF5350; border: none; background: none; font-size: 1rem; cursor: pointer;" title="Remove screenshot"><i class="fa-solid fa-trash"></i></button>
+                    <div style="display: flex; gap: 6px;">
+                      <label for="memberScreenshotInput" style="background: rgba(255, 215, 0, 0.15); color: #FFD700; border: 1px solid #FFD700; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="fa-solid fa-arrows-rotate"></i> Change
+                      </label>
+                      <button type="button" onclick="app.removeSelectedScreenshot()" style="color: #EF5350; background: rgba(239, 83, 80, 0.12); border: 1px solid #EF5350; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Remove screenshot">
+                        <i class="fa-solid fa-trash"></i> Remove
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -12399,6 +12409,22 @@ class TiffinApp {
     this.currentMemberScreenshotBase64 = null;
   }
 
+  toggleMemberCashPaid() {
+    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
+    const onlineGroup = document.getElementById('boxMemberOnlinePayGroup');
+    const utrInput = document.getElementById('memberUtrInput');
+
+    if (onlineGroup) {
+      if (isCash) {
+        onlineGroup.style.display = 'none';
+        if (utrInput) utrInput.required = false;
+      } else {
+        onlineGroup.style.display = 'block';
+        if (utrInput) utrInput.required = true;
+      }
+    }
+  }
+
   handleScreenshotSelect(input) {
     const file = input.files ? input.files[0] : null;
     if (!file) return;
@@ -12422,12 +12448,16 @@ class TiffinApp {
       const previewImg = document.getElementById('memberScreenshotPreviewImg');
       const fileNameEl = document.getElementById('memberScreenshotFileName');
       const fileSizeEl = document.getElementById('memberScreenshotFileSize');
+      const uploadBtnLabel = document.getElementById('txtMemberScreenshotUploadLabel');
 
       if (previewContainer && previewImg) {
         previewImg.src = e.target.result;
         if (fileNameEl) fileNameEl.textContent = file.name;
         if (fileSizeEl) fileSizeEl.textContent = `${(file.size / 1024).toFixed(1)} KB`;
         previewContainer.style.display = 'flex';
+      }
+      if (uploadBtnLabel) {
+        uploadBtnLabel.textContent = `✓ Screenshot Selected (${file.name})`;
       }
     };
     reader.readAsDataURL(file);
@@ -12439,6 +12469,8 @@ class TiffinApp {
     if (input) input.value = '';
     const container = document.getElementById('memberScreenshotPreviewContainer');
     if (container) container.style.display = 'none';
+    const uploadBtnLabel = document.getElementById('txtMemberScreenshotUploadLabel');
+    if (uploadBtnLabel) uploadBtnLabel.textContent = '📷 Upload Payment Screenshot';
   }
 
   toggleMemberPayFields() {
@@ -12457,10 +12489,46 @@ class TiffinApp {
   }
 
   async submitMemberCardApplication() {
-    const method = document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)';
+    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
+    const method = isCash ? 'Cash Paid' : (document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)');
     const utrInputVal = document.getElementById('memberUtrInput')?.value || '';
     const cleanUtr = utrInputVal.trim();
     const btn = document.getElementById('btnSubmitMemberApp');
+
+    if (isCash) {
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Submitting...`;
+      }
+
+      try {
+        const res = await this.fetchWithAuth(`${API_BASE}/food-member/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            payment_method: 'Cash Paid',
+            is_cash_paid: true,
+            utr_number: `CASH_${Date.now()}`,
+            payment_screenshot: null
+          })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Submission failed.');
+
+        if (btn) btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✅ Submitted`;
+        this.showToast('✅ Application Submitted Successfully', 'success');
+        this.closeApplyMemberCardModal();
+        await this.loadFoodMemberCardState();
+      } catch (err) {
+        console.error('Submit cash member application error:', err);
+        this.showToast(err.message || '❌ Unable to submit your application right now. Please try again.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fa-solid fa-credit-card"></i> 💳 Pay & Submit`;
+        }
+      }
+      return;
+    }
 
     // 1. FRONTEND UTR VALIDATION (Required + Numeric)
     if (!cleanUtr) {
@@ -12474,7 +12542,7 @@ class TiffinApp {
 
     // 2. FRONTEND PAYMENT SCREENSHOT VALIDATION (Required)
     if (!this.currentMemberScreenshotBase64) {
-      this.showToast('❌ Payment screenshot is required.', 'error');
+      this.showToast('⚠️ Payment screenshot is required.', 'error');
       return;
     }
 
@@ -12504,18 +12572,18 @@ class TiffinApp {
       }
 
       if (btn) {
-        btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✓ Submitted`;
+        btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✅ Submitted`;
       }
 
       this.showToast('✅ Application Submitted Successfully', 'success');
       this.closeApplyMemberCardModal();
       await this.loadFoodMemberCardState();
     } catch (err) {
-      console.error('Submit application error:', err);
+      console.error('Submit online application error:', err);
       this.showToast(err.message || '❌ Unable to submit your application right now. Please try again.', 'error');
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-rotate-right"></i> ↻ Try Again`;
+        btn.innerHTML = `<i class="fa-solid fa-credit-card"></i> 💳 Pay & Submit`;
       }
     }
   }
@@ -12871,11 +12939,11 @@ class TiffinApp {
     const modal = document.getElementById('modalViewPaymentProof');
     const img = document.getElementById('imgPaymentProofZoom');
     if (modal && img) {
-      this.zoomScale = 1.0;
-      img.style.transform = `scale(1.0)`;
       img.src = imgUrl;
+      this.setZoomScale(1.0);
       modal.classList.add('visible');
       modal.classList.add('open');
+      this.setupImageZoomTouchHandlers();
     }
   }
 
@@ -12890,15 +12958,73 @@ class TiffinApp {
     if (modal) modal.classList.remove('visible');
   }
 
-  zoomPaymentProof(delta) {
+  setZoomScale(scale) {
+    this.zoomScale = Math.min(3.0, Math.max(0.5, Math.round(scale * 100) / 100));
     const img = document.getElementById('imgPaymentProofZoom');
-    if (!img) return;
-    if (delta === 1.0) {
-      this.zoomScale = 1.0;
-    } else {
-      this.zoomScale = Math.min(3.0, Math.max(0.5, (this.zoomScale || 1.0) * delta));
+    const lbl = document.getElementById('lblZoomPercentage');
+    if (img) {
+      img.style.transform = `scale(${this.zoomScale})`;
     }
-    img.style.transform = `scale(${this.zoomScale})`;
+    if (lbl) {
+      lbl.textContent = `${Math.round(this.zoomScale * 100)}%`;
+    }
+  }
+
+  zoomPaymentProof(delta) {
+    if (delta === 'reset' || delta === 1.0) {
+      this.setZoomScale(1.0);
+    } else if (typeof delta === 'number') {
+      const current = this.zoomScale || 1.0;
+      this.setZoomScale(current + delta);
+    }
+  }
+
+  setupImageZoomTouchHandlers() {
+    const img = document.getElementById('imgPaymentProofZoom');
+    const container = img ? img.parentElement : null;
+    if (!img || !container || img.dataset.touchBound) return;
+    img.dataset.touchBound = 'true';
+
+    let initialDist = 0;
+    let initialScale = 1.0;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let currentX = 0, currentY = 0;
+
+    container.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        initialDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        initialScale = this.zoomScale || 1.0;
+      } else if (e.touches.length === 1 && (this.zoomScale || 1.0) > 1.0) {
+        isDragging = true;
+        startX = e.touches[0].clientX - currentX;
+        startY = e.touches[0].clientY - currentY;
+      }
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && initialDist > 0) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const factor = dist / initialDist;
+        const newScale = Math.min(3.0, Math.max(0.5, initialScale * factor));
+        this.setZoomScale(newScale);
+      } else if (isDragging && e.touches.length === 1) {
+        currentX = e.touches[0].clientX - startX;
+        currentY = e.touches[0].clientY - startY;
+        img.style.transform = `translate(${currentX}px, ${currentY}px) scale(${this.zoomScale || 1.0})`;
+      }
+    }, { passive: true });
+
+    container.addEventListener('touchend', () => {
+      isDragging = false;
+      initialDist = 0;
+    }, { passive: true });
   }
 
   async verifyMemberPayment(appId) {
