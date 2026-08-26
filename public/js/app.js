@@ -12387,7 +12387,7 @@ class TiffinApp {
 
             <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap;">
               <button type="button" class="btn-secondary-outline" style="flex: 1; min-width: 100px; padding: 11px;" onclick="app.closeApplyMemberCardModal()">Cancel</button>
-              <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="flex: 1.5; min-width: 160px; padding: 11px; font-weight: 700; background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%); cursor: pointer;">
+              <button type="submit" id="btnSubmitMemberApp" class="btn-primary btn-member-pay-submit" style="flex: 1.5; min-width: 160px;">
                 <i class="fa-solid fa-credit-card"></i> 💳 Pay & Submit
               </button>
             </div>
