@@ -12062,55 +12062,68 @@ class TiffinApp {
     const qrImg = this.settings?.upi_qr_code || '/images/tiffin_logo.png';
 
     const modalHtml = `
-      <div id="modalApplyMemberCard" class="modal-overlay" onclick="if(event.target === this) app.closeApplyMemberCardModal()">
-        <div class="modal-card" style="max-width: 500px; width: 92%; padding: 24px; border-radius: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333);">
+      <div id="modalApplyMemberCard" class="modal-backdrop open visible active" style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important; z-index: 999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 12px !important; box-sizing: border-box !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; overflow-y: auto !important;" onclick="if(event.target === this) app.closeApplyMemberCardModal()">
+        <div class="modal-card" style="max-width: 520px; width: 100%; max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px 16px; border-radius: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #444); box-shadow: 0 12px 40px rgba(0,0,0,0.6); box-sizing: border-box;" onclick="event.stopPropagation()">
           
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 12px;">
-            <h3 style="margin: 0; font-size: 1.3rem; color: var(--text-main, #FFF); display: flex; align-items: center; gap: 8px;">
-              <i class="fa-solid fa-id-card" style="color: var(--accent-gold, #FFD700);"></i> Apply for Premium Member Card
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 12px; position: sticky; top: -20px; background: var(--bg-surface-elevated, #1E1E2E); z-index: 5; margin-top: -4px; padding-top: 4px;">
+            <h3 style="margin: 0; font-size: 1.25rem; color: var(--text-main, #FFF); display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-id-card" style="color: var(--accent-gold, #FFD700);"></i> Apply for Member Card
             </h3>
-            <button onclick="app.closeApplyMemberCardModal()" style="background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted, #AAA);">&times;</button>
+            <button type="button" onclick="app.closeApplyMemberCardModal()" style="background: rgba(255,255,255,0.1); border: none; font-size: 1.3rem; cursor: pointer; color: #FFF; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1;" title="Close Modal">&times;</button>
           </div>
 
-          <div style="background: rgba(255, 215, 0, 0.08); border-radius: 12px; padding: 14px; margin-bottom: 18px; font-size: 0.9rem; border: 1px solid rgba(255,215,0,0.2);">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-              <span>Membership Tier:</span> <strong style="color: var(--accent-gold, #FFD700);">Premium Food Member</strong>
+          <div style="background: rgba(255, 215, 0, 0.08); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; font-size: 0.88rem; border: 1px solid rgba(255,215,0,0.25);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+              <span style="color: var(--text-muted, #AAA);">Membership Tier:</span> <strong style="color: var(--accent-gold, #FFD700);">Premium Food Member</strong>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-              <span>Membership Fee:</span> <strong style="color: #4CAF50; font-size: 1.1rem;">₹10</strong>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+              <span style="color: var(--text-muted, #AAA);">Membership Fee:</span> <strong style="color: #4CAF50; font-size: 1.1rem;">₹10 (One-Time)</strong>
             </div>
-            <div style="display: flex; justify-content: space-between;">
-              <span>Validity:</span> <strong>Exact 3 Calendar Months</strong>
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+              <span style="color: var(--text-muted, #AAA);">Validity Period:</span> <strong style="color: #FFF;">3 Calendar Months</strong>
             </div>
           </div>
 
           <!-- Payment Options -->
           <form onsubmit="event.preventDefault(); app.submitMemberCardApplication();">
-            <div style="margin-bottom: 16px;">
+            <div style="margin-bottom: 14px;">
               <label style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 6px; color: var(--text-main, #FFF);">Select Payment Method:</label>
-              <select id="memberPayMethod" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.2); color: var(--text-main, #FFF);" onchange="app.toggleMemberPayFields()">
+              <select id="memberPayMethod" style="width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" onchange="app.toggleMemberPayFields()">
                 <option value="UPI (QR Pay)">UPI QR Pay / Google Pay / PhonePe / Paytm</option>
                 <option value="PhonePe">PhonePe Gateway</option>
               </select>
             </div>
 
             <!-- UPI QR Pay Details Box -->
-            <div id="boxMemberUpiQr" style="background: rgba(0,0,0,0.2); border: 1px dashed var(--accent-gold, #FFD700); border-radius: 12px; padding: 14px; text-align: center; margin-bottom: 16px;">
-              <p style="margin: 0 0 8px 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">Scan QR or pay <strong style="color: var(--accent-gold, #FFD700);">₹10</strong> to UPI ID:</p>
-              <div style="font-family: monospace; font-weight: 700; color: var(--accent-gold, #FFD700); font-size: 1.05rem; margin-bottom: 8px;">${upiId}</div>
-              <img src="${qrImg}" alt="UPI QR Code" style="width: 130px; height: 130px; object-fit: contain; margin: 0 auto 8px auto; display: block; border-radius: 8px; border: 1px solid var(--border-color, #444); background: #FFF; padding: 4px;">
+            <div id="boxMemberUpiQr" style="background: rgba(0,0,0,0.25); border: 1px dashed var(--accent-gold, #FFD700); border-radius: 14px; padding: 16px 12px; text-align: center; margin-bottom: 16px; box-sizing: border-box;">
+              <p style="margin: 0 0 6px 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">Scan QR or pay <strong style="color: var(--accent-gold, #FFD700);">₹10</strong> to UPI ID:</p>
+              <div style="font-family: monospace; font-weight: 700; color: var(--accent-gold, #FFD700); font-size: 1.05rem; margin-bottom: 10px; word-break: break-all;">${upiId}</div>
               
-              <div style="text-align: left; margin-top: 12px;">
-                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 4px;">Enter UTR / Transaction Reference Number (Required):</label>
-                <input type="text" id="memberUtrInput" placeholder="e.g. 4235XXXXXXXX" style="width: 100%; padding: 9px; border-radius: 6px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.9rem;" required>
+              <div style="position: relative; display: inline-block; cursor: pointer;" onclick="app.zoomApplyModalQr()" title="Click to Zoom QR Scanner">
+                <img id="imgApplyModalQr" src="${qrImg}" alt="UPI QR Code Scanner" style="width: 140px; height: 140px; object-fit: contain; margin: 0 auto; display: block; border-radius: 10px; border: 2px solid var(--accent-gold, #FFD700); background: #FFF; padding: 4px;">
+                <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.8); color: #FFD700; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; border: 1px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.5);">
+                  <i class="fa-solid fa-magnifying-glass-plus"></i>
+                </div>
+              </div>
+
+              <!-- Dedicated Zoom Scanner Button -->
+              <div style="margin-top: 10px;">
+                <button type="button" class="btn-sm" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 18px; font-size: 0.85rem; font-weight: 700; color: #1A1A2E; background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%); border: none; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(255,215,0,0.35);" onclick="app.zoomApplyModalQr()">
+                  <i class="fa-solid fa-qrcode"></i> 🔍 Zoom Scanner / QR Code
+                </button>
+              </div>
+
+              <div style="text-align: left; margin-top: 14px;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">Enter UTR / Transaction Reference Number (Required):</label>
+                <input type="text" id="memberUtrInput" placeholder="e.g. 4235XXXXXXXX" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" required>
               </div>
 
               <!-- Payment Proof Screenshot Input -->
               <div style="text-align: left; margin-top: 14px;">
-                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 4px;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">
                   📎 Upload Payment Proof Screenshot (Optional/Recommended):
                 </label>
-                <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="width: 100%; font-size: 0.85rem; color: var(--text-muted, #AAA);" onchange="app.handleScreenshotSelect(this)">
+                <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="width: 100%; font-size: 0.85rem; color: var(--text-muted, #AAA); box-sizing: border-box;" onchange="app.handleScreenshotSelect(this)">
                 <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
                   <img id="memberScreenshotPreviewImg" src="" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #555;">
                   <div style="flex: 1; min-width: 0;">
@@ -12122,9 +12135,9 @@ class TiffinApp {
               </div>
             </div>
 
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-              <button type="button" class="btn-secondary-outline" onclick="app.closeApplyMemberCardModal()">Cancel</button>
-              <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="padding: 10px 24px; font-weight: 700; background: #388E3C; cursor: pointer;">
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap;">
+              <button type="button" class="btn-secondary-outline" style="flex: 1; min-width: 100px; padding: 11px;" onclick="app.closeApplyMemberCardModal()">Cancel</button>
+              <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="flex: 1.5; min-width: 160px; padding: 11px; font-weight: 700; background: #388E3C; cursor: pointer;">
                 <i class="fa-solid fa-paper-plane"></i> Pay ₹10 & Submit Proof
               </button>
             </div>
@@ -12565,7 +12578,14 @@ class TiffinApp {
       img.style.transform = `scale(1.0)`;
       img.src = imgUrl;
       modal.classList.add('visible');
+      modal.classList.add('open');
     }
+  }
+
+  zoomApplyModalQr() {
+    const qrImgEl = document.getElementById('imgApplyModalQr');
+    const src = (qrImgEl && qrImgEl.src) ? qrImgEl.src : (this.settings?.upi_qr_code || '/images/tiffin_logo.png');
+    this.viewPaymentProof(src);
   }
 
   closeViewPaymentProofModal() {

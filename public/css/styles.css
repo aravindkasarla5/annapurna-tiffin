@@ -1367,7 +1367,7 @@ h1, h2, h3, h4, h5, h6 {
   transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
-.modal-backdrop.open {
+.modal-backdrop.open, .modal-backdrop.visible, .modal-backdrop.active {
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
@@ -1387,7 +1387,7 @@ h1, h2, h3, h4, h5, h6 {
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.modal-backdrop.open .modal-card {
+.modal-backdrop.open .modal-card, .modal-backdrop.visible .modal-card, .modal-backdrop.active .modal-card {
   transform: translateY(0) scale(1) !important;
 }
 
@@ -5478,7 +5478,7 @@ body.guest-mode #btnMobileMenuToggle {
   transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
-.modal-backdrop.open {
+.modal-backdrop.open, .modal-backdrop.visible, .modal-backdrop.active {
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
@@ -5499,7 +5499,7 @@ body.guest-mode #btnMobileMenuToggle {
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.modal-backdrop.open .modal-card {
+.modal-backdrop.open .modal-card, .modal-backdrop.visible .modal-card, .modal-backdrop.active .modal-card {
   transform: translateY(0) scale(1);
 }
 
@@ -7541,4 +7541,29 @@ body.guest-mode #btnMobileMenuToggle {
 .member-filter-btn.active .count-badge {
   background: rgba(26, 26, 46, 0.2);
   color: #1A1A2E !important;
+}
+
+/* Mobile Responsiveness for Member Card Application Modal & Scanner */
+@media (max-width: 600px) {
+  #secCustomerMemberCard .container {
+    padding: 10px 8px !important;
+  }
+  .member-hero-banner {
+    padding: 16px 12px !important;
+    border-radius: 12px !important;
+  }
+  .member-hero-banner h2 {
+    font-size: 1.3rem !important;
+  }
+  #modalApplyMemberCard .modal-card {
+    padding: 16px 12px !important;
+    max-height: 94vh !important;
+    border-radius: 16px !important;
+  }
+  #boxMemberUpiQr {
+    padding: 12px 8px !important;
+  }
+  #memberScreenshotInput {
+    font-size: 0.8rem !important;
+  }
 }
