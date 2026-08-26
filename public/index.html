@@ -4494,18 +4494,32 @@
     <div class="modal-backdrop" id="modalViewPaymentProof" onclick="if(event.target === this) app.closeViewPaymentProofModal()">
       <div class="modal-card" style="max-width: 650px; width: 92%; padding: 20px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 10px;">
-          <h3 style="margin: 0; font-size: 1.15rem; color: var(--accent-gold, #FFD700);"><i class="fa-solid fa-qrcode"></i> QR Scanner / Payment Proof</h3>
-          <button type="button" onclick="app.closeViewPaymentProofModal()" style="background: none; border: none; font-size: 1.4rem; color: #AAA; cursor: pointer;">&times;</button>
+          <h3 style="margin: 0; font-size: 1.15rem; color: var(--accent-gold, #FFD700);"><i class="fa-solid fa-image"></i> Payment Proof Screenshot</h3>
+          <button type="button" onclick="app.closeViewPaymentProofModal()" style="background: none; border: none; font-size: 1.4rem; color: #AAA; cursor: pointer;" title="Close Viewer">&times;</button>
         </div>
-        <div style="max-height: 65vh; overflow: auto; margin-bottom: 14px; background: #000; border-radius: 10px; padding: 12px; display: flex; justify-content: center; align-items: center; touch-action: manipulation;">
-          <img id="imgPaymentProofZoom" src="" alt="Payment Proof / QR" style="max-width: 100%; height: auto; border-radius: 6px; transition: transform 0.2s ease; transform-origin: center center;">
+
+        <div id="imgPaymentProofContainer" style="min-height: 220px; max-height: 65vh; overflow: auto; margin-bottom: 14px; background: #000; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; touch-action: manipulation; position: relative;">
+          <!-- Loading Spinner -->
+          <div id="imgPaymentProofLoading" style="display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--accent-gold, #FFD700); padding: 30px 10px;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2.2rem;"></i>
+            <span style="font-weight: 700; font-size: 0.95rem;">⏳ Loading Payment Screenshot...</span>
+          </div>
+
+          <!-- Error Alert -->
+          <div id="imgPaymentProofError" style="display: none; flex-direction: column; align-items: center; gap: 8px; color: #EF5350; padding: 30px 10px; text-align: center;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size: 2.4rem;"></i>
+            <span id="txtPaymentProofErrorMsg" style="font-weight: 700; font-size: 0.95rem;">⚠️ Payment screenshot not available.</span>
+          </div>
+
+          <img id="imgPaymentProofZoom" src="" alt="Payment Proof / QR" style="max-width: 100%; height: auto; border-radius: 6px; transition: transform 0.2s ease; transform-origin: center center; display: none;">
         </div>
+
         <div style="display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
-          <button type="button" class="btn-secondary-outline" onclick="app.zoomPaymentProof(-0.25)" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-magnifying-glass-minus"></i> ➖ Zoom Out</button>
+          <button type="button" class="btn-secondary-outline btn-action-zoom-out" onclick="app.zoomPaymentProof(-0.25)" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-magnifying-glass-minus"></i> ➖ Zoom Out</button>
           <span id="lblZoomPercentage" style="font-weight: 800; font-size: 0.95rem; color: var(--accent-gold, #FFD700); font-family: monospace; min-width: 54px; text-align: center;">100%</span>
-          <button type="button" class="btn-secondary-outline" onclick="app.zoomPaymentProof(0.25)" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-magnifying-glass-plus"></i> ➕ Zoom In</button>
-          <button type="button" class="btn-secondary-outline" onclick="app.zoomPaymentProof('reset')" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-rotate-left"></i> ↺ Reset</button>
-          <button type="button" class="btn-primary-block" onclick="app.closeViewPaymentProofModal()" style="max-width: 100px; padding: 6px 14px; font-weight: 700;">✕ Close</button>
+          <button type="button" class="btn-secondary-outline btn-action-zoom-in" onclick="app.zoomPaymentProof(0.25)" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-magnifying-glass-plus"></i> ➕ Zoom In</button>
+          <button type="button" class="btn-secondary-outline btn-action-reset" onclick="app.zoomPaymentProof('reset')" style="padding: 6px 14px; font-weight: 700;"><i class="fa-solid fa-rotate-left"></i> ↺ Reset</button>
+          <button type="button" class="btn-primary-block btn-action-close" onclick="app.closeViewPaymentProofModal()" style="max-width: 100px; padding: 6px 14px; font-weight: 700;">✕ Close</button>
         </div>
       </div>
     </div>

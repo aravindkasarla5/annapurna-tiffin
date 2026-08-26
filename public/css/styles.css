@@ -7672,3 +7672,138 @@ body.guest-mode #btnMobileMenuToggle {
   background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
   box-shadow: 0 4px 15px rgba(5, 150, 105, 0.3) !important;
 }
+
+/* =========================================================================
+   OWNER MEMBER CARD APPROVALS ACTION BUTTONS - HOVER & TOUCH ANIMATIONS
+   ========================================================================= */
+.btn-action-view-screenshot,
+.btn-action-verify-pay,
+.btn-action-reject-pay,
+.btn-action-approve-card,
+.btn-action-reject-card,
+.btn-action-reapprove-card,
+.btn-action-suspend-card,
+.btn-action-reactivate-card,
+.btn-action-delete {
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  user-select: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  cursor: pointer !important;
+}
+
+/* View Screenshot Button */
+.btn-action-view-screenshot {
+  color: #FFD700 !important;
+  border: 1px solid #FFD700 !important;
+  background: rgba(255, 215, 0, 0.08) !important;
+  padding: 4px 12px !important;
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+}
+.btn-action-view-screenshot:hover {
+  background: rgba(255, 215, 0, 0.22) !important;
+  transform: translateY(-2px) scale(1.04) !important;
+  box-shadow: 0 4px 14px rgba(255, 215, 0, 0.35) !important;
+}
+.btn-action-view-screenshot:active {
+  transform: translateY(1px) scale(0.96) !important;
+  box-shadow: 0 2px 6px rgba(255, 215, 0, 0.2) !important;
+}
+
+/* Verify Payment Button */
+.btn-action-verify-pay {
+  background: linear-gradient(135deg, #1E88E5 0%, #1565C0 100%) !important;
+  color: #FFF !important;
+  padding: 8px 14px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+  border: none !important;
+  box-shadow: 0 3px 10px rgba(25, 118, 210, 0.35) !important;
+}
+.btn-action-verify-pay:hover {
+  background: linear-gradient(135deg, #42A5F5 0%, #1E88E5 100%) !important;
+  transform: translateY(-2px) scale(1.03) !important;
+  box-shadow: 0 6px 18px rgba(25, 118, 210, 0.5) !important;
+}
+.btn-action-verify-pay:active {
+  transform: translateY(1px) scale(0.96) !important;
+}
+
+/* Approve Card Button */
+.btn-action-approve-card {
+  background: linear-gradient(135deg, #43A047 0%, #2E7D32 100%) !important;
+  color: #FFF !important;
+  padding: 8px 16px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+  border: none !important;
+  box-shadow: 0 3px 10px rgba(56, 142, 60, 0.35) !important;
+}
+.btn-action-approve-card:hover {
+  background: linear-gradient(135deg, #66BB6A 0%, #43A047 100%) !important;
+  transform: translateY(-2px) scale(1.03) !important;
+  box-shadow: 0 6px 18px rgba(56, 142, 60, 0.5) !important;
+}
+.btn-action-approve-card:active {
+  transform: translateY(1px) scale(0.96) !important;
+}
+
+/* Reject Payment & Reject Card Buttons */
+.btn-action-reject-pay,
+.btn-action-reject-card {
+  color: #EF5350 !important;
+  border: 1px solid #EF5350 !important;
+  background: rgba(239, 83, 80, 0.08) !important;
+  padding: 8px 14px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+}
+.btn-action-reject-pay:hover,
+.btn-action-reject-card:hover {
+  background: rgba(239, 83, 80, 0.22) !important;
+  transform: translateY(-2px) scale(1.03) !important;
+  box-shadow: 0 4px 14px rgba(239, 83, 80, 0.35) !important;
+}
+.btn-action-reject-pay:active,
+.btn-action-reject-card:active {
+  transform: translateY(1px) scale(0.96) !important;
+}
+
+/* Re-Approve Button */
+.btn-action-reapprove-card {
+  background: linear-gradient(135deg, #0288D1 0%, #01579B 100%) !important;
+  color: #FFF !important;
+  padding: 8px 16px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+  border: none !important;
+  box-shadow: 0 3px 10px rgba(0, 136, 204, 0.35) !important;
+}
+.btn-action-reapprove-card:hover {
+  background: linear-gradient(135deg, #03A9F4 0%, #0288D1 100%) !important;
+  transform: translateY(-2px) scale(1.03) !important;
+  box-shadow: 0 6px 18px rgba(0, 136, 204, 0.5) !important;
+}
+.btn-action-reapprove-card:active {
+  transform: translateY(1px) scale(0.96) !important;
+}
+
+/* Delete Record Button */
+.btn-action-delete {
+  color: #EF5350 !important;
+  border: 1px solid rgba(239, 83, 80, 0.6) !important;
+  background: rgba(239, 83, 80, 0.08) !important;
+  padding: 8px 12px !important;
+  font-weight: 700 !important;
+  border-radius: 8px !important;
+}
+.btn-action-delete:hover {
+  background: rgba(239, 83, 80, 0.25) !important;
+  border-color: #EF5350 !important;
+  transform: translateY(-2px) scale(1.03) !important;
+  box-shadow: 0 4px 14px rgba(239, 83, 80, 0.35) !important;
+}
+.btn-action-delete:active {
+  transform: translateY(1px) scale(0.96) !important;
+}

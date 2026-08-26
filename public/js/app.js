@@ -12806,7 +12806,7 @@ class TiffinApp {
                     ` : ''}
                   </span>
                   ${appItem.screenshot_url ? `
-                    <button class="btn-sm btn-outline" style="padding: 3px 10px; font-size: 0.78rem; font-weight: 700; color: #FFD700; border-color: #FFD700; cursor: pointer;" onclick="app.viewPaymentProof('${appItem.screenshot_url}')">
+                    <button class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewPaymentProof('${appItem.screenshot_url}')" title="View Customer Payment Screenshot">
                       <i class="fa-solid fa-image"></i> 👁 View Screenshot
                     </button>
                   ` : ''}
@@ -12815,33 +12815,33 @@ class TiffinApp {
 
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
                 ${!isPayVerified && !isApproved ? `
-                  <button class="btn-sm btn-primary" style="background: #1976D2; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer; color: #FFF;" onclick="app.verifyMemberPayment('${appItem.id}')" title="Verify ₹10 Payment Proof">
+                  <button class="btn-sm btn-primary btn-action-verify-pay" onclick="app.verifyMemberPayment('${appItem.id}')" title="Verify ₹10 Payment Proof">
                     <i class="fa-solid fa-circle-check"></i> Verify Payment
                   </button>
-                  <button class="btn-sm btn-outline" style="color: #EF5350; border-color: #EF5350; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.openRejectPaymentModal('${appItem.id}')" title="Reject Payment Proof">
+                  <button class="btn-sm btn-outline btn-action-reject-pay" onclick="app.openRejectPaymentModal('${appItem.id}')" title="Reject Payment Proof">
                     <i class="fa-solid fa-xmark"></i> Reject Payment
                   </button>
                 ` : ''}
                 ${isPending ? `
-                  <button class="btn-sm btn-primary" style="background: #388E3C; padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer; color: #FFF;" onclick="app.approveMemberCard('${appItem.id}')">
+                  <button class="btn-sm btn-primary btn-action-approve-card" onclick="app.approveMemberCard('${appItem.id}')" title="Approve Membership Application">
                     <i class="fa-solid fa-check"></i> Approve Card
                   </button>
-                  <button class="btn-sm btn-outline" style="color: #EF5350; border-color: #EF5350; padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.rejectMemberCard('${appItem.id}')">
+                  <button class="btn-sm btn-outline btn-action-reject-card" onclick="app.rejectMemberCard('${appItem.id}')" title="Reject Membership Application">
                     <i class="fa-solid fa-xmark"></i> Reject Card
                   </button>
                 ` : ''}
                 ${isRejected ? `
-                  <button class="btn-sm btn-primary" style="background: #0088CC; padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer; color: #FFF;" onclick="app.reapproveMemberCard('${appItem.id}')" title="Re-Approve Rejected Application">
+                  <button class="btn-sm btn-primary btn-action-reapprove-card" onclick="app.reapproveMemberCard('${appItem.id}')" title="Re-Approve Rejected Application">
                     <i class="fa-solid fa-rotate-left"></i> 🔄 RE-APPROVE
                   </button>
                 ` : ''}
                 ${isApproved ? `
                   ${cardStatus === 'ACTIVE' ? `
-                    <button class="btn-sm btn-outline" style="color: #FF9800; border-color: #FF9800; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.suspendMemberCard('${appItem.id}')">
+                    <button class="btn-sm btn-outline btn-action-suspend-card" onclick="app.suspendMemberCard('${appItem.id}')" title="Suspend Active Card">
                       <i class="fa-solid fa-pause"></i> Suspend
                     </button>
                   ` : cardStatus === 'SUSPENDED' ? `
-                    <button class="btn-sm btn-outline" style="color: #4CAF50; border-color: #4CAF50; padding: 8px 14px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.reactivateMemberCard('${appItem.id}')">
+                    <button class="btn-sm btn-outline btn-action-reactivate-card" onclick="app.reactivateMemberCard('${appItem.id}')" title="Reactivate Suspended Card">
                       <i class="fa-solid fa-play"></i> Reactivate
                     </button>
                   ` : ''}
@@ -12948,11 +12948,38 @@ class TiffinApp {
   }
 
   viewPaymentProof(imgUrl) {
+    if (!imgUrl) {
+      this.showToast('⚠️ Payment screenshot not available for this record.', 'error');
+      return;
+    }
+
     const modal = document.getElementById('modalViewPaymentProof');
     const img = document.getElementById('imgPaymentProofZoom');
+    const loadingEl = document.getElementById('imgPaymentProofLoading');
+    const errorEl = document.getElementById('imgPaymentProofError');
+    const errorMsgEl = document.getElementById('txtPaymentProofErrorMsg');
+
     if (modal && img) {
-      img.src = imgUrl;
       this.setZoomScale(1.0);
+
+      if (loadingEl) loadingEl.style.display = 'flex';
+      if (errorEl) errorEl.style.display = 'none';
+      img.style.display = 'none';
+
+      img.onload = () => {
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (errorEl) errorEl.style.display = 'none';
+        img.style.display = 'block';
+      };
+
+      img.onerror = () => {
+        if (loadingEl) loadingEl.style.display = 'none';
+        img.style.display = 'none';
+        if (errorMsgEl) errorMsgEl.textContent = '❌ Unable to load payment screenshot.';
+        if (errorEl) errorEl.style.display = 'flex';
+      };
+
+      img.src = imgUrl;
       modal.classList.add('visible');
       modal.classList.add('open');
       this.setupImageZoomTouchHandlers();

@@ -15,7 +15,34 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+// Base64 Image Persistence Helper
+async function saveBase64Image(base64Data, subfolder = 'screenshots') {
+  if (!base64Data) return null;
+  if (!base64Data.startsWith('data:image/')) return base64Data;
+
+  try {
+    const uploadsDir = path.join(__dirname, 'public', 'uploads', subfolder);
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const matches = base64Data.match(/^data:image\/([a-zA-Z0-9+\-+.]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return base64Data;
+    }
+
+    const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+    const buffer = Buffer.from(matches[2], 'base64');
+    const fileName = `proof_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${ext}`;
+    const filePath = path.join(uploadsDir, fileName);
+
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${subfolder}/${fileName}`;
+  } catch (err) {
+    console.error('saveBase64Image persistence notice:', err);
+    return base64Data;
+  }
+}
 
 // =========================================================================
 // REAL-TIME NOTIFICATION DELIVERY LAYER (WebSocket + Web Push API)
