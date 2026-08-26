@@ -2812,7 +2812,7 @@ class TiffinApp {
     ];
     for (const id of dynamicModals) {
       const el = document.getElementById(id);
-      if (el && (el.classList.contains('visible') || el.classList.contains('open') || el.classList.contains('active') || el.style.display !== 'none')) {
+      if (el && (el.classList.contains('visible') || el.classList.contains('open') || el.classList.contains('active'))) {
         return true;
       }
     }
@@ -2838,7 +2838,7 @@ class TiffinApp {
     ];
     for (const selector of staticModalSelectors) {
       const el = document.querySelector(selector);
-      if (el && (el.offsetWidth > 0 || el.offsetHeight > 0)) return true;
+      if (el) return true;
     }
 
     return false;
