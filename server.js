@@ -15,6 +15,8 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Base64 Image Persistence Helper
 async function saveBase64Image(base64Data, subfolder = 'screenshots') {
   if (!base64Data) return null;
