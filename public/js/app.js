@@ -199,6 +199,13 @@ class TiffinApp {
         this.authToken = savedToken;
         this.currentRole = this.currentUser.role;
         this.activeView = this.currentRole === 'OWNER' ? 'secOwnerDashboard' : 'secCustomerHome';
+        
+        // Deep-link routing via URL hash (e.g. from notification clicks or shortcuts)
+        const hashView = window.location.hash ? window.location.hash.replace('#', '') : '';
+        if (hashView && document.getElementById(hashView)) {
+          this.activeView = hashView;
+        }
+
         this.cart = this.currentUser.cart || [];
         this.favorites = this.currentUser.favorites || [];
         this.checkPasswordChangeRequired();
@@ -206,6 +213,14 @@ class TiffinApp {
         console.error('Failed to parse saved user:', e);
       }
     }
+
+    // Bind hashchange event listener for notification deep links
+    window.addEventListener('hashchange', () => {
+      const targetHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+      if (targetHash && document.getElementById(targetHash)) {
+        this.switchView(targetHash);
+      }
+    });
 
     await this.fetchSettings();
     await this.fetchMenu();
@@ -335,6 +350,9 @@ class TiffinApp {
 
     this.showNotificationPopup(notif);
     this.renderNotificationsUI();
+    if (this.activeView === 'secQueueProgress') {
+      this.fetchQueueProgress();
+    }
   }
 
   async initPushNotifications() {
@@ -652,6 +670,9 @@ class TiffinApp {
       this.isLoadingOrders = false;
       if (!silent || this.activeView.includes('Orders') || this.activeView === 'secOwnerDashboard') {
         this.renderOrders();
+      }
+      if (this.activeView === 'secQueueProgress') {
+        this.fetchQueueProgress();
       }
     }
   }
@@ -2156,6 +2177,7 @@ class TiffinApp {
             <a class="nav-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.switchView('secCustomerFavorites')"><i class="fa-solid fa-heart" style="color: #E53935;"></i> My Favorites ❤️</a>
             <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
             <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
+            <a class="nav-item ${this.activeView === 'secQueueProgress' ? 'active' : ''}" onclick="app.switchView('secQueueProgress')"><i class="fa-solid fa-ticket" style="color: var(--accent-gold);"></i> 🎟️ Queue Progress</a>
             <a class="nav-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.switchView('secCustomerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
             <a class="nav-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.switchView('secCustomerReferral')"><i class="fa-solid fa-gift" style="color: var(--accent-gold);"></i> Refer & Earn</a>
             <a class="nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')"><i class="fa-solid fa-headset"></i> Support & FAQs</a>
@@ -2436,6 +2458,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secQueueProgress' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secQueueProgress');">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-ticket"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🎟️ Queue Progress</strong>
+              <span class="drawer-item-sub">Live token & queue tracking</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerPayments');">
             <div class="drawer-icon-box purple"><i class="fa-solid fa-wallet"></i></div>
             <div class="drawer-text-group">
@@ -2601,6 +2632,15 @@ class TiffinApp {
               <span class="drawer-item-sub">Timings, UPI ID & QR Scanner</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.downloadDatabaseBackup('json');" title="Download PostgreSQL Database Backup">
+            <div class="drawer-icon-box green"><i class="fa-solid fa-database"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Download DB Backup</strong>
+              <span class="drawer-item-sub">Export PostgreSQL DB (JSON / SQL)</span>
+            </div>
+            <i class="fa-solid fa-download drawer-chevron" style="color: #4CAF50;"></i>
           </a>
 
           <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleNotificationsTray();">
@@ -2771,6 +2811,7 @@ class TiffinApp {
     // Trigger render logic per view
     if (this.activeView === 'secCustomerHome') this.renderMenu();
     if (this.activeView === 'secCustomerOrders') this.renderOrders();
+    if (this.activeView === 'secQueueProgress') this.fetchQueueProgress();
     if (this.activeView === 'secCustomerFavorites') {
       this.fetchFavorites();
       this.renderFavorites();
@@ -5532,6 +5573,178 @@ class TiffinApp {
       }
     }
   }
+
+  async fetchQueueProgress() {
+    if (!this.currentUser || this.currentRole !== 'CUSTOMER') return;
+    try {
+      const res = await fetch(`${API_BASE}/customer/queue-progress`, {
+        headers: this.authToken ? {
+          'Authorization': `Bearer ${this.authToken}`,
+          'X-Auth-Token': this.authToken
+        } : {}
+      });
+      const json = await res.json();
+      if (json && json.success) {
+        this.renderQueueProgressUI(json.data);
+      } else {
+        this.renderQueueProgressUI({ has_active_order: false });
+      }
+    } catch (err) {
+      console.error('Error fetching queue progress:', err);
+      this.renderQueueProgressUI({ has_active_order: false });
+    }
+  }
+
+  renderQueueProgressUI(data) {
+    const container = document.getElementById('queueProgressContainer');
+    if (!container) return;
+
+    if (!data || !data.has_active_order) {
+      container.innerHTML = `
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg, 16px); padding: 3rem 1.5rem; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.25);">
+          <div style="font-size: 3.5rem; margin-bottom: 1rem;">🎟️</div>
+          <h3 style="font-size: 1.25rem; font-weight: 800; color: #FFF; margin-bottom: 0.5rem;">Queue Progress</h3>
+          <p style="color: var(--text-muted); font-size: 0.92rem; margin-bottom: 1.5rem;">You don't have an active order in the queue.</p>
+          <button type="button" class="btn-primary-block" onclick="app.switchView('secCustomerHome'); app.scrollToMenu();" style="max-width: 260px; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; font-size: 0.95rem; padding: 12px 24px; border-radius: 12px; background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; border: none; cursor: pointer;">
+            <i class="fa-solid fa-utensils"></i> 🍽️ View Today's Menu
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    const {
+      customer_token,
+      order_id,
+      order_number,
+      order_status,
+      pickup_pin,
+      currently_serving_token,
+      orders_ahead,
+      active_queue_list
+    } = data;
+
+    let statusBannerHtml = '';
+    if (order_status === 'Preparing') {
+      statusBannerHtml = `
+        <div style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.2), rgba(255, 179, 0, 0.1)); border: 1.5px solid var(--accent-gold); border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; text-align: center;">
+          <h4 style="margin: 0 0 4px 0; color: var(--accent-gold); font-size: 1.05rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            🎉 Your order is now being prepared!
+          </h4>
+          <p style="margin: 0; font-size: 0.85rem; color: #FFF;">The chef is currently cooking your hot & fresh South Indian tiffins.</p>
+        </div>
+      `;
+    } else if (order_status === 'Ready') {
+      statusBannerHtml = `
+        <div style="background: linear-gradient(135deg, rgba(76, 175, 80, 0.25), rgba(46, 125, 50, 0.15)); border: 1.5px solid #4CAF50; border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; text-align: center;">
+          <h4 style="margin: 0 0 6px 0; color: #4CAF50; font-size: 1.1rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            🟢 Your order is ready!
+          </h4>
+          <p style="margin: 0 0 8px 0; font-size: 0.88rem; color: #FFF;">Please present your Pickup PIN at the counter to collect your order.</p>
+          ${pickup_pin ? `<div style="display: inline-block; background: #4CAF50; color: #000; font-weight: 900; font-size: 1.2rem; letter-spacing: 3px; padding: 4px 16px; border-radius: 8px;">PIN: ${pickup_pin}</div>` : ''}
+        </div>
+      `;
+    } else {
+      statusBannerHtml = `
+        <div style="background: rgba(41, 182, 246, 0.12); border: 1px solid rgba(41, 182, 246, 0.3); border-radius: 14px; padding: 0.9rem 1.25rem; margin-bottom: 1.5rem; text-align: center;">
+          <h4 style="margin: 0 0 4px 0; color: #29B6F6; font-size: 0.98rem; font-weight: 800;">
+            ⏳ Order Received & Queued
+          </h4>
+          <p style="margin: 0; font-size: 0.82rem; color: var(--text-muted);">Your order is queued in kitchen position #${orders_ahead + 1}.</p>
+        </div>
+      `;
+    }
+
+    // Visual Queue Progress Bar / Timeline
+    let timelineDotsHtml = '';
+    if (active_queue_list && active_queue_list.length > 0) {
+      timelineDotsHtml = `
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.25rem 1rem; margin-bottom: 1.5rem;">
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.5px; text-align: center;">
+            <i class="fa-solid fa-layer-group"></i> Active Kitchen Queue Sequence
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; overflow-x: auto; padding: 8px 4px; -webkit-overflow-scrolling: touch;">
+            ${active_queue_list.map((item, index) => `
+              <div style="display: flex; flex-direction: column; align-items: center; min-width: 68px; flex-shrink: 0;">
+                <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.78rem; margin-bottom: 6px; ${
+                  item.is_customer 
+                    ? 'background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; box-shadow: 0 0 12px rgba(255, 179, 0, 0.6); border: 2px solid #FFF;' 
+                    : item.status === 'Preparing' 
+                      ? 'background: rgba(234, 162, 33, 0.25); color: var(--accent-gold); border: 1.5px solid var(--accent-gold);' 
+                      : 'background: rgba(255, 255, 255, 0.08); color: var(--text-muted); border: 1px solid var(--border-color);'
+                }">
+                  ${item.token}
+                </div>
+                <span style="font-size: 0.68rem; font-weight: 700; color: ${item.is_customer ? 'var(--accent-gold)' : 'var(--text-muted)'}; white-space: nowrap;">
+                  ${item.is_customer ? '⭐ YOU' : (item.status === 'Preparing' ? 'Serving' : 'Queued')}
+                </span>
+              </div>
+              ${index < active_queue_list.length - 1 ? '<div style="height: 2px; width: 16px; background: var(--border-color); flex-shrink: 0; margin-bottom: 18px;"></div>' : ''}
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      ${statusBannerHtml}
+
+      <!-- Main Queue Metrics Cards Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        
+        <!-- 1. Customer's Token -->
+        <div style="background: linear-gradient(135deg, rgba(255, 87, 34, 0.15), rgba(255, 179, 0, 0.08)); border: 2px solid var(--primary); border-radius: 16px; padding: 1.25rem; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.3); position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 8px; right: 12px; font-size: 0.68rem; font-weight: 800; background: var(--primary); color: #FFF; padding: 2px 8px; border-radius: 10px;">YOUR ORDER</div>
+          <div style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+            🎟️ Your Token
+          </div>
+          <div style="font-size: 2.2rem; font-weight: 900; color: var(--accent-gold); letter-spacing: 1px; margin-bottom: 4px;">
+            ${customer_token}
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); font-weight: 700;">
+            Order ID: #${order_number}
+          </div>
+        </div>
+
+        <!-- 2. Currently Serving -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.25rem; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
+          <div style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+            🍳 Currently Serving
+          </div>
+          <div style="font-size: 2.2rem; font-weight: 900; color: #FFF; letter-spacing: 1px; margin-bottom: 4px;">
+            ${currently_serving_token}
+          </div>
+          <div style="font-size: 0.78rem; color: var(--accent-gold); font-weight: 700;">
+            Kitchen Active Order
+          </div>
+        </div>
+
+        <!-- 3. Orders Ahead of You -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.25rem; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
+          <div style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+            👥 Orders Ahead of You
+          </div>
+          <div style="font-size: 2.2rem; font-weight: 900; color: ${orders_ahead === 0 ? '#4CAF50' : 'var(--accent-gold)'}; letter-spacing: 1px; margin-bottom: 4px;">
+            ${orders_ahead}
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); font-weight: 700;">
+            ${orders_ahead === 0 ? '🎉 You are next in line!' : 'Active Orders Preceding'}
+          </div>
+        </div>
+
+      </div>
+
+      ${timelineDotsHtml}
+
+      <!-- Order Details Footer Quick Action -->
+      <div style="text-align: center; margin-top: 1rem;">
+        <button type="button" class="co-row-btn view" onclick="app.switchView('secCustomerOrders')" style="max-width: 240px; margin: 0 auto; padding: 10px 20px; font-weight: 800; font-size: 0.85rem;">
+          <i class="fa-solid fa-receipt"></i> View My Orders History
+        </button>
+      </div>
+    `;
+  }
+
 
   createOwnerOrderCardHTML(order) {
     const dateFormatted = new Date(order.created_at).toLocaleString('en-IN', {
@@ -11327,6 +11540,38 @@ class TiffinApp {
         btnSubmit.disabled = false;
         btnSubmit.innerHTML = `<i class="fa-solid fa-ban"></i> Confirm Cancellation`;
       }
+    }
+  }
+
+  async downloadDatabaseBackup(format = 'json') {
+    if (!this.currentUser || this.currentRole !== 'OWNER') {
+      this.showToast('Access denied: Owner authorization required.', 'error');
+      return;
+    }
+
+    try {
+      this.showToast(`⏳ Preparing database backup dump (${format.toUpperCase()})...`, 'info');
+
+      const res = await this.fetchWithAuth(`${API_BASE}/admin/export-database?format=${encodeURIComponent(format)}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: Failed to download backup.`);
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      a.download = `postgres_backup_${timestamp}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      this.showToast(`✅ Database backup (${format.toUpperCase()}) downloaded successfully!`, 'success');
+    } catch (err) {
+      console.error('Error downloading database backup:', err);
+      this.showToast('Failed to download database backup.', 'error');
     }
   }
 }

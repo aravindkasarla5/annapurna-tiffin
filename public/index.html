@@ -346,8 +346,27 @@
       </div>
     </section>
 
+    <!-- Dedicated Customer Queue Progress Section -->
+    <section id="secQueueProgress" class="view-section hidden">
+      <div class="section-header" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 1.25rem; flex-wrap: wrap;">
+        <h2 class="section-title" style="margin: 0; font-size: calc(1.1rem + 0.3vw); display: flex; align-items: center; gap: 8px;">
+          <span>🎟️</span> Queue Progress
+        </h2>
+        <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.3); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;">
+          <span style="width: 8px; height: 8px; background: #4CAF50; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #4CAF50;"></span>
+          🔄 Live Real-Time Queue
+        </div>
+      </div>
+
+      <!-- Container dynamically updated by app.js -->
+      <div id="queueProgressContainer" style="max-width: 800px; margin: 0 auto;">
+        <!-- Rendered dynamically by app.renderQueueProgressUI() -->
+      </div>
+    </section>
+
     <!-- Customer Orders Section -->
     <section id="secCustomerOrders" class="view-section hidden">
+
       <div class="section-header"
         style="display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: space-between !important; gap: 10px !important; margin-bottom: 1rem; flex-wrap: nowrap !important;">
         <h2 class="section-title"
@@ -2185,6 +2204,35 @@
                   <div class="form-group-custom" style="margin-top: 10px;">
                     <label for="setRefMonthlyLimit" class="form-label-custom">Max Monthly Cap (₹)</label>
                     <input type="number" class="form-input-custom" id="setRefMonthlyLimit" min="0" placeholder="500">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Panel 4: Database Safety Backup & Export (PostgreSQL / App DB) -->
+              <div class="settings-card-panel" style="border: 1.5px solid #4CAF50; margin-top: 1.25rem;">
+                <div class="panel-header">
+                  <div class="panel-title-icon green"><i class="fa-solid fa-database"></i></div>
+                  <div>
+                    <h3 class="panel-title">PostgreSQL Database Backup</h3>
+                    <p class="panel-subtitle">Export & download safe backup files (JSON / SQL format)</p>
+                  </div>
+                </div>
+
+                <div class="settings-form-body">
+                  <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                    Download complete snapshot of all 15 database tables (Users, Orders, Menu, Payments, Reviews, Settings) for personal safety and offline backup.
+                  </p>
+
+                  <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button type="button" class="btn-primary-block" onclick="app.downloadDatabaseBackup('json')"
+                      style="width: auto; flex: 1; padding: 10px 16px; background: #4CAF50; color: #FFF; font-weight: 800; border-radius: var(--radius-md); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                      <i class="fa-solid fa-file-code"></i> Download JSON Backup
+                    </button>
+
+                    <button type="button" class="btn-primary-block" onclick="app.downloadDatabaseBackup('sql')"
+                      style="width: auto; flex: 1; padding: 10px 16px; background: var(--accent-gold); color: #000; font-weight: 800; border-radius: var(--radius-md); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                      <i class="fa-solid fa-file-export"></i> Download SQL Dump
+                    </button>
                   </div>
                 </div>
               </div>
