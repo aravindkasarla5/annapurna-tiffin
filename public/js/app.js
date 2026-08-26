@@ -12821,38 +12821,38 @@ class TiffinApp {
 
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
                 ${!isPayVerified && !isApproved ? `
-                  <button class="btn-sm btn-primary btn-action-verify-pay" onclick="app.verifyMemberPayment('${appItem.id}')" title="Verify ₹10 Payment Proof">
+                  <button type="button" class="btn-sm btn-primary btn-action-verify-pay" onclick="app.verifyMemberPayment('${appItem.id}', this)" title="Verify ₹10 Payment Proof">
                     <i class="fa-solid fa-circle-check"></i> Verify Payment
                   </button>
-                  <button class="btn-sm btn-outline btn-action-reject-pay" onclick="app.openRejectPaymentModal('${appItem.id}')" title="Reject Payment Proof">
+                  <button type="button" class="btn-sm btn-outline btn-action-reject-pay" onclick="app.openRejectPaymentModal('${appItem.id}')" title="Reject Payment Proof">
                     <i class="fa-solid fa-xmark"></i> Reject Payment
                   </button>
                 ` : ''}
                 ${isPending ? `
-                  <button class="btn-sm btn-primary btn-action-approve-card" onclick="app.approveMemberCard('${appItem.id}')" title="Approve Membership Application">
+                  <button type="button" class="btn-sm btn-primary btn-action-approve-card" onclick="app.approveMemberCard('${appItem.id}', this)" title="Approve Membership Application">
                     <i class="fa-solid fa-check"></i> Approve Card
                   </button>
-                  <button class="btn-sm btn-outline btn-action-reject-card" onclick="app.rejectMemberCard('${appItem.id}')" title="Reject Membership Application">
+                  <button type="button" class="btn-sm btn-outline btn-action-reject-card" onclick="app.rejectMemberCard('${appItem.id}')" title="Reject Membership Application">
                     <i class="fa-solid fa-xmark"></i> Reject Card
                   </button>
                 ` : ''}
                 ${isRejected ? `
-                  <button class="btn-sm btn-primary btn-action-reapprove-card" onclick="app.reapproveMemberCard('${appItem.id}')" title="Re-Approve Rejected Application">
+                  <button type="button" class="btn-sm btn-primary btn-action-reapprove-card" onclick="app.reapproveMemberCard('${appItem.id}')" title="Re-Approve Rejected Application">
                     <i class="fa-solid fa-rotate-left"></i> 🔄 RE-APPROVE
                   </button>
                 ` : ''}
                 ${isApproved ? `
                   ${cardStatus === 'ACTIVE' ? `
-                    <button class="btn-sm btn-outline btn-action-suspend-card" onclick="app.suspendMemberCard('${appItem.id}')" title="Suspend Active Card">
+                    <button type="button" class="btn-sm btn-outline btn-action-suspend-card" onclick="app.suspendMemberCard('${appItem.id}', this)" title="Suspend Active Card">
                       <i class="fa-solid fa-pause"></i> Suspend
                     </button>
                   ` : cardStatus === 'SUSPENDED' ? `
-                    <button class="btn-sm btn-outline btn-action-reactivate-card" onclick="app.reactivateMemberCard('${appItem.id}')" title="Reactivate Suspended Card">
+                    <button type="button" class="btn-sm btn-outline btn-action-reactivate-card" onclick="app.reactivateMemberCard('${appItem.id}', this)" title="Reactivate Suspended Card">
                       <i class="fa-solid fa-play"></i> Reactivate
                     </button>
                   ` : ''}
                 ` : ''}
-                <button class="btn-sm btn-outline" style="color: #EF5350; border-color: #EF5350; padding: 8px 12px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.confirmDeleteMemberApp('${appItem.id}')" title="Delete Member Record">
+                <button type="button" class="btn-sm btn-outline btn-action-delete" onclick="app.confirmDeleteMemberApp('${appItem.id}')" title="Delete Member Record">
                   <i class="fa-solid fa-trash-can"></i> Delete
                 </button>
               </div>
@@ -12877,12 +12877,20 @@ class TiffinApp {
   confirmDeleteMemberApp(appId) {
     this.pendingDeleteMemberAppId = appId;
     const modal = document.getElementById('modalConfirmDeleteMemberApp');
-    if (modal) modal.classList.add('visible');
+    if (modal) {
+      modal.classList.add('open');
+      modal.classList.add('visible');
+      modal.classList.add('active');
+    }
   }
 
   closeDeleteMemberAppModal() {
     const modal = document.getElementById('modalConfirmDeleteMemberApp');
-    if (modal) modal.classList.remove('visible');
+    if (modal) {
+      modal.classList.remove('open');
+      modal.classList.remove('visible');
+      modal.classList.remove('active');
+    }
     this.pendingDeleteMemberAppId = null;
   }
 
@@ -12917,12 +12925,20 @@ class TiffinApp {
 
   openDeleteAllMemberAppsModal() {
     const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
-    if (modal) modal.classList.add('visible');
+    if (modal) {
+      modal.classList.add('open');
+      modal.classList.add('visible');
+      modal.classList.add('active');
+    }
   }
 
   closeDeleteAllMemberAppsModal() {
     const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
-    if (modal) modal.classList.remove('visible');
+    if (modal) {
+      modal.classList.remove('open');
+      modal.classList.remove('visible');
+      modal.classList.remove('active');
+    }
   }
 
   async executeDeleteAllMemberApps() {
@@ -13107,8 +13123,12 @@ class TiffinApp {
     }, { passive: true });
   }
 
-  async verifyMemberPayment(appId) {
+  async verifyMemberPayment(appId, btnEl = null) {
     if (!confirm('Verify this customer ₹10 membership payment proof?')) return;
+    if (btnEl) {
+      btnEl.disabled = true;
+      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Verifying...`;
+    }
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/verify-payment/${appId}`, { method: 'POST' });
       const data = await res.json();
@@ -13118,6 +13138,10 @@ class TiffinApp {
     } catch (err) {
       console.error('Verify payment error:', err);
       this.showToast(err.message || 'Failed to verify payment.', 'error');
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Verify Payment`;
+      }
     }
   }
 
@@ -13126,12 +13150,20 @@ class TiffinApp {
     const modal = document.getElementById('modalRejectMemberPayment');
     const txt = document.getElementById('txtPaymentRejectionReason');
     if (txt) txt.value = '';
-    if (modal) modal.classList.add('visible');
+    if (modal) {
+      modal.classList.add('open');
+      modal.classList.add('visible');
+      modal.classList.add('active');
+    }
   }
 
   closeRejectPaymentModal() {
     const modal = document.getElementById('modalRejectMemberPayment');
-    if (modal) modal.classList.remove('visible');
+    if (modal) {
+      modal.classList.remove('open');
+      modal.classList.remove('visible');
+      modal.classList.remove('active');
+    }
     this.pendingRejectAppId = null;
   }
 
@@ -13163,8 +13195,12 @@ class TiffinApp {
     }
   }
 
-  async suspendMemberCard(appId) {
+  async suspendMemberCard(appId, btnEl = null) {
     if (!confirm('Suspend this active Premium Food Member Card?')) return;
+    if (btnEl) {
+      btnEl.disabled = true;
+      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Suspending...`;
+    }
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/suspend/${appId}`, { method: 'POST' });
       const data = await res.json();
@@ -13173,11 +13209,19 @@ class TiffinApp {
       await this.loadOwnerMemberApprovals();
     } catch (err) {
       this.showToast(err.message || 'Failed to suspend card.', 'error');
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = `<i class="fa-solid fa-pause"></i> Suspend`;
+      }
     }
   }
 
-  async reactivateMemberCard(appId) {
+  async reactivateMemberCard(appId, btnEl = null) {
     if (!confirm('Reactivate this suspended Premium Food Member Card?')) return;
+    if (btnEl) {
+      btnEl.disabled = true;
+      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Reactivating...`;
+    }
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reactivate/${appId}`, { method: 'POST' });
       const data = await res.json();
@@ -13186,11 +13230,20 @@ class TiffinApp {
       await this.loadOwnerMemberApprovals();
     } catch (err) {
       this.showToast(err.message || 'Failed to reactivate card.', 'error');
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = `<i class="fa-solid fa-play"></i> Reactivate`;
+      }
     }
   }
 
-  async approveMemberCard(appId) {
+  async approveMemberCard(appId, btnEl = null) {
     if (!confirm('Approve this customer application and issue an active 3-Month Premium Food Member Card?')) return;
+
+    if (btnEl) {
+      btnEl.disabled = true;
+      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Approving...`;
+    }
 
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/approve/${appId}`, {
@@ -13205,6 +13258,10 @@ class TiffinApp {
     } catch (err) {
       console.error('Approve member card error:', err);
       this.showToast(err.message || 'Failed to approve application.', 'error');
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = `<i class="fa-solid fa-check"></i> Approve Card`;
+      }
     }
   }
 
