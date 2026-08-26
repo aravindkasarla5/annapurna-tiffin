@@ -432,6 +432,26 @@ async function createAndDispatchNotification(notifData, dbClient = db) {
     const is_read = notifData.is_read || false;
     const date_time = notifData.date_time || new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
+    // Deduplication check: Avoid duplicate notification records created within 5 seconds for the same target, title & order
+    try {
+      let dupCheckSql = `SELECT id, title, message, date_time FROM notifications WHERE target_role = $1 AND title = $2`;
+      let dupParams = [target_role, title];
+      if (customer_id) {
+        dupCheckSql += ` AND customer_id = $3`;
+        dupParams.push(customer_id);
+      }
+      dupCheckSql += ` ORDER BY created_at DESC LIMIT 1;`;
+      const dupRes = await dbClient.query(dupCheckSql, dupParams);
+      if (dupRes.rows && dupRes.rows.length > 0) {
+        const lastNotif = dupRes.rows[0];
+        const ageMs = Date.now() - new Date(lastNotif.created_at || Date.now()).getTime();
+        if (ageMs < 5000) { // 5-second deduplication window
+          console.log(`[Notification Engine] Deduplicated duplicate notification for ${target_role} (${title}).`);
+          return lastNotif;
+        }
+      }
+    } catch (dErr) {}
+
     const notifObj = { id, target_role, customer_id, title, message, type, is_read, date_time };
 
     await dbClient.query(
@@ -445,6 +465,128 @@ async function createAndDispatchNotification(notifData, dbClient = db) {
   } catch (err) {
     console.error('Error creating notification:', err);
     return null;
+  }
+}
+
+// =========================================================================
+// SMART DUPLICATE PROTECTION & UTR DEDUPLICATION ENGINE
+// =========================================================================
+
+async function checkDuplicateUtr(utrNumber, currentOrderId = null) {
+  if (!utrNumber || typeof utrNumber !== 'string') return null;
+  const cleanUtr = utrNumber.trim();
+  if (!cleanUtr || cleanUtr.length < 4) return null;
+
+  try {
+    // Search orders table
+    let orderQuery = 'SELECT id, order_number FROM orders WHERE UPPER(utr_number) = UPPER($1)';
+    let params = [cleanUtr];
+    if (currentOrderId) {
+      orderQuery += ' AND id != $2 AND order_number != $2';
+      params.push(currentOrderId);
+    }
+    const oRes = await db.query(orderQuery, params);
+    if (oRes.rows && oRes.rows.length > 0) {
+      return oRes.rows[0].order_number;
+    }
+
+    // Search payments table
+    let payQuery = 'SELECT order_number FROM payments WHERE UPPER(utr_number) = UPPER($1)';
+    let payParams = [cleanUtr];
+    if (currentOrderId) {
+      payQuery += ' AND order_id != $2 AND order_number != $2';
+      payParams.push(currentOrderId);
+    }
+    const pRes = await db.query(payQuery, payParams);
+    if (pRes.rows && pRes.rows.length > 0) {
+      return pRes.rows[0].order_number;
+    }
+  } catch (err) {
+    console.error('Error checking duplicate UTR:', err.message);
+  }
+
+  return null;
+}
+
+// Global Idempotency Key Middleware (Middleware for API Mutations)
+async function handleIdempotencyMiddleware(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return next();
+  }
+
+  const rawKey = req.headers['x-idempotency-key'] || req.headers['idempotency-key'] || (req.body && req.body.idempotency_key);
+  if (!rawKey || typeof rawKey !== 'string') {
+    return next();
+  }
+
+  const key = rawKey.trim();
+  if (!key || key.length < 5) {
+    return next();
+  }
+
+  const userId = req.user ? req.user.id : (req.body ? (req.body.customer_mobile || req.body.user_id || 'anonymous') : 'anonymous');
+  const endpoint = (req.baseUrl || '') + (req.path || req.url || '');
+  const reqBodyStr = JSON.stringify(req.body || {});
+  const reqHash = crypto.createHash('md5').update(reqBodyStr).digest('hex');
+
+  try {
+    const existingRes = await db.query(
+      'SELECT status, response_status, response_body, created_at FROM idempotency_keys WHERE user_id = $1 AND key = $2;',
+      [userId, key]
+    );
+
+    if (existingRes.rows && existingRes.rows.length > 0) {
+      const recorded = existingRes.rows[0];
+
+      if (recorded.status === 'COMPLETED' && recorded.response_body) {
+        console.log(`[Idempotency Engine] Duplicate request detected for key "${key}" (${endpoint}). Returning original cached result.`);
+        try {
+          const cachedJson = JSON.parse(recorded.response_body);
+          res.setHeader('X-Idempotency-Replayed', 'true');
+          return res.status(recorded.response_status || 200).json(cachedJson);
+        } catch (parseErr) {}
+      } else if (recorded.status === 'PROCESSING') {
+        const ageMs = Date.now() - new Date(recorded.created_at || Date.now()).getTime();
+        if (ageMs < 30000) {
+          console.warn(`[Idempotency Engine] Concurrent request in progress for key "${key}" (${endpoint}).`);
+          return res.status(409).json({
+            success: false,
+            message: "⚠️ Request is currently being processed. Please wait..."
+          });
+        }
+      }
+    }
+
+    const recordId = 'idm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    await db.query(
+      `INSERT INTO idempotency_keys (id, key, user_id, endpoint, request_hash, status)
+       VALUES ($1, $2, $3, $4, $5, 'PROCESSING')
+       ON CONFLICT (id) DO NOTHING;`,
+      [recordId, key, userId, endpoint, reqHash]
+    ).catch(() => {});
+
+    // Intercept res.json to capture response status & body upon completion
+    const originalJson = res.json.bind(res);
+    res.json = function (body) {
+      const responseStatus = res.statusCode || 200;
+      const responseBodyStr = JSON.stringify(body);
+
+      db.query(
+        `UPDATE idempotency_keys
+         SET status = 'COMPLETED', response_status = $1, response_body = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $3 AND key = $4;`,
+        [responseStatus, responseBodyStr, userId, key]
+      ).catch(err => {
+        console.error('[Idempotency Engine] Error updating key record:', err.message);
+      });
+
+      return originalJson(body);
+    };
+
+    next();
+  } catch (err) {
+    console.error('[Idempotency Engine] Unexpected error:', err.message);
+    next();
   }
 }
 
@@ -2443,6 +2585,248 @@ app.post('/api/orders/:id/reorder-items', authenticateToken, requireRole('CUSTOM
   }
 });
 
+// =========================================================================
+// LOYALTY REWARDS SYSTEM BACKEND ENGINE & APIs
+// =========================================================================
+
+const DEFAULT_LOYALTY_CONFIG = {
+  enabled: true,
+  points_per_100: 10,
+  spend_unit: 100,
+  conversion_points: 100,
+  conversion_reward: 10, // 100 points = ₹10 reward
+  min_order_spend: 100,
+  milestones: [100, 250, 500, 1000]
+};
+
+async function processOrderLoyaltyPoints(orderId, dbClient = db) {
+  try {
+    const oRes = await dbClient.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [orderId]);
+    const order = oRes.rows[0];
+    if (!order || !order.customer_id) return;
+
+    const statusClean = (order.order_status || '').toLowerCase();
+    if (!['completed', 'delivered'].includes(statusClean)) return;
+
+    // Idempotency check: Ensure points are NEVER awarded twice for the same order
+    const existingTx = await dbClient.query(
+      "SELECT id FROM loyalty_transactions WHERE order_id = $1 AND type = 'EARNED';",
+      [order.id]
+    );
+    if (existingTx.rows && existingTx.rows.length > 0) {
+      return; // Already processed
+    }
+
+    const eligibleAmount = Number(order.net_amount || order.total_amount || 0);
+    if (eligibleAmount < DEFAULT_LOYALTY_CONFIG.spend_unit) return;
+
+    const pointsEarned = Math.floor(eligibleAmount / DEFAULT_LOYALTY_CONFIG.spend_unit) * DEFAULT_LOYALTY_CONFIG.points_per_100;
+    if (pointsEarned <= 0) return;
+
+    // Execute atomic update
+    const txId = 'ltx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+    const userRes = await dbClient.query(
+      'UPDATE users SET loyalty_points = COALESCE(loyalty_points, 0) + $1 WHERE id = $2 RETURNING loyalty_points;',
+      [pointsEarned, order.customer_id]
+    );
+
+    const newBalance = Number(userRes.rows[0]?.loyalty_points || pointsEarned);
+
+    await dbClient.query(
+      `INSERT INTO loyalty_transactions (id, user_id, order_id, order_number, type, points, reward_amount, description, balance_after)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      [
+        txId,
+        order.customer_id,
+        order.id,
+        order.order_number,
+        'EARNED',
+        pointsEarned,
+        0,
+        `Earned from Order #${order.order_number} (₹${eligibleAmount})`,
+        newBalance
+      ]
+    );
+
+    // Dispatch Real-Time WebSocket & Push Notification to Customer
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: order.customer_id,
+      title: '🎁 Loyalty Points Earned!',
+      message: `You earned ⭐ ${pointsEarned} Loyalty Points from Order #${order.order_number}.\nYour new balance: ⭐ ${newBalance} Points`,
+      type: 'LOYALTY',
+      priority: 'HIGH',
+      action_url: '/#secCustomerLoyalty',
+      related_order_id: order.id
+    }, dbClient);
+
+    // Check Milestone Achievements
+    for (const milestone of DEFAULT_LOYALTY_CONFIG.milestones) {
+      if (newBalance >= milestone) {
+        try {
+          const mCheck = await dbClient.query(
+            'SELECT id FROM loyalty_milestones WHERE user_id = $1 AND milestone_points = $2;',
+            [order.customer_id, milestone]
+          );
+          if (!mCheck.rows || mCheck.rows.length === 0) {
+            const mId = 'lms_' + Date.now() + '_' + milestone;
+            await dbClient.query(
+              'INSERT INTO loyalty_milestones (id, user_id, milestone_points) VALUES ($1, $2, $3);',
+              [mId, order.customer_id, milestone]
+            );
+            const rewardVal = (milestone / DEFAULT_LOYALTY_CONFIG.conversion_points) * DEFAULT_LOYALTY_CONFIG.conversion_reward;
+            await createAndDispatchNotification({
+              target_role: 'CUSTOMER',
+              customer_id: order.customer_id,
+              title: '🎉 Loyalty Milestone Reached!',
+              message: `Congratulations! You reached ⭐ ${milestone} Loyalty Points! Available reward value: ₹${rewardVal}.`,
+              type: 'LOYALTY',
+              priority: 'HIGH',
+              action_url: '/#secCustomerLoyalty'
+            }, dbClient);
+          }
+        } catch (mErr) {
+          // Ignore milestone duplicate if constraint hit
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error processing loyalty points for order:', err.message);
+  }
+}
+
+// GET /api/loyalty/summary - Fetch customer loyalty balance & config
+app.get('/api/loyalty/summary', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const userRes = await db.query('SELECT loyalty_points, loyalty_reward_balance FROM users WHERE id = $1;', [req.user.id]);
+    const u = userRes.rows[0] || {};
+    const points = Number(u.loyalty_points || 0);
+    const rewardBalance = Number(u.loyalty_reward_balance || 0);
+    const potentialReward = Math.floor(points / DEFAULT_LOYALTY_CONFIG.conversion_points) * DEFAULT_LOYALTY_CONFIG.conversion_reward;
+
+    res.json({
+      success: true,
+      data: {
+        points,
+        reward_balance: rewardBalance,
+        potential_reward: potentialReward,
+        config: DEFAULT_LOYALTY_CONFIG
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error fetching loyalty summary." });
+  }
+});
+
+// GET /api/loyalty/history - Fetch customer loyalty transactions log
+app.get('/api/loyalty/history', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const historyRes = await db.query(
+      `SELECT id, type, points, reward_amount, description, balance_after, order_number, created_at
+       FROM loyalty_transactions
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 100;`,
+      [req.user.id]
+    );
+    res.json({ success: true, data: historyRes.rows || [] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error fetching loyalty history." });
+  }
+});
+
+// POST /api/loyalty/redeem - Redeem Loyalty Points for Reward Balance
+app.post('/api/loyalty/redeem', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const pointsToRedeem = parseInt(req.body.points, 10);
+    if (!pointsToRedeem || isNaN(pointsToRedeem) || pointsToRedeem < DEFAULT_LOYALTY_CONFIG.conversion_points) {
+      return res.status(400).json({
+        success: false,
+        message: `Minimum redemption is ${DEFAULT_LOYALTY_CONFIG.conversion_points} points (₹${DEFAULT_LOYALTY_CONFIG.conversion_reward}).`
+      });
+    }
+
+    if (pointsToRedeem % DEFAULT_LOYALTY_CONFIG.conversion_points !== 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Redemption points must be in multiples of ${DEFAULT_LOYALTY_CONFIG.conversion_points}.`
+      });
+    }
+
+    let updatedUser = null;
+    let rewardValue = 0;
+
+    await db.executeTransaction(async (tx) => {
+      // Lock user row
+      const userRes = await tx.query('SELECT loyalty_points, loyalty_reward_balance FROM users WHERE id = $1 FOR UPDATE;', [req.user.id]);
+      const userRow = userRes.rows[0];
+      const currentPoints = Number(userRow?.loyalty_points || 0);
+      const currentRewardBal = Number(userRow?.loyalty_reward_balance || 0);
+
+      if (currentPoints < pointsToRedeem) {
+        throw new Error(`Insufficient points balance. You have ⭐ ${currentPoints} points available.`);
+      }
+
+      rewardValue = (pointsToRedeem / DEFAULT_LOYALTY_CONFIG.conversion_points) * DEFAULT_LOYALTY_CONFIG.conversion_reward;
+      const newPoints = currentPoints - pointsToRedeem;
+      const newRewardBal = currentRewardBal + rewardValue;
+
+      await tx.query(
+        'UPDATE users SET loyalty_points = $1, loyalty_reward_balance = $2 WHERE id = $3;',
+        [newPoints, newRewardBal, req.user.id]
+      );
+
+      const txId = 'ltx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      await tx.query(
+        `INSERT INTO loyalty_transactions (id, user_id, type, points, reward_amount, description, balance_after)
+         VALUES ($1, $2, 'REDEEMED', $3, $4, $5, $6);`,
+        [
+          txId,
+          req.user.id,
+          -pointsToRedeem,
+          rewardValue,
+          `Redeemed ${pointsToRedeem} points for ₹${rewardValue} reward`,
+          newPoints
+        ]
+      );
+
+      const rdmId = 'lrd_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      await tx.query(
+        `INSERT INTO loyalty_redemptions (id, user_id, points_redeemed, reward_amount, status)
+         VALUES ($1, $2, $3, $4, 'ACTIVE');`,
+        [rdmId, req.user.id, pointsToRedeem, rewardValue]
+      );
+
+      updatedUser = {
+        loyalty_points: newPoints,
+        loyalty_reward_balance: newRewardBal
+      };
+    });
+
+    if (updatedUser) {
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: req.user.id,
+        title: '🎁 Reward Redeemed!',
+        message: `${pointsToRedeem} Loyalty Points were redeemed for ₹${rewardValue}.\nRemaining balance: ⭐ ${updatedUser.loyalty_points} Points`,
+        type: 'LOYALTY',
+        priority: 'HIGH',
+        action_url: '/#secCustomerLoyalty'
+      });
+
+      return res.json({
+        success: true,
+        message: `🎉 Successfully redeemed ${pointsToRedeem} points for ₹${rewardValue} reward balance!`,
+        data: updatedUser
+      });
+    }
+  } catch (err) {
+    console.error('Loyalty Redemption Error:', err.message);
+    return res.status(400).json({ success: false, message: err.message || "Failed to redeem loyalty points." });
+  }
+});
+
 app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
   try {
     const sRes = await db.query('SELECT is_open, is_qr_pay_enabled FROM settings WHERE id = 1;');
@@ -2475,6 +2859,16 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
     }
 
     const cleanUtr = utr_number ? utr_number.trim() : null;
+    if (cleanUtr) {
+      const dupOrderNum = await checkDuplicateUtr(cleanUtr);
+      if (dupOrderNum) {
+        return res.status(400).json({
+          success: false,
+          isDuplicateUtr: true,
+          message: `⚠️ This UTR (Transaction Ref: ${cleanUtr}) has already been submitted for Order #${dupOrderNum}. Please check your payment details or contact support.`
+        });
+      }
+    }
 
     // Atomic Sequence Counter for Non-repeating Globally Unique Order ID (#TF1047, #TF1048...)
     const orderSeq = await db.getNextCounter('order_counter');
@@ -3731,6 +4125,12 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
   const newRejectionReason = rejection_reason !== undefined ? rejection_reason : order.rejection_reason;
   let pinVerified = Boolean(order.pickup_pin_verified);
 
+  // Duplicate Action Protection: If order status and payment status are already identical, return cached order directly
+  if (order.order_status === newOrderStatus && order.payment_status === newPaymentStatus && newRejectionReason === order.rejection_reason) {
+    try { order.items = JSON.parse(order.items); } catch (e) { }
+    return res.json({ success: true, data: order, message: `Order #${order.order_number} status is already ${newOrderStatus}.` });
+  }
+
   // 🚨 ONLINE PAYMENT VERIFICATION: Owner/Kitchen Operator cannot mark an ONLINE PAYMENT order as "Ready" until payment is verified!
   if (newOrderStatus === 'Ready') {
     const payMethod = (order.payment_method || '').toLowerCase().trim();
@@ -3777,6 +4177,11 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
 
   await db.query('UPDATE orders SET order_status = $1, payment_status = $2, rejection_reason = $3, pickup_pin_verified = $4 WHERE id = $5;', [newOrderStatus, newPaymentStatus, newRejectionReason, pinVerified, order.id]);
   await db.query('UPDATE payments SET payment_status = $1 WHERE order_number = $2;', [newPaymentStatus, order.order_number]);
+
+  // Process Customer Loyalty Points if Order reaches Completed / Delivered status
+  if (['completed', 'delivered'].includes(newOrderStatus.toLowerCase())) {
+    await processOrderLoyaltyPoints(order.id);
+  }
 
   // Dispatch Customer Notification on Status Update
   if (order.customer_id) {
@@ -3898,6 +4303,9 @@ app.post('/api/orders/:id/verify-pin', authenticateToken, requireRole('OWNER'), 
       await db.query("UPDATE orders SET payment_status = 'Paid' WHERE id = $1;", [order.id]);
       await db.query("UPDATE payments SET payment_status = 'Paid' WHERE order_number = $1;", [order.order_number]);
     }
+
+    // Process Customer Loyalty Points on PIN Completion
+    await processOrderLoyaltyPoints(order.id);
 
     // Notify Customer
     if (order.customer_id) {

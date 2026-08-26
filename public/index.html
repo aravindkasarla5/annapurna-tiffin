@@ -827,6 +827,115 @@
       </div>
     </section>
 
+    <!-- ========================================================================= -->
+    <!-- CUSTOMER LOYALTY REWARDS SECTION (🎁 LOYALTY REWARDS)                      -->
+    <!-- ========================================================================= -->
+    <section id="secCustomerLoyalty" class="view-section hidden">
+      <!-- Loyalty Hero Banner -->
+      <div class="referral-hero-banner"
+        style="background: linear-gradient(135deg, rgba(156, 39, 176, 0.2) 0%, rgba(255, 179, 0, 0.15) 100%); border: 1.5px solid #AB47BC; border-radius: var(--radius-lg); padding: 2rem 1.5rem; margin-bottom: 1.5rem; text-align: center;">
+        <span class="status-badge"
+          style="background: rgba(171, 71, 188, 0.25); color: #E1BEE7; border: 1px solid #AB47BC; font-size: 0.85rem; padding: 4px 14px; border-radius: 12px; font-weight: 800;">
+          🎁 CUSTOMER REWARDS PROGRAM
+        </span>
+        <h2 style="font-size: 1.8rem; color: #FFF; margin: 0.75rem 0 0.5rem 0;">🎁 Loyalty Rewards</h2>
+        <p style="font-size: 0.9rem; color: var(--text-muted); max-width: 620px; margin: 0 auto 1.25rem auto;">
+          Earn points on every completed order and redeem them for instant discounts!
+        </p>
+
+        <!-- Earning & Conversion Rules Card -->
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.12); border-radius: var(--radius-md); padding: 1rem; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-around; font-size: 0.95rem; font-weight: 700; color: #FFF; flex-wrap: wrap; gap: 8px;">
+            <span>⭐ ₹100 spent = 10 points</span>
+            <span>|</span>
+            <span>💰 100 points = ₹10 reward</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loyalty Balance & Value KPI Cards -->
+      <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card" style="border: 1.5px solid #AB47BC;">
+          <div class="stat-header">
+            <span class="stat-label" style="color: #E1BEE7;">AVAILABLE POINTS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(171, 71, 188, 0.25); color: #E1BEE7;">
+              <i class="fa-solid fa-star"></i>
+            </div>
+          </div>
+          <div class="stat-value" id="loyaltyAvailablePoints" style="color: #FFF;">0 ⭐</div>
+          <div class="stat-footer">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Points earned from completed orders</span>
+          </div>
+        </div>
+
+        <div class="stat-card" style="border: 1.5px solid var(--color-available);">
+          <div class="stat-header">
+            <span class="stat-label" style="color: var(--color-available);">REWARD VALUE AVAILABLE</span>
+            <div class="stat-icon-wrapper" style="background: rgba(76, 175, 80, 0.2); color: var(--color-available);">
+              <i class="fa-solid fa-indian-rupee-sign"></i>
+            </div>
+          </div>
+          <div class="stat-value" id="loyaltyRewardValue" style="color: var(--color-available);">₹0</div>
+          <div class="stat-footer">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Redeemed reward balance for checkout</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Redeem Points Section -->
+      <div class="panel-card" style="margin-bottom: 1.5rem;">
+        <h3 class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-gift" style="color: #AB47BC;"></i> Redeem Reward
+        </h3>
+        <p class="panel-subtitle">Convert your points into reward discount balance</p>
+
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 1rem;">
+          <button type="button" class="btn-secondary-outline" id="btnRedeem100" onclick="app.confirmRedeemLoyalty(100, 10)" style="flex: 1; min-width: 140px;">
+            Redeem 100 Pts (₹10)
+          </button>
+          <button type="button" class="btn-secondary-outline" id="btnRedeem200" onclick="app.confirmRedeemLoyalty(200, 20)" style="flex: 1; min-width: 140px;">
+            Redeem 200 Pts (₹20)
+          </button>
+          <button type="button" class="btn-primary-block" id="btnRedeem500" onclick="app.confirmRedeemLoyalty(500, 50)" style="flex: 1; min-width: 140px; background: linear-gradient(135deg, #8E24AA, #AB47BC);">
+            Redeem 500 Pts (₹50)
+          </button>
+        </div>
+      </div>
+
+      <!-- Points Transaction History Log -->
+      <div class="panel-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h3 class="panel-title" style="margin: 0;"><i class="fa-solid fa-clock-rotate-left"></i> Points History</h3>
+            <p class="panel-subtitle" style="margin: 0;">Detailed log of points earned and redeemed</p>
+          </div>
+          <button type="button" class="icon-btn" onclick="app.loadLoyaltyRewardsPage()" title="Refresh History">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Points Change</th>
+                <th>Reason / Transaction</th>
+                <th>Balance After</th>
+              </tr>
+            </thead>
+            <tbody id="loyaltyHistoryTableBody">
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                  Loading points history...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <!-- Customer Profile Section -->
     <section id="secCustomerProfile" class="view-section hidden">
       <div class="profile-container">
@@ -2668,6 +2777,29 @@
             </div>
           </div>
 
+          <div class="form-group referral-payment-card" id="checkoutLoyaltyBox" style="margin-top: 10px; border-color: #AB47BC;">
+            <div class="referral-payment-card-inner">
+              <div class="referral-wallet-info">
+                <span class="referral-wallet-title" style="color: #E1BEE7;">
+                  <i class="fa-solid fa-gift" style="color: #AB47BC;"></i> Loyalty Reward Discount
+                </span>
+                <span class="referral-wallet-bal-text" id="checkoutLoyaltyAvailableText" style="color: #E1BEE7;">Available Reward: ₹0</span>
+              </div>
+              <label class="referral-checkbox-label" for="chkUseLoyalty" id="lblUseLoyalty">
+                <input type="checkbox" id="chkUseLoyalty" class="referral-payment-checkbox"
+                  onchange="app.toggleCheckoutLoyaltyDiscount()">
+                <span>Use Loyalty Reward</span>
+              </label>
+            </div>
+            <div id="loyaltyAppliedBreakdown" class="hidden"
+              style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed rgba(171, 71, 188, 0.4); font-size: 0.82rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="color: #E1BEE7; font-weight: 700;">Loyalty Discount Applied:</span>
+                <strong style="color: var(--color-available);" id="loyaltyBreakdownDiscount">-₹0</strong>
+              </div>
+            </div>
+          </div>
+
           <div class="form-group">
             <label>Payment Option</label>
             <div class="payment-selector">
@@ -4262,6 +4394,25 @@
             style="width: 100%; justify-content: center; padding: 0.75rem; border-radius: 10px;"
             onclick="app.closePwaInstallModal()">
             <i class="fa-solid fa-check"></i> OK, Got It
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loyalty Points Redemption Confirmation Modal -->
+    <div class="modal-backdrop" id="loyaltyRedeemModalBackdrop" onclick="app.toggleLoyaltyRedeemModal(false)">
+      <div class="modal-card" style="max-width: 420px; text-align: center;" onclick="event.stopPropagation()">
+        <div style="font-size: 3rem; margin-bottom: 0.5rem; color: #AB47BC;">🎁</div>
+        <h3 style="color: #FFF; margin-bottom: 0.5rem;" id="loyaltyRedeemModalTitle">Confirm Points Redemption</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;" id="loyaltyRedeemModalMessage">
+          Are you sure you want to redeem 100 points for ₹10 reward value?
+        </p>
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <button type="button" class="btn-secondary-outline" onclick="app.toggleLoyaltyRedeemModal(false)" style="flex: 1;">
+            Cancel
+          </button>
+          <button type="button" class="btn-primary-block" id="btnConfirmLoyaltyRedeem" onclick="app.executeLoyaltyRedeem()" style="flex: 1; background: linear-gradient(135deg, #8E24AA, #AB47BC);">
+            Confirm
           </button>
         </div>
       </div>

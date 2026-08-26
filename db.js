@@ -319,6 +319,50 @@ async function initDatabase() {
     `CREATE TABLE IF NOT EXISTS counters (
       name VARCHAR(50) PRIMARY KEY,
       current_value INT NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS loyalty_transactions (
+      id VARCHAR(100) PRIMARY KEY,
+      user_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
+      order_id VARCHAR(100),
+      order_number VARCHAR(100),
+      type VARCHAR(50) NOT NULL,
+      points INT NOT NULL,
+      reward_amount NUMERIC(10, 2) DEFAULT 0.00,
+      description TEXT,
+      balance_after INT DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS loyalty_redemptions (
+      id VARCHAR(100) PRIMARY KEY,
+      user_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
+      points_redeemed INT NOT NULL,
+      reward_amount NUMERIC(10, 2) NOT NULL,
+      status VARCHAR(50) DEFAULT 'ACTIVE',
+      used_order_id VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS loyalty_milestones (
+      id VARCHAR(100) PRIMARY KEY,
+      user_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
+      milestone_points INT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT unique_user_milestone UNIQUE (user_id, milestone_points)
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS idempotency_keys (
+      id VARCHAR(100) PRIMARY KEY,
+      key VARCHAR(255) NOT NULL,
+      user_id VARCHAR(100),
+      endpoint VARCHAR(255) NOT NULL,
+      request_hash VARCHAR(255),
+      status VARCHAR(50) DEFAULT 'PROCESSING',
+      response_status INT,
+      response_body TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`
   ];
 
@@ -356,6 +400,7 @@ async function initDatabase() {
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_pin VARCHAR(10);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_pin_verified BOOLEAN DEFAULT false;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_discount NUMERIC(10, 2) DEFAULT 0.00;`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE payments ALTER COLUMN screenshot_url TYPE TEXT;`);
@@ -367,6 +412,8 @@ async function initDatabase() {
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_change_required BOOLEAN DEFAULT false;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS temp_password_expires_at BIGINT;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_points INT DEFAULT 0;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_reward_balance NUMERIC(10, 2) DEFAULT 0.00;`);
         await query(`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS last_activity BIGINT;`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS balance_before NUMERIC(10, 2);`);
@@ -388,6 +435,7 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE orders ADD COLUMN screenshot_url TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN pickup_pin TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN pickup_pin_verified INTEGER DEFAULT 0;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN loyalty_discount NUMERIC(10, 2) DEFAULT 0.00;`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE payments ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active';`);
@@ -397,6 +445,8 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE users ADD COLUMN profile_photo TEXT;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN password_change_required INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN temp_password_expires_at INTEGER;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN loyalty_points INTEGER DEFAULT 0;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN loyalty_reward_balance NUMERIC(10, 2) DEFAULT 0.00;`);
       await safeAlter(`ALTER TABLE tokens ADD COLUMN last_activity INTEGER;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN balance_before REAL;`);

@@ -137,6 +137,15 @@ class TiffinApp {
     if (options.isBackgroundPoll) {
       headers['X-Background-Poll'] = 'true';
     }
+
+    // Attach unique Idempotency-Key header for state-mutating requests
+    const method = (options.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !headers['X-Idempotency-Key'] && !headers['x-idempotency-key']) {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 8);
+      const uid = this.currentUser ? this.currentUser.id : 'anon';
+      headers['X-Idempotency-Key'] = `idem_${uid}_${timestamp}_${random}`;
+    }
     try {
       const res = await fetch(url, { ...options, headers });
       if (res.status === 401 && this.currentUser) {
@@ -352,6 +361,9 @@ class TiffinApp {
     this.renderNotificationsUI();
     if (this.activeView === 'secQueueProgress') {
       this.fetchQueueProgress();
+    }
+    if (this.activeView === 'secCustomerLoyalty' || notif.type === 'LOYALTY' || (notif.title && notif.title.includes('Loyalty'))) {
+      this.loadLoyaltyRewardsPage();
     }
   }
 
@@ -2180,6 +2192,7 @@ class TiffinApp {
             <a class="nav-item ${this.activeView === 'secQueueProgress' ? 'active' : ''}" onclick="app.switchView('secQueueProgress')"><i class="fa-solid fa-ticket" style="color: var(--accent-gold);"></i> 🎟️ Queue Progress</a>
             <a class="nav-item ${this.activeView === 'secCustomerPayments' ? 'active' : ''}" onclick="app.switchView('secCustomerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
             <a class="nav-item ${this.activeView === 'secCustomerReferral' ? 'active' : ''}" onclick="app.switchView('secCustomerReferral')"><i class="fa-solid fa-gift" style="color: var(--accent-gold);"></i> Refer & Earn</a>
+            <a class="nav-item ${this.activeView === 'secCustomerLoyalty' ? 'active' : ''}" onclick="app.switchView('secCustomerLoyalty')"><i class="fa-solid fa-gift" style="color: #AB47BC;"></i> Loyalty Rewards 🎁</a>
             <a class="nav-item ${this.activeView === 'secCustomerSupport' ? 'active' : ''}" onclick="app.switchView('secCustomerSupport')"><i class="fa-solid fa-headset"></i> Support & FAQs</a>
             <a class="nav-item ${this.activeView === 'secCustomerProfile' ? 'active' : ''}" onclick="app.switchView('secCustomerProfile')">${u && u.profile_photo ? `<img src="${u.profile_photo}" alt="Profile" style="width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px;">` : `<i class="fa-solid fa-user-gear"></i>`} My Profile</a>
           `;
@@ -2485,6 +2498,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secCustomerLoyalty' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerLoyalty');">
+            <div class="drawer-icon-box purple" style="background: rgba(171, 71, 188, 0.2); color: #E1BEE7;"><i class="fa-solid fa-gift"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Loyalty Rewards 🎁</strong>
+              <span class="drawer-item-sub">Points & discount rewards</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleNotificationsTray();">
             <div class="drawer-icon-box orange"><i class="fa-solid fa-bell"></i></div>
             <div class="drawer-text-group">
@@ -2634,15 +2656,6 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
-          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.downloadDatabaseBackup('json');" title="Download PostgreSQL Database Backup">
-            <div class="drawer-icon-box green"><i class="fa-solid fa-database"></i></div>
-            <div class="drawer-text-group">
-              <strong class="drawer-item-title">Download DB Backup</strong>
-              <span class="drawer-item-sub">Export PostgreSQL DB (JSON / SQL)</span>
-            </div>
-            <i class="fa-solid fa-download drawer-chevron" style="color: #4CAF50;"></i>
-          </a>
-
           <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleNotificationsTray();">
             <div class="drawer-icon-box orange"><i class="fa-solid fa-bell"></i></div>
             <div class="drawer-text-group">
@@ -2749,8 +2762,8 @@ class TiffinApp {
   switchView(viewId) {
     // Access Control Guard - Require login for features
     if (!this.currentUser) {
-      if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites') {
-        this.showToast('Please Login or Register to view favorites, orders, payments & referral rewards.', 'error');
+      if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites' || viewId === 'secCustomerLoyalty') {
+        this.showToast('Please Login or Register to view favorites, orders, payments, referral rewards & loyalty points.', 'error');
         this.openAuthModal('CUSTOMER', 'LOGIN');
         return;
       }
@@ -2823,6 +2836,9 @@ class TiffinApp {
     if (this.activeView === 'secCustomerReferral') {
       this.fetchReferralStats();
       this.fetchLeaderboard();
+    }
+    if (this.activeView === 'secCustomerLoyalty') {
+      this.loadLoyaltyRewardsPage();
     }
     if (this.activeView === 'secCustomerSupport') {
       this.fetchSupportTickets();
@@ -11573,6 +11589,144 @@ class TiffinApp {
       console.error('Error downloading database backup:', err);
       this.showToast('Failed to download database backup.', 'error');
     }
+  }
+
+  // =========================================================================
+  // LOYALTY REWARDS SYSTEM FRONTEND ENGINE
+  // =========================================================================
+
+  async loadLoyaltyRewardsPage() {
+    if (!this.currentUser) return;
+    try {
+      // 1. Fetch Loyalty Summary
+      const res = await this.fetchWithAuth(`${API_BASE}/loyalty/summary`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        const d = json.data;
+        const ptsEl = document.getElementById('loyaltyAvailablePoints');
+        const valEl = document.getElementById('loyaltyRewardValue');
+        if (ptsEl) ptsEl.innerText = `${d.points} ⭐`;
+        if (valEl) valEl.innerText = `₹${d.reward_balance}`;
+
+        // Disable redemption buttons if insufficient points
+        const b100 = document.getElementById('btnRedeem100');
+        const b200 = document.getElementById('btnRedeem200');
+        const b500 = document.getElementById('btnRedeem500');
+        if (b100) b100.disabled = d.points < 100;
+        if (b200) b200.disabled = d.points < 200;
+        if (b500) b500.disabled = d.points < 500;
+
+        // Update profile stat badge if present
+        const profPts = document.getElementById('profStatLoyaltyPoints');
+        if (profPts) profPts.innerText = `${d.points} ⭐`;
+      }
+
+      // 2. Fetch Loyalty History
+      const hRes = await this.fetchWithAuth(`${API_BASE}/loyalty/history`);
+      const hJson = await hRes.json();
+      const tbody = document.getElementById('loyaltyHistoryTableBody');
+      if (tbody) {
+        if (hJson.success && hJson.data && hJson.data.length > 0) {
+          tbody.innerHTML = hJson.data.map(t => {
+            const isEarned = t.type === 'EARNED';
+            const ptsClass = isEarned ? 'color: var(--color-available); font-weight: 800;' : 'color: #E53935; font-weight: 800;';
+            const ptsSign = t.points > 0 ? `+${t.points}` : `${t.points}`;
+            const dtStr = t.created_at ? new Date(t.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A';
+            return `
+              <tr>
+                <td style="font-size: 0.85rem; color: var(--text-muted);">${dtStr}</td>
+                <td style="${ptsClass}">${ptsSign} ⭐</td>
+                <td style="font-weight: 600;">${t.description || t.type}</td>
+                <td style="color: #FFF; font-weight: 700;">${t.balance_after} ⭐</td>
+              </tr>
+            `;
+          }).join('');
+        } else {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                No loyalty transactions yet. Complete orders to earn points!
+              </td>
+            </tr>
+          `;
+        }
+      }
+    } catch (err) {
+      console.error('Error loading loyalty rewards page:', err);
+    }
+  }
+
+  confirmRedeemLoyalty(points, rewardVal) {
+    this.pendingLoyaltyRedeem = { points, rewardVal };
+    const title = document.getElementById('loyaltyRedeemModalTitle');
+    const msg = document.getElementById('loyaltyRedeemModalMessage');
+    if (title) title.innerText = `Confirm Redemption`;
+    if (msg) msg.innerText = `Redeem ${points} points for ₹${rewardVal} reward value?`;
+    this.toggleLoyaltyRedeemModal(true);
+  }
+
+  toggleLoyaltyRedeemModal(open) {
+    const backdrop = document.getElementById('loyaltyRedeemModalBackdrop');
+    if (backdrop) backdrop.classList.toggle('open', Boolean(open));
+  }
+
+  async executeLoyaltyRedeem() {
+    if (!this.pendingLoyaltyRedeem) return;
+    const { points, rewardVal } = this.pendingLoyaltyRedeem;
+    const btn = document.getElementById('btnConfirmLoyaltyRedeem');
+    if (btn) { btn.disabled = true; btn.innerText = 'Processing...'; }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/loyalty/redeem`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points })
+      });
+      const json = await res.json();
+      this.toggleLoyaltyRedeemModal(false);
+
+      if (json.success) {
+        this.showToast(json.message, 'success');
+        this.playNotificationChime();
+        this.loadLoyaltyRewardsPage();
+      } else {
+        this.showToast(json.message || 'Redemption failed.', 'error');
+      }
+    } catch (err) {
+      console.error('Redeem loyalty points error:', err);
+      this.showToast('Network error during redemption.', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerText = 'Confirm'; }
+      this.pendingLoyaltyRedeem = null;
+    }
+  }
+
+  async toggleCheckoutLoyaltyDiscount() {
+    const chk = document.getElementById('chkUseLoyalty');
+    const breakdown = document.getElementById('loyaltyAppliedBreakdown');
+    const discountText = document.getElementById('loyaltyBreakdownDiscount');
+    if (!chk) return;
+
+    if (chk.checked) {
+      try {
+        const res = await this.fetchWithAuth(`${API_BASE}/loyalty/summary`);
+        const json = await res.json();
+        const bal = json.data?.reward_balance || 0;
+        if (bal <= 0) {
+          chk.checked = false;
+          this.showToast('You do not have any available loyalty reward balance to use.', 'info');
+          if (breakdown) breakdown.classList.add('hidden');
+          return;
+        }
+        if (breakdown) breakdown.classList.remove('hidden');
+        if (discountText) discountText.innerText = `-₹${bal}`;
+      } catch (e) {
+        chk.checked = false;
+      }
+    } else {
+      if (breakdown) breakdown.classList.add('hidden');
+    }
+    this.updateCheckoutTotalsUI();
   }
 }
 
