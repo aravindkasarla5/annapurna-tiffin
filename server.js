@@ -4823,47 +4823,47 @@ app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
       });
     }
 
-    const isCash = is_cash_paid === true || is_cash_paid === 'true' || payment_method === 'Cash Paid';
-    let cleanUtr = null;
-    let finalPayMethod = payment_method || 'UPI (QR Pay)';
+    // 1. UTR Validation: MUST BE REQUIRED AND STRICTLY NUMERIC ONLY (/^\d+$/)
+    if (!utr_number || !utr_number.toString().trim()) {
+      return res.status(400).json({ success: false, message: "❌ UTR / Transaction ID is required." });
+    }
+    const cleanUtr = utr_number.toString().trim();
+    if (!/^\d+$/.test(cleanUtr)) {
+      return res.status(400).json({ success: false, message: "❌ Please enter a valid numeric UTR / Transaction ID." });
+    }
 
-    if (isCash) {
-      finalPayMethod = 'Cash Paid';
-      cleanUtr = 'Cash Payment';
-    } else {
-      // Online Payment: UTR MUST BE REQUIRED AND STRICTLY NUMERIC ONLY (/^\d+$/)
-      if (!utr_number || !utr_number.toString().trim()) {
-        return res.status(400).json({ success: false, message: "UTR / Transaction ID is required for online payment." });
-      }
-      cleanUtr = utr_number.toString().trim();
-      if (!/^\d+$/.test(cleanUtr)) {
-        return res.status(400).json({ success: false, message: "Please enter a valid numeric UTR / Transaction ID." });
-      }
+    // 2. Duplicate UTR Check (Cross-checks Applications & Payment Ledger)
+    const dupAppRes = await db.query(
+      `SELECT id FROM food_member_applications WHERE payment_reference = $1;`,
+      [cleanUtr]
+    );
+    const dupPayRes = await db.query(
+      `SELECT id FROM payments WHERE utr_number = $1;`,
+      [cleanUtr]
+    );
+    if ((dupAppRes.rows && dupAppRes.rows.length > 0) || (dupPayRes.rows && dupPayRes.rows.length > 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "❌ This UTR / Transaction ID has already been used."
+      });
+    }
 
-      // Verification 3: Duplicate Payment UTR check
-      const dupRes = await db.query(
-        `SELECT id FROM food_member_applications WHERE payment_reference = $1;`,
-        [cleanUtr]
-      );
-      if (dupRes.rows && dupRes.rows.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: "This UTR / Transaction ID has already been used."
-        });
-      }
+    // 3. Payment Screenshot Validation: STRICTLY MANDATORY
+    if (!payment_screenshot) {
+      return res.status(400).json({ success: false, message: "❌ Payment screenshot is required." });
+    }
+    if (!payment_screenshot.startsWith('data:image/')) {
+      return res.status(400).json({ success: false, message: "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP." });
     }
 
     let savedScreenshotUrl = null;
-    if (payment_screenshot) {
-      if (!payment_screenshot.startsWith('data:image/')) {
-        return res.status(400).json({ success: false, message: "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP." });
-      }
-      try {
-        savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
-      } catch (uploadErr) {
-        console.error('Member screenshot upload error:', uploadErr);
-      }
+    try {
+      savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+    } catch (uploadErr) {
+      console.error('Member screenshot upload error:', uploadErr);
+      return res.status(400).json({ success: false, message: "Failed to upload payment screenshot." });
     }
+    const finalPayMethod = payment_method || 'UPI (QR Pay)';
 
     const appId = 'app_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
     const payRef = cleanUtr;
@@ -5139,6 +5139,134 @@ app.post('/api/food-member/owner/reject/:id', authenticateToken, requireRole('OW
   } catch (err) {
     console.error('Reject Member Application Error:', err);
     res.status(500).json({ success: false, message: "Failed to reject application." });
+  }
+});
+
+// 5D. POST /api/food-member/owner/reapprove/:id - Owner Re-Approve Rejected Application
+app.post('/api/food-member/owner/reapprove/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const appId = req.params.id;
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    // 1. Validate application existence
+    const appRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+    if (!appRes.rows || appRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Application not found." });
+    }
+    const application = appRes.rows[0];
+
+    // 2. Validate current status is REJECTED
+    if (application.status !== 'REJECTED') {
+      return res.status(400).json({ success: false, message: `Only rejected applications can be re-approved. Current status is ${application.status}.` });
+    }
+
+    // 3. Verify payment info & UTR presence
+    if (!application.payment_reference) {
+      return res.status(400).json({ success: false, message: "Invalid application record: UTR / Payment Reference is missing." });
+    }
+
+    // 4. Verify customer does not already have an active card
+    const activeCardCheck = await db.query(
+      `SELECT id FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE' AND valid_until > $2;`,
+      [application.customer_id, nowIso]
+    );
+    if (activeCardCheck.rows && activeCardCheck.rows.length > 0) {
+      return res.status(400).json({ success: false, message: "Customer already has an active Premium Food Member Card." });
+    }
+
+    let createdOrUpdatedCard = null;
+
+    await db.executeTransaction(async (tx) => {
+      // Update application status to APPROVED and payment_status to VERIFIED
+      await tx.query(
+        `UPDATE food_member_applications 
+         SET status = 'APPROVED', payment_status = 'VERIFIED', rejection_reason = NULL, updated_at = $1 
+         WHERE id = $2;`,
+        [nowIso, appId]
+      );
+
+      // Check if a card record already exists for this application
+      const existingCardRes = await tx.query(`SELECT * FROM food_member_cards WHERE application_id = $1;`, [appId]);
+      
+      const validFrom = now;
+      const validUntil = addExactThreeCalendarMonths(now);
+
+      if (existingCardRes.rows && existingCardRes.rows.length > 0) {
+        // Update existing card to ACTIVE with 3 months validity from re-approval
+        const existingCard = existingCardRes.rows[0];
+        await tx.query(
+          `UPDATE food_member_cards 
+           SET status = 'ACTIVE', valid_from = $1, valid_until = $2, updated_at = $3 
+           WHERE id = $4;`,
+          [validFrom.toISOString(), validUntil.toISOString(), nowIso, existingCard.id]
+        );
+        const cardRes = await tx.query(`SELECT * FROM food_member_cards WHERE id = $1;`, [existingCard.id]);
+        createdOrUpdatedCard = cardRes.rows[0];
+      } else {
+        // Generate atomic Member ID and create new card
+        const memberSeq = await db.getNextCounter('member_counter');
+        const memberId = 'FM-' + String(memberSeq).padStart(6, '0');
+        const qrCode = 'QR_FM_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+        const cardId = 'card_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+        await tx.query(
+          `INSERT INTO food_member_cards (
+            id, member_id, customer_id, customer_name, customer_mobile, application_id,
+            status, valid_from, valid_until, discount_amount, express_delivery_eligible,
+            qr_verification_code, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
+          [
+            cardId, memberId, application.customer_id, application.customer_name, application.customer_mobile,
+            appId, 'ACTIVE', validFrom.toISOString(), validUntil.toISOString(), 5.00, true,
+            qrCode, nowIso, nowIso
+          ]
+        );
+
+        const cardRes = await tx.query(`SELECT * FROM food_member_cards WHERE id = $1;`, [cardId]);
+        createdOrUpdatedCard = cardRes.rows[0];
+      }
+    });
+
+    const formattedExpiry = new Date(createdOrUpdatedCard.valid_until).toLocaleDateString('en-IN');
+
+    // Audit logs
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      member_id: createdOrUpdatedCard.member_id,
+      action: 'APPLICATION_REAPPROVED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: `Re-approved application ${appId}`
+    });
+
+    await logMemberCardAudit({
+      customer_id: application.customer_id,
+      member_id: createdOrUpdatedCard.member_id,
+      action: 'MEMBERSHIP_ACTIVATED',
+      actor_role: 'OWNER',
+      details: `Membership re-activated until ${formattedExpiry}`
+    });
+
+    // Notify Customer
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: application.customer_id,
+      title: '🎉 Premium Food Member Card Re-Approved!',
+      message: `Your Premium Food Member Card (${createdOrUpdatedCard.member_id}) has been re-approved by the Owner. Your Premium Food Member benefits are active again until ${formattedExpiry}!`,
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secCustomerMemberCard'
+    });
+
+    res.json({
+      success: true,
+      message: `Premium Food Member Card (${createdOrUpdatedCard.member_id}) re-approved and activated successfully!`,
+      card: createdOrUpdatedCard
+    });
+  } catch (err) {
+    console.error('Re-approve Member Card Error:', err);
+    res.status(500).json({ success: false, message: err.message || "Failed to re-approve member card." });
   }
 });
 

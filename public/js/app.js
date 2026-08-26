@@ -248,6 +248,9 @@ class TiffinApp {
     this.renderCurrentView();
     this.updateCartUI();
 
+    // Setup HTML5 History & Android Back Button / Gesture Navigation
+    this.setupAndroidBackNavigation();
+
     // Start 2-second live polling engine for real-time status and availability sync
     this.startPolling();
 
@@ -2779,7 +2782,189 @@ class TiffinApp {
     }
   }
 
-  switchView(viewId) {
+  canAccessView(viewId) {
+    if (!viewId || !document.getElementById(viewId)) return false;
+    if (!this.currentUser) {
+      if (viewId.startsWith('secOwner')) return false;
+      if (['secCustomerOrders', 'secCustomerPayments', 'secCustomerReferral', 'secCustomerFavorites', 'secCustomerLoyalty', 'secCustomerMemberCard', 'secCustomerProfile'].includes(viewId)) {
+        return false;
+      }
+      return true;
+    }
+    if (this.currentUser.role === 'CUSTOMER' && viewId.startsWith('secOwner')) return false;
+    if (this.currentUser.role === 'OWNER' && viewId.startsWith('secCustomer') && viewId !== 'secCustomerHome' && viewId !== 'secCustomerSupport') {
+      return false;
+    }
+    return true;
+  }
+
+  hasOpenOverlay() {
+    // 1. Check dynamic modals in DOM
+    const dynamicModals = [
+      'modalConfirmRejectMemberApp',
+      'modalConfirmReapproveMemberApp',
+      'modalApplyMemberCard',
+      'modalViewPaymentProof',
+      'modalRejectMemberPayment',
+      'modalConfirmDeleteMemberApp',
+      'modalConfirmDeleteAllMemberApps',
+      'modalRejectOrder'
+    ];
+    for (const id of dynamicModals) {
+      const el = document.getElementById(id);
+      if (el && (el.classList.contains('visible') || el.classList.contains('open') || el.classList.contains('active') || el.style.display !== 'none')) {
+        return true;
+      }
+    }
+
+    // 2. Check static modals & drawers
+    const staticModalSelectors = [
+      '#reorderReviewModalBackdrop.open',
+      '#cancelOrderModalBackdrop.open',
+      '#editOrderModalBackdrop.open',
+      '#checkoutModalBackdrop.open',
+      '#authModalBackdrop.open',
+      '#orderReviewModalBackdrop.open',
+      '#verifyPinModalBackdrop.open',
+      '#rejectOrderModalBackdrop.open',
+      '#pwaInstallModal.open',
+      '#cartDrawer.open',
+      '#mobileDrawer.open',
+      '#imageLightbox.open',
+      '.modal-backdrop.open',
+      '.modal-backdrop.visible',
+      '.modal-backdrop.active',
+      '.drawer.open'
+    ];
+    for (const selector of staticModalSelectors) {
+      const el = document.querySelector(selector);
+      if (el && (el.offsetWidth > 0 || el.offsetHeight > 0)) return true;
+    }
+
+    return false;
+  }
+
+  closeTopmostOverlay() {
+    // Check dynamic modals first
+    if (document.getElementById('modalConfirmRejectMemberApp')) {
+      this.closeRejectMemberCardModal();
+      return true;
+    }
+    if (document.getElementById('modalConfirmReapproveMemberApp')) {
+      this.closeReapproveMemberCardModal();
+      return true;
+    }
+    if (document.getElementById('modalApplyMemberCard')) {
+      this.closeApplyMemberCardModal();
+      return true;
+    }
+    const payProofModal = document.getElementById('modalViewPaymentProof');
+    if (payProofModal && (payProofModal.classList.contains('visible') || payProofModal.classList.contains('open'))) {
+      this.closeViewPaymentProofModal();
+      return true;
+    }
+    const rejectPayModal = document.getElementById('modalRejectMemberPayment');
+    if (rejectPayModal && (rejectPayModal.classList.contains('visible') || rejectPayModal.classList.contains('open'))) {
+      this.closeRejectPaymentModal();
+      return true;
+    }
+    const delMemberAppModal = document.getElementById('modalConfirmDeleteMemberApp');
+    if (delMemberAppModal && (delMemberAppModal.classList.contains('visible') || delMemberAppModal.classList.contains('open'))) {
+      this.closeDeleteMemberAppModal();
+      return true;
+    }
+    const delAllMemberAppsModal = document.getElementById('modalConfirmDeleteAllMemberApps');
+    if (delAllMemberAppsModal && (delAllMemberAppsModal.classList.contains('visible') || delAllMemberAppsModal.classList.contains('open'))) {
+      this.closeDeleteAllMemberAppsModal();
+      return true;
+    }
+
+    // Check lightbox
+    const lightbox = document.getElementById('imageLightbox');
+    if (lightbox && lightbox.classList.contains('open')) {
+      this.closeLightbox();
+      return true;
+    }
+
+    // Check static modals / drawers
+    const modalHandlers = [
+      { id: 'reorderReviewModalBackdrop', class: 'open', close: () => this.closeReorderReviewModal() },
+      { id: 'cancelOrderModalBackdrop', class: 'open', close: () => this.closeCancelOrderModal() },
+      { id: 'editOrderModalBackdrop', class: 'open', close: () => this.closeEditOrderModal() },
+      { id: 'rejectOrderModalBackdrop', class: 'open', close: () => this.closeRejectOrderModal() },
+      { id: 'verifyPinModalBackdrop', class: 'open', close: () => this.closeVerifyPinModal() },
+      { id: 'checkoutModalBackdrop', class: 'open', close: () => this.toggleCheckoutModal(false) },
+      { id: 'authModalBackdrop', class: 'open', close: () => this.toggleAuthModal(false) },
+      { id: 'orderReviewModalBackdrop', class: 'open', close: () => this.closeOrderReviewModal() },
+      { id: 'pwaInstallModal', class: 'open', close: () => this.closePwaInstallModal() },
+      { id: 'cartDrawer', class: 'open', close: () => this.toggleCartDrawer(false) },
+      { id: 'mobileDrawer', class: 'open', close: () => this.toggleMobileDrawer(false) }
+    ];
+
+    for (const h of modalHandlers) {
+      const el = document.getElementById(h.id);
+      if (el && (el.classList.contains(h.class) || el.classList.contains('visible') || el.classList.contains('active'))) {
+        h.close();
+        return true;
+      }
+    }
+
+    // Fallback: any element matching .modal-backdrop.open, .modal-backdrop.visible, or .modal.open
+    const anyModal = document.querySelector('.modal-backdrop.open, .modal-backdrop.visible, .modal.open, .drawer.open');
+    if (anyModal) {
+      anyModal.classList.remove('open', 'visible', 'active');
+      return true;
+    }
+
+    return false;
+  }
+
+  setupAndroidBackNavigation() {
+    const initialView = this.activeView || (this.currentRole === 'OWNER' ? 'secOwnerDashboard' : 'secCustomerHome');
+    try {
+      window.history.replaceState({ viewId: initialView, timestamp: Date.now() }, '', `#${initialView}`);
+    } catch (e) {}
+    this.viewHistoryStack = [initialView];
+
+    window.addEventListener('popstate', (e) => {
+      // 1. Overlay Priority Check: If any modal/overlay/drawer is open, close it first
+      if (this.hasOpenOverlay()) {
+        const closed = this.closeTopmostOverlay();
+        if (closed) {
+          try {
+            window.history.pushState({ viewId: this.activeView, timestamp: Date.now() }, '', `#${this.activeView}`);
+          } catch (err) {}
+          return;
+        }
+      }
+
+      // 2. View History Back Navigation
+      const targetView = (e.state && e.state.viewId) ? e.state.viewId : (window.location.hash ? window.location.hash.replace('#', '') : null);
+
+      if (targetView && targetView !== this.activeView && document.getElementById(targetView)) {
+        if (this.canAccessView(targetView)) {
+          this.switchView(targetView, { isBack: true });
+          return;
+        }
+      }
+
+      // 3. Fallback using internal history stack
+      if (this.viewHistoryStack && this.viewHistoryStack.length > 1) {
+        this.viewHistoryStack.pop(); // Remove current view
+        const prevView = this.viewHistoryStack[this.viewHistoryStack.length - 1];
+        if (prevView && prevView !== this.activeView && document.getElementById(prevView) && this.canAccessView(prevView)) {
+          this.switchView(prevView, { isBack: true });
+          return;
+        }
+      }
+
+      // If at root view with no prior history, allow default browser/PWA exit behavior
+    });
+  }
+
+  switchView(viewId, options = {}) {
+    const isBack = options.isBack || false;
+
     // Access Control Guard - Require login for features
     if (!this.currentUser) {
       if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites' || viewId === 'secCustomerLoyalty' || viewId === 'secCustomerMemberCard') {
@@ -2809,7 +2994,26 @@ class TiffinApp {
       return;
     }
 
+    const previousView = this.activeView;
+
+    // Skip redundant re-rendering if already on target view
+    if (this.activeView === viewId && document.getElementById(viewId) && !document.getElementById(viewId).classList.contains('hidden')) {
+      return;
+    }
+
     this.activeView = viewId;
+
+    if (!this.viewHistoryStack) {
+      this.viewHistoryStack = [previousView || viewId];
+    }
+
+    if (!isBack && viewId !== previousView) {
+      try {
+        window.history.pushState({ viewId: viewId, timestamp: Date.now() }, '', `#${viewId}`);
+      } catch (err) {}
+      this.viewHistoryStack.push(viewId);
+    }
+
     this.renderNavigation();
     this.renderCurrentView();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -12048,29 +12252,37 @@ class TiffinApp {
     // STATE 5: REJECTED
     if (status === 'REJECTED') {
       const reason = application ? application.rejection_reason : '';
+      const phone = this.settings?.contact_phone || '9392874900';
+      const cleanPhone = phone.replace(/^\+91/, '').replace(/\s+/g, '');
       container.innerHTML = `
         <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
           <div style="width: 70px; height: 70px; background: rgba(244, 67, 54, 0.15); color: #E53935; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
             ❌
           </div>
 
-          <h3 style="margin: 0 0 10px 0; color: var(--text-main, #FFF); font-size: 1.4rem;">Premium Food Member Card Application Rejected</h3>
+          <h3 style="margin: 0 0 10px 0; color: #EF5350; font-size: 1.4rem;">❌ Premium Food Member Card Rejected</h3>
           
           <div style="background: rgba(244, 67, 54, 0.12); border: 1px solid #EF5350; padding: 12px 18px; border-radius: 10px; display: inline-block; margin-bottom: 20px;">
-            <span style="color: #EF5350; font-weight: 700;">Membership Payment: ₹10 PAID</span> | 
-            <span style="color: var(--text-muted, #AAA); font-size: 0.88rem;">Refund Status: PENDING / COMPLETED</span>
+            <span style="color: #EF5350; font-weight: 700;">Status: REJECTED</span>
+            ${application && application.payment_reference ? `<span style="color: var(--text-muted, #AAA); font-size: 0.88rem; margin-left: 8px;">(Ref: ${application.payment_reference})</span>` : ''}
           </div>
 
-          <p style="font-size: 1rem; color: var(--text-muted, #CCC); max-width: 500px; margin: 0 auto 24px auto;">
-            "Please contact the Owner regarding your ₹10 membership payment."
-            ${reason ? `<br><small style="color: var(--text-muted, #888);">(Note: ${reason})</small>` : ''}
+          <p style="font-size: 1rem; color: var(--text-muted, #CCC); max-width: 500px; margin: 0 auto 24px auto; line-height: 1.5;">
+            Your Premium Food Member Card application has been rejected by the Owner.
+            ${reason ? `<br><small style="color: #EF5350; margin-top: 6px; display: block;">(Reason: ${reason})</small>` : ''}
           </p>
 
-          <button class="btn-secondary-outline" style="padding: 10px 20px; font-weight: 700; cursor: pointer;" onclick="app.openApplyMemberCardModal()">
-            Re-apply with New Payment
-          </button>
+          <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+            <a href="tel:+91${cleanPhone}" class="btn-primary" style="padding: 12px 24px; font-size: 0.95rem; font-weight: 700; background: linear-gradient(135deg, #0088CC 0%, #006699 100%); border-radius: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+              <i class="fa-solid fa-phone"></i> 📞 Contact Owner
+            </a>
+            <button class="btn-secondary-outline" style="padding: 12px 20px; font-weight: 700; cursor: pointer; border-radius: 12px;" onclick="app.openApplyMemberCardModal()">
+              <i class="fa-solid fa-rotate-right"></i> Re-apply with New Payment
+            </button>
+          </div>
         </div>
       `;
+      return;
     }
   }
 
@@ -12112,14 +12324,6 @@ class TiffinApp {
           <!-- Payment Options -->
           <form onsubmit="event.preventDefault(); app.submitMemberCardApplication();">
             
-            <!-- Cash Paid Checkbox (Alternative Payment Method) -->
-            <div style="margin-bottom: 14px; background: rgba(255, 255, 255, 0.05); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
-              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.92rem; font-weight: 700; color: #FFF; margin: 0;">
-                <input type="checkbox" id="chkMemberCashPaid" onchange="app.toggleMemberCashPaid()" style="width: 18px; height: 18px; accent-color: #4CAF50; cursor: pointer;">
-                <span>💵 Cash Paid (Alternative Payment Method)</span>
-              </label>
-            </div>
-
             <div id="boxMemberOnlinePayGroup">
               <div style="margin-bottom: 14px;">
                 <label style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 6px; color: var(--text-main, #FFF);">Select Payment Method:</label>
@@ -12149,14 +12353,14 @@ class TiffinApp {
                 </div>
 
                 <div style="text-align: left; margin-top: 14px;">
-                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">Enter Numeric UTR / Transaction ID (Required):</label>
-                  <input type="text" id="memberUtrInput" placeholder="e.g. 423588990012 (Numbers only)" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" required>
+                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">💳 UTR / Transaction ID (Required):</label>
+                  <input type="text" id="memberUtrInput" placeholder="e.g. 123456789012 (Numbers only)" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" required>
                 </div>
 
-                <!-- Payment Proof Screenshot Input (Optional) -->
+                <!-- Payment Proof Screenshot Input (Required) -->
                 <div style="text-align: left; margin-top: 14px;">
                   <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">
-                    📎 Upload Payment Proof Screenshot (Optional):
+                    📷 Payment Screenshot / Proof (Required):
                   </label>
                   <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="width: 100%; font-size: 0.85rem; color: var(--text-muted, #AAA); box-sizing: border-box;" onchange="app.handleScreenshotSelect(this)">
                   <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
@@ -12173,8 +12377,8 @@ class TiffinApp {
 
             <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap;">
               <button type="button" class="btn-secondary-outline" style="flex: 1; min-width: 100px; padding: 11px;" onclick="app.closeApplyMemberCardModal()">Cancel</button>
-              <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="flex: 1.5; min-width: 160px; padding: 11px; font-weight: 700; background: #388E3C; cursor: pointer;">
-                <i class="fa-solid fa-paper-plane"></i> Submit Application (₹10)
+              <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="flex: 1.5; min-width: 160px; padding: 11px; font-weight: 700; background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%); cursor: pointer;">
+                <i class="fa-solid fa-credit-card"></i> 💳 Pay & Submit
               </button>
             </div>
           </form>
@@ -12193,22 +12397,6 @@ class TiffinApp {
     const modal = document.getElementById('modalApplyMemberCard');
     if (modal) modal.remove();
     this.currentMemberScreenshotBase64 = null;
-  }
-
-  toggleMemberCashPaid() {
-    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
-    const onlineGroup = document.getElementById('boxMemberOnlinePayGroup');
-    const utrInput = document.getElementById('memberUtrInput');
-
-    if (onlineGroup) {
-      if (isCash) {
-        onlineGroup.style.display = 'none';
-        if (utrInput) utrInput.required = false;
-      } else {
-        onlineGroup.style.display = 'block';
-        if (utrInput) utrInput.required = true;
-      }
-    }
   }
 
   handleScreenshotSelect(input) {
@@ -12269,37 +12457,39 @@ class TiffinApp {
   }
 
   async submitMemberCardApplication() {
-    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
-    const method = isCash ? 'Cash Paid' : (document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)');
+    const method = document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)';
     const utrInputVal = document.getElementById('memberUtrInput')?.value || '';
     const cleanUtr = utrInputVal.trim();
     const btn = document.getElementById('btnSubmitMemberApp');
 
-    if (!isCash && method !== 'PhonePe') {
-      if (!cleanUtr) {
-        this.showToast('Please enter the UTR / Transaction Reference Number.', 'error');
-        return;
-      }
-      if (!/^\d+$/.test(cleanUtr)) {
-        this.showToast('Please enter a valid numeric UTR / Transaction ID.', 'error');
-        return;
-      }
+    // 1. FRONTEND UTR VALIDATION (Required + Numeric)
+    if (!cleanUtr) {
+      this.showToast('❌ UTR is required.', 'error');
+      return;
+    }
+    if (!/^\d+$/.test(cleanUtr)) {
+      this.showToast('❌ Please enter a valid numeric UTR / Transaction ID.', 'error');
+      return;
     }
 
+    // 2. FRONTEND PAYMENT SCREENSHOT VALIDATION (Required)
+    if (!this.currentMemberScreenshotBase64) {
+      this.showToast('❌ Payment screenshot is required.', 'error');
+      return;
+    }
+
+    // 3. SET BUTTON STATE TO [ ⏳ Submitting... ]
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Submitting...`;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Submitting...`;
     }
 
     try {
-      const isResubmission = this.currentMemberState?.status === 'REJECTED' || this.currentMemberState?.application?.payment_status === 'REJECTED';
-      const endpoint = isResubmission ? `${API_BASE}/food-member/resubmit-proof` : `${API_BASE}/food-member/apply`;
-
+      const endpoint = `${API_BASE}/food-member/apply`;
       const payload = {
         payment_method: method,
-        utr_number: isCash ? 'Cash Payment' : cleanUtr,
-        is_cash_paid: isCash,
-        payment_screenshot: this.currentMemberScreenshotBase64 || null
+        utr_number: cleanUtr,
+        payment_screenshot: this.currentMemberScreenshotBase64
       };
 
       const res = await this.fetchWithAuth(endpoint, {
@@ -12313,16 +12503,19 @@ class TiffinApp {
         throw new Error(data.message || 'Submission failed.');
       }
 
-      this.showToast('🎉 ' + data.message, 'success');
+      if (btn) {
+        btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✓ Submitted`;
+      }
+
+      this.showToast('✅ Application Submitted Successfully', 'success');
       this.closeApplyMemberCardModal();
       await this.loadFoodMemberCardState();
     } catch (err) {
       console.error('Submit application error:', err);
-      this.showToast(err.message || 'Failed to submit application.', 'error');
-    } finally {
+      this.showToast(err.message || '❌ Unable to submit your application right now. Please try again.', 'error');
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Submit Application (₹10)`;
+        btn.innerHTML = `<i class="fa-solid fa-rotate-right"></i> ↻ Try Again`;
       }
     }
   }
@@ -12555,6 +12748,11 @@ class TiffinApp {
                   </button>
                   <button class="btn-sm btn-outline" style="color: #EF5350; border-color: #EF5350; padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer;" onclick="app.rejectMemberCard('${appItem.id}')">
                     <i class="fa-solid fa-xmark"></i> Reject Card
+                  </button>
+                ` : ''}
+                ${isRejected ? `
+                  <button class="btn-sm btn-primary" style="background: #0088CC; padding: 8px 16px; font-weight: 700; border-radius: 8px; cursor: pointer; color: #FFF;" onclick="app.reapproveMemberCard('${appItem.id}')" title="Re-Approve Rejected Application">
+                    <i class="fa-solid fa-rotate-left"></i> 🔄 RE-APPROVE
                   </button>
                 ` : ''}
                 ${isApproved ? `
@@ -12804,12 +13002,63 @@ class TiffinApp {
     }
   }
 
-  async rejectMemberCard(appId) {
-    const reason = prompt('Enter rejection reason for customer (Optional):', 'Details mismatch');
-    if (reason === null) return;
+  // Open Rejection Confirmation Modal
+  rejectMemberCard(appId) {
+    this.pendingRejectMemberAppId = appId;
+    
+    const existing = document.getElementById('modalConfirmRejectMemberApp');
+    if (existing) existing.remove();
+
+    const modalHtml = `
+      <div id="modalConfirmRejectMemberApp" class="modal-backdrop open visible active" style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; z-index: 999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 16px !important; box-sizing: border-box !important;" onclick="if(event.target === this) app.closeRejectMemberCardModal()">
+        <div class="modal-card" style="max-width: 440px; width: 100%; padding: 24px; border-radius: 18px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid #EF5350; box-shadow: 0 12px 40px rgba(0,0,0,0.6); box-sizing: border-box;" onclick="event.stopPropagation()">
+          <div style="text-align: center; margin-bottom: 16px;">
+            <div style="width: 56px; height: 56px; background: rgba(239, 83, 80, 0.15); color: #EF5350; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 12px auto;">
+              <i class="fa-solid fa-circle-xmark"></i>
+            </div>
+            <h3 style="margin: 0 0 8px 0; color: #FFF; font-size: 1.25rem;">Reject Member Application?</h3>
+            <p style="margin: 0; color: var(--text-muted, #AAA); font-size: 0.92rem; line-height: 1.4;">
+              Are you sure you want to reject this Premium Food Member Card application?
+            </p>
+          </div>
+
+          <div style="margin-bottom: 20px;">
+            <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-muted, #CCC); display: block; margin-bottom: 6px;">Rejection Reason (Optional):</label>
+            <input type="text" id="txtMemberRejectionReasonInput" value="Details mismatch" placeholder="Enter reason for rejection" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: #FFF; font-size: 0.9rem; box-sizing: border-box;">
+          </div>
+
+          <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn-secondary-outline" style="flex: 1; padding: 10px; font-weight: 600;" onclick="app.closeRejectMemberCardModal()">Cancel</button>
+            <button type="button" id="btnConfirmRejectMemberCard" class="btn-primary" style="flex: 1.2; padding: 10px; font-weight: 700; background: #D32F2F;" onclick="app.executeRejectMemberCard()">
+              <i class="fa-solid fa-xmark"></i> Confirm Reject
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  }
+
+  closeRejectMemberCardModal() {
+    const modal = document.getElementById('modalConfirmRejectMemberApp');
+    if (modal) modal.remove();
+    this.pendingRejectMemberAppId = null;
+  }
+
+  async executeRejectMemberCard() {
+    if (!this.pendingRejectMemberAppId) return;
+    const btn = document.getElementById('btnConfirmRejectMemberCard');
+    const reasonInput = document.getElementById('txtMemberRejectionReasonInput');
+    const reason = reasonInput ? reasonInput.value.trim() : 'Details mismatch';
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Rejecting...`;
+    }
 
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reject/${appId}`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reject/${this.pendingRejectMemberAppId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rejection_reason: reason })
@@ -12819,10 +13068,87 @@ class TiffinApp {
         throw new Error(data.message || 'Rejection failed.');
       }
       this.showToast('Application rejected.', 'info');
+      this.closeRejectMemberCardModal();
       await this.loadOwnerMemberApprovals();
     } catch (err) {
       console.error('Reject member card error:', err);
       this.showToast(err.message || 'Failed to reject application.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-xmark"></i> Confirm Reject`;
+      }
+    }
+  }
+
+  // Open Re-Approval Confirmation Modal
+  reapproveMemberCard(appId) {
+    this.pendingReapproveMemberAppId = appId;
+    
+    const existing = document.getElementById('modalConfirmReapproveMemberApp');
+    if (existing) existing.remove();
+
+    const modalHtml = `
+      <div id="modalConfirmReapproveMemberApp" class="modal-backdrop open visible active" style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; z-index: 999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 16px !important; box-sizing: border-box !important;" onclick="if(event.target === this) app.closeReapproveMemberCardModal()">
+        <div class="modal-card" style="max-width: 440px; width: 100%; padding: 24px; border-radius: 18px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid #4CAF50; box-shadow: 0 12px 40px rgba(0,0,0,0.6); box-sizing: border-box;" onclick="event.stopPropagation()">
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="width: 56px; height: 56px; background: rgba(76, 175, 80, 0.15); color: #4CAF50; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; margin: 0 auto 12px auto;">
+              <i class="fa-solid fa-rotate-left"></i>
+            </div>
+            <h3 style="margin: 0 0 8px 0; color: #FFF; font-size: 1.25rem;">Re-Approve Member Card?</h3>
+            <p style="margin: 0; color: var(--text-muted, #AAA); font-size: 0.92rem; line-height: 1.4;">
+              Re-approve this Premium Food Member Card? The customer's card will become active again with 3-month membership benefits.
+            </p>
+          </div>
+
+          <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn-secondary-outline" style="flex: 1; padding: 10px; font-weight: 600;" onclick="app.closeReapproveMemberCardModal()">Cancel</button>
+            <button type="button" id="btnConfirmReapproveMemberCard" class="btn-primary" style="flex: 1.2; padding: 10px; font-weight: 700; background: #388E3C;" onclick="app.executeReapproveMemberCard()">
+              <i class="fa-solid fa-check"></i> Confirm Re-Approve
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+  }
+
+  closeReapproveMemberCardModal() {
+    const modal = document.getElementById('modalConfirmReapproveMemberApp');
+    if (modal) modal.remove();
+    this.pendingReapproveMemberAppId = null;
+  }
+
+  async executeReapproveMemberCard() {
+    if (!this.pendingReapproveMemberAppId) return;
+    const btn = document.getElementById('btnConfirmReapproveMemberCard');
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Re-Approving...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reapprove/${this.pendingReapproveMemberAppId}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Re-approval failed.');
+      }
+      if (btn) {
+        btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✅ Approved`;
+      }
+      this.showToast(`🎉 ${data.message}`, 'success');
+      this.closeReapproveMemberCardModal();
+      await this.loadOwnerMemberApprovals();
+    } catch (err) {
+      console.error('Re-approve member card error:', err);
+      this.showToast(err.message || 'Failed to re-approve application.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-check"></i> Confirm Re-Approve`;
+      }
     }
   }
 }
