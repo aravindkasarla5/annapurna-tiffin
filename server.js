@@ -3844,8 +3844,35 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
           }
         }
 
-        const netAmount = Math.max(0, grand_total - walletDeducted);
+        let foodMemberDiscount = 0.00;
+        let isExpressDelivery = false;
+        let isPremiumMember = false;
+        const requestedExpress = Boolean(req.body.is_express_delivery);
+
+        if (req.user) {
+          const cardCheckRes = await tx.query(
+            `SELECT * FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE';`,
+            [req.user.id]
+          );
+          if (cardCheckRes.rows && cardCheckRes.rows.length > 0) {
+            const activeMemberCard = cardCheckRes.rows[0];
+            const expiryMs = new Date(activeMemberCard.valid_until).getTime();
+            if (expiryMs > Date.now()) {
+              foodMemberDiscount = 5.00;
+              isPremiumMember = true;
+              if (requestedExpress && activeMemberCard.express_delivery_eligible) {
+                isExpressDelivery = true;
+              }
+            }
+          }
+        }
+
+        let netAmount = Math.max(0, grand_total - walletDeducted);
+        if (foodMemberDiscount > 0) {
+          netAmount = Math.max(0, netAmount - foodMemberDiscount);
+        }
         amountToPay = netAmount;
+
         const nowIso = new Date().toISOString();
         const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
 
@@ -3854,14 +3881,14 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
             id, order_number, customer_id, customer_name, customer_mobile,
             order_type, delivery_address, notes, total_amount, used_wallet_amount,
             net_amount, payment_method, payment_status, order_status, items,
-            utr_number, pickup_pin, pickup_pin_verified, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);`,
+            utr_number, pickup_pin, pickup_pin_verified, food_member_discount, is_express_delivery, is_premium_member, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22);`,
           [
             newOrderId, orderNum, customerId, customerName, customerMobile,
             order_type || 'Takeaway', delivery_address || null, notes || null,
             grand_total, walletDeducted, netAmount, 'UPI (PhonePe)',
             'Processing', 'Received', JSON.stringify(formattedItems),
-            txnId, pickupPin, false, nowIso
+            txnId, pickupPin, false, foodMemberDiscount, isExpressDelivery ? 1 : 0, isPremiumMember ? 1 : 0, nowIso
           ]
         );
 

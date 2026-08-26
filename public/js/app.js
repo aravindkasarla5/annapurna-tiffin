@@ -5836,8 +5836,10 @@ class TiffinApp {
     const isPaid = order.payment_status.includes('Paid') || order.payment_status.includes('Verified');
     const isPendingPayment = order.payment_status.includes('Pending') || order.payment_status.includes('Verification');
 
+    const isPremiumOrder = Boolean(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0));
+
     return `
-      <div class="co-row-card owner-mode ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''}" data-order-card-id="${order.id}">
+      <div class="co-row-card owner-mode ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''} ${isPremiumOrder ? 'card-order-premium' : ''}" data-order-card-id="${order.id}">
         ${isCancelled ? `
           <!-- CUSTOMER CANCELLED BANNER (ORANGE) -->
           <div style="background: rgba(255, 152, 0, 0.14); border: 1.5px solid #FF9800; padding: 12px 16px; border-radius: var(--radius-md); color: #FFE0B2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
@@ -6170,8 +6172,10 @@ class TiffinApp {
     const minsStr = String(Math.floor(remainingSecs / 60)).padStart(2, '0');
     const secsStr = String(remainingSecs % 60).padStart(2, '0');
 
+    const isCustPremiumOrder = Boolean(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0));
+
     return `
-      <div class="co-row-card ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''}">
+      <div class="co-row-card ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''} ${isCustPremiumOrder ? 'card-order-premium' : ''}">
         ${isCancelled ? `
           <!-- PROMINENT CANCELLED ORDER CALLOUT BANNER (ORANGE) -->
           <div style="background: rgba(255, 152, 0, 0.14); border: 1.5px solid #FF9800; padding: 12px 16px; border-radius: var(--radius-md); color: #FFE0B2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
@@ -6212,8 +6216,18 @@ class TiffinApp {
 
         <!-- 1. TOP HEADER BAR: Order #, Date, Badges, Payment & Grand Total -->
         <div class="co-card-top-bar">
-          <div class="co-top-left">
+          <div class="co-top-left" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="co-row-num"><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> Order #${order.order_number}</span>
+            ${isCustPremiumOrder ? `
+              <span class="badge-premium-member">
+                ⭐ PREMIUM MEMBER
+              </span>
+            ` : ''}
+            ${order.is_express_delivery ? `
+              <span class="badge-express-delivery">
+                🚀 EXPRESS
+              </span>
+            ` : ''}
             <span class="co-row-type"><i class="fa-solid ${typeIcon}"></i> ${order.order_type}</span>
             <span class="co-row-status-badge" style="border-color: ${statusColor}; color: ${statusColor};">
               <i class="fa-solid ${statusIcon}"></i> ${statusLabel}
@@ -7013,13 +7027,24 @@ class TiffinApp {
     const isPending = order.order_status === 'Received';
     const isPreparing = order.order_status === 'Preparing';
     const isReady = order.order_status === 'Ready';
+    const isKitchenPremium = Boolean(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0));
 
     return `
-      <div class="order-card" ${isOwnerView ? `data-order-card-id="${order.id}"` : ''}>
+      <div class="order-card ${isKitchenPremium ? 'card-order-premium' : ''}" ${isOwnerView ? `data-order-card-id="${order.id}"` : ''}>
         <div class="order-card-header">
-          <div>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <span class="order-num-badge">#${order.order_number}</span>
-            <span class="badge-status ${order.order_status}" style="margin-left: 8px;">${order.order_status}</span>
+            ${isKitchenPremium ? `
+              <span class="badge-premium-member">
+                ⭐ PREMIUM MEMBER
+              </span>
+            ` : ''}
+            ${order.is_express_delivery ? `
+              <span class="badge-express-delivery">
+                🚀 EXPRESS
+              </span>
+            ` : ''}
+            <span class="badge-status ${order.order_status}">${order.order_status}</span>
           </div>
           <span class="order-time">${dateFormatted}</span>
         </div>

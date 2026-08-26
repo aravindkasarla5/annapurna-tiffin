@@ -7567,3 +7567,42 @@ body.guest-mode #btnMobileMenuToggle {
     font-size: 0.8rem !important;
   }
 }
+
+/* =========================================================================
+   PREMIUM FOOD MEMBER ORDER HIGHLIGHT STYLES
+   ========================================================================= */
+.card-order-premium {
+  border: 2px solid #FFD700 !important;
+  box-shadow: 0 4px 18px rgba(255, 215, 0, 0.22) !important;
+  position: relative !important;
+}
+
+.badge-premium-member {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%) !important;
+  color: #1A1A2E !important;
+  font-weight: 800 !important;
+  font-size: 0.78rem !important;
+  padding: 3px 10px !important;
+  border-radius: 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  letter-spacing: 0.3px !important;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.35) !important;
+  text-transform: uppercase !important;
+}
+
+.badge-express-delivery {
+  background: linear-gradient(135deg, #FF3D00 0%, #DD2C00 100%) !important;
+  color: #FFFFFF !important;
+  font-weight: 800 !important;
+  font-size: 0.78rem !important;
+  padding: 3px 10px !important;
+  border-radius: 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  letter-spacing: 0.3px !important;
+  box-shadow: 0 2px 8px rgba(255, 61, 0, 0.35) !important;
+  text-transform: uppercase !important;
+}
