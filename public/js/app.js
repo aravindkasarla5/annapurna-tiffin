@@ -12735,6 +12735,8 @@ class TiffinApp {
     const listContainer = document.getElementById('ownerMemberAppsList');
     if (!listContainer) return;
 
+    this.ownerMemberApplicationsMap = new Map();
+
     if (!apps || apps.length === 0) {
       listContainer.innerHTML = `
         <div style="text-align: center; padding: 40px 20px; color: var(--text-muted, #888);">
@@ -12748,6 +12750,9 @@ class TiffinApp {
     listContainer.innerHTML = `
       <div style="display: grid; gap: 16px;">
         ${apps.map(appItem => {
+          if (appItem && appItem.id) {
+            this.ownerMemberApplicationsMap.set(appItem.id, appItem);
+          }
           const isPending = appItem.status === 'PENDING_APPROVAL';
           const isApproved = appItem.status === 'APPROVED';
           const isRejected = appItem.status === 'REJECTED';
@@ -12771,6 +12776,7 @@ class TiffinApp {
           const validUntilFormatted = appItem.valid_until ? new Date(appItem.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
           const appDateFormatted = appItem.created_at ? new Date(appItem.created_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
           const utrVal = appItem.payment_reference || 'N/A';
+          const hasScreenshot = !!(appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof);
 
           return `
             <div class="card-item" style="border: 1px solid var(--border-color, #333); border-radius: 14px; padding: 18px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word; min-width: 0;">
@@ -12805,8 +12811,8 @@ class TiffinApp {
                       </button>
                     ` : ''}
                   </span>
-                  ${appItem.screenshot_url ? `
-                    <button class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewPaymentProof('${appItem.screenshot_url}')" title="View Customer Payment Screenshot">
+                  ${hasScreenshot ? `
+                    <button type="button" class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewOwnerMemberCardScreenshot('${appItem.id}')" title="View Customer Payment Screenshot">
                       <i class="fa-solid fa-image"></i> 👁 View Screenshot
                     </button>
                   ` : ''}
@@ -12945,6 +12951,18 @@ class TiffinApp {
         btn.innerHTML = `<i class="fa-solid fa-trash-can"></i> DELETE ALL`;
       }
     }
+  }
+
+  viewOwnerMemberCardScreenshot(appId) {
+    const appItem = this.ownerMemberApplicationsMap ? this.ownerMemberApplicationsMap.get(appId) : null;
+    const imgUrl = appItem ? (appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof) : null;
+
+    if (!imgUrl) {
+      this.showToast('⚠️ Payment screenshot not available for this application.', 'error');
+      return;
+    }
+
+    this.viewPaymentProof(imgUrl);
   }
 
   viewPaymentProof(imgUrl) {

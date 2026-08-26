@@ -4999,8 +4999,10 @@ app.get('/api/food-member/owner/applications', authenticateToken, requireRole('O
     const { status } = req.query;
     let querySql = `
       SELECT a.*, 
+             p.screenshot_url as payment_ledger_screenshot,
              c.member_id, c.status as card_status, c.valid_from, c.valid_until, c.qr_verification_code
       FROM food_member_applications a
+      LEFT JOIN payments p ON p.order_id = a.id
       LEFT JOIN food_member_cards c ON c.application_id = a.id
     `;
     const params = [];
