@@ -12215,11 +12215,8 @@ class TiffinApp {
           </div>
         </div>
 
-        <!-- SIDE-BY-SIDE DOWNLOAD & PRINT BUTTONS -->
+        <!-- PRINT CARD BUTTON -->
         <div class="card-actions-row" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-          <button id="btnDownloadMemberCard" class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #1976D2; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.downloadMemberCard(this)">
-            <i class="fa-solid fa-download"></i> ⬇ Download Card
-          </button>
           <button id="btnPrintMemberCard" class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #388E3C; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.printMemberCard(this)">
             <i class="fa-solid fa-print"></i> 🖨 Print Card
           </button>
