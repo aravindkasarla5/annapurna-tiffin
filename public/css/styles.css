@@ -4298,6 +4298,7 @@ body.guest-mode #btnMobileMenuToggle {
   display: none !important;
 }
 
+@media (max-width: 768px) {
   .top-header {
     padding: 0.75rem 1rem;
   }
@@ -4329,13 +4330,6 @@ body.guest-mode #btnMobileMenuToggle {
     gap: 0.75rem !important;
   }
 
-  @media (max-width: 580px) {
-    .food-grid {
-      grid-template-columns: repeat(2, 1fr) !important;
-      gap: 0.65rem !important;
-    }
-  }
-
   .food-card-img-wrapper {
     height: 135px !important;
   }
@@ -4343,6 +4337,13 @@ body.guest-mode #btnMobileMenuToggle {
   .stats-grid {
     grid-template-columns: 1fr 1fr !important;
     gap: 0.75rem !important;
+  }
+}
+
+@media (max-width: 580px) {
+  .food-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.65rem !important;
   }
 }
 
