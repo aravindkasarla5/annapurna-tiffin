@@ -4506,9 +4506,12 @@
           </div>
 
           <!-- Error Alert -->
-          <div id="imgPaymentProofError" style="display: none; flex-direction: column; align-items: center; gap: 8px; color: #EF5350; padding: 30px 10px; text-align: center;">
+          <div id="imgPaymentProofError" style="display: none; flex-direction: column; align-items: center; gap: 10px; color: #EF5350; padding: 30px 10px; text-align: center;">
             <i class="fa-solid fa-triangle-exclamation" style="font-size: 2.4rem;"></i>
             <span id="txtPaymentProofErrorMsg" style="font-weight: 700; font-size: 0.95rem;">⚠️ Payment screenshot not available.</span>
+            <button type="button" id="btnRetryPaymentProof" class="btn-sm btn-outline" style="color: #FFD700; border-color: #FFD700; padding: 6px 14px; font-weight: 700; border-radius: 8px; cursor: pointer; margin-top: 6px;">
+              <i class="fa-solid fa-arrows-rotate"></i> 🔄 Try Again
+            </button>
           </div>
 
           <img id="imgPaymentProofZoom" src="" alt="Payment Proof / QR" style="max-width: 100%; height: auto; border-radius: 6px; transition: transform 0.2s ease; transform-origin: center center; display: none;">

@@ -5038,6 +5038,69 @@ app.get('/api/food-member/owner/applications', authenticateToken, requireRole('O
   }
 });
 
+// Dedicated Authenticated Route: Serve Payment Proof Screenshot for Owner
+app.get('/api/food-member/owner/screenshot/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const appId = req.params.id;
+    console.log(`[DEBUG] Payment proof request started for application: ${appId}`);
+
+    const appRes = await db.query(
+      `SELECT a.id, a.screenshot_url, p.screenshot_url as payment_ledger_screenshot 
+       FROM food_member_applications a
+       LEFT JOIN payments p ON p.order_id = a.id
+       WHERE a.id = $1;`,
+      [appId]
+    );
+
+    if (!appRes.rows || appRes.rows.length === 0) {
+      console.log(`[DEBUG] Application ${appId} not found in database.`);
+      return res.status(404).json({ success: false, message: "⚠️ Membership application record not found." });
+    }
+
+    const record = appRes.rows[0];
+    const rawScreenshot = record.screenshot_url || record.payment_ledger_screenshot;
+
+    if (!rawScreenshot) {
+      console.log(`[DEBUG] Payment proof reference is empty for application ${appId}`);
+      return res.status(404).json({ success: false, message: "⚠️ Payment screenshot not available for this record." });
+    }
+
+    console.log(`[DEBUG] Found raw screenshot reference type: ${rawScreenshot.startsWith('data:image/') ? 'Base64 Data URI' : 'File Path'}`);
+
+    if (rawScreenshot.startsWith('data:image/')) {
+      const matches = rawScreenshot.match(/^data:image\/([a-zA-Z0-9+\-+.]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const mimeType = `image/${matches[1] === 'jpg' ? 'jpeg' : matches[1]}`;
+        const imageBuffer = Buffer.from(matches[2], 'base64');
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        console.log(`[DEBUG] Serving base64 image, size: ${imageBuffer.length} bytes, content-type: ${mimeType}`);
+        return res.status(200).send(imageBuffer);
+      }
+    }
+
+    let relativePath = rawScreenshot;
+    if (relativePath.startsWith('/')) {
+      relativePath = relativePath.substring(1);
+    }
+
+    const fullFilePath = path.join(__dirname, 'public', relativePath);
+    console.log(`[DEBUG] Checking file path on disk: ${fullFilePath}`);
+
+    if (fs.existsSync(fullFilePath)) {
+      console.log(`[DEBUG] File found on disk. Sending file response.`);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      return res.status(200).sendFile(fullFilePath);
+    }
+
+    console.log(`[DEBUG] File not found on disk at path: ${fullFilePath}`);
+    return res.status(404).json({ success: false, message: "⚠️ Screenshot file unavailable on server disk." });
+  } catch (err) {
+    console.error('Fetch Owner Payment Screenshot Error:', err);
+    res.status(500).json({ success: false, message: "❌ Failed to retrieve payment screenshot." });
+  }
+});
+
 // 4. POST /api/food-member/owner/approve/:id - Owner Approve Application
 app.post('/api/food-member/owner/approve/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {

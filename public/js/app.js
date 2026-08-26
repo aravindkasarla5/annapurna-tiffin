@@ -12954,19 +12954,33 @@ class TiffinApp {
   }
 
   viewOwnerMemberCardScreenshot(appId) {
+    console.log(`[DEBUG] Membership application loaded for ID: ${appId}`);
     const appItem = this.ownerMemberApplicationsMap ? this.ownerMemberApplicationsMap.get(appId) : null;
-    const imgUrl = appItem ? (appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof) : null;
+    const rawScreenshot = appItem ? (appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof) : null;
 
-    if (!imgUrl) {
-      this.showToast('⚠️ Payment screenshot not available for this application.', 'error');
+    console.log(`[DEBUG] Payment proof reference received:`, rawScreenshot ? (rawScreenshot.startsWith('data:image/') ? 'Base64 Data' : rawScreenshot) : 'None');
+    console.log(`[DEBUG] View Screenshot clicked for appId: ${appId}`);
+
+    if (!rawScreenshot && !appItem) {
+      console.warn(`[DEBUG] Payment proof missing for application ID: ${appId}`);
+      this.showToast('⚠️ Payment screenshot not available for this record.', 'error');
       return;
     }
 
-    this.viewPaymentProof(imgUrl);
+    let imgSource = '';
+    if (rawScreenshot && rawScreenshot.startsWith('data:image/')) {
+      imgSource = rawScreenshot;
+    } else {
+      imgSource = `${API_BASE}/food-member/owner/screenshot/${appId}?t=${Date.now()}`;
+    }
+
+    console.log(`[DEBUG] Payment proof request started with source:`, imgSource.startsWith('data:') ? 'Base64 Data' : imgSource);
+    this.viewPaymentProof(imgSource, appId);
   }
 
-  viewPaymentProof(imgUrl) {
+  viewPaymentProof(imgUrl, appId = null) {
     if (!imgUrl) {
+      console.warn(`[DEBUG] Payment proof URL is empty.`);
       this.showToast('⚠️ Payment screenshot not available for this record.', 'error');
       return;
     }
@@ -12976,6 +12990,7 @@ class TiffinApp {
     const loadingEl = document.getElementById('imgPaymentProofLoading');
     const errorEl = document.getElementById('imgPaymentProofError');
     const errorMsgEl = document.getElementById('txtPaymentProofErrorMsg');
+    const retryBtn = document.getElementById('btnRetryPaymentProof');
 
     if (modal && img) {
       this.setZoomScale(1.0);
@@ -12985,19 +13000,27 @@ class TiffinApp {
       img.style.display = 'none';
 
       img.onload = () => {
+        console.log(`[DEBUG] Payment proof loaded successfully.`);
+        console.log(`[DEBUG] Image viewer opened.`);
         if (loadingEl) loadingEl.style.display = 'none';
         if (errorEl) errorEl.style.display = 'none';
         img.style.display = 'block';
       };
 
-      img.onerror = () => {
+      img.onerror = (e) => {
+        console.error(`[DEBUG] Payment proof image load error:`, e);
         if (loadingEl) loadingEl.style.display = 'none';
         img.style.display = 'none';
-        if (errorMsgEl) errorMsgEl.textContent = '❌ Unable to load payment screenshot.';
+        if (errorMsgEl) errorMsgEl.textContent = '❌ Unable to load payment screenshot. Please try again.';
         if (errorEl) errorEl.style.display = 'flex';
       };
 
       img.src = imgUrl;
+
+      if (retryBtn && appId) {
+        retryBtn.onclick = () => this.viewOwnerMemberCardScreenshot(appId);
+      }
+
       modal.classList.add('visible');
       modal.classList.add('open');
       this.setupImageZoomTouchHandlers();
