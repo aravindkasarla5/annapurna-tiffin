@@ -12309,7 +12309,19 @@ class TiffinApp {
             <button type="button" onclick="app.closeApplyMemberCardModal()" style="background: rgba(255,255,255,0.1); border: none; font-size: 1.3rem; cursor: pointer; color: #FFF; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1;" title="Close Modal">&times;</button>
           </div>
 
-          <div style="background: rgba(255, 215, 0, 0.08); border-radiu          <!-- Payment Options -->
+          <div style="background: rgba(255, 215, 0, 0.08); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; font-size: 0.88rem; border: 1px solid rgba(255,215,0,0.25);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+              <span style="color: var(--text-muted, #AAA);">Membership Tier:</span> <strong style="color: var(--accent-gold, #FFD700);">Premium Food Member</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
+              <span style="color: var(--text-muted, #AAA);">Membership Fee:</span> <strong style="color: #4CAF50; font-size: 1.1rem;">₹10 (One-Time)</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+              <span style="color: var(--text-muted, #AAA);">Validity Period:</span> <strong style="color: #FFF;">3 Calendar Months</strong>
+            </div>
+          </div>
+
+          <!-- Payment Options -->
           <form onsubmit="event.preventDefault(); app.submitMemberCardApplication();">
             
             <!-- Cash Paid Checkbox (Alternative Payment Method) -->
