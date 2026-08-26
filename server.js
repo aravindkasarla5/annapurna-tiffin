@@ -4764,27 +4764,23 @@ app.get('/api/food-member/status', authenticateToken, async (req, res) => {
 });
 
 // 2. POST /api/food-member/apply - Customer Application with ₹10 Verified Payment
-app.post('/api/food-member/apply', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
   try {
+    const { payment_method, utr_number, payment_screenshot, is_cash_paid } = req.body;
     const customerId = req.user.id;
-    const { payment_method, utr_number, payment_screenshot } = req.body;
     const nowIso = new Date().toISOString();
-    const nowMs = Date.now();
 
-    // Verification 1: Customer does not currently have an ACTIVE unexpired card
+    // Verification 1: Customer does not already have an active card
     const activeCardRes = await db.query(
-      `SELECT * FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE';`,
-      [customerId]
+      `SELECT * FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE' AND valid_until > $2;`,
+      [customerId, nowIso]
     );
     if (activeCardRes.rows && activeCardRes.rows.length > 0) {
-      const c = activeCardRes.rows[0];
-      if (new Date(c.valid_until).getTime() > nowMs) {
-        return res.status(400).json({
-          success: false,
-          code: 'ALREADY_ACTIVE',
-          message: `You already have an active Premium Food Member Card valid until ${new Date(c.valid_until).toLocaleDateString('en-IN')}.`
-        });
-      }
+      return res.status(400).json({
+        success: false,
+        code: 'ACTIVE_EXISTS',
+        message: 'You already have an active Premium Food Member Card.'
+      });
     }
 
     // Verification 2: Customer does not already have a pending application
@@ -4800,17 +4796,32 @@ app.post('/api/food-member/apply', authenticateToken, requireRole('CUSTOMER'), a
       });
     }
 
-    // Verification 3: Duplicate Payment UTR check
-    const cleanUtr = utr_number ? utr_number.trim() : null;
-    if (cleanUtr) {
+    const isCash = is_cash_paid === true || is_cash_paid === 'true' || payment_method === 'Cash Paid';
+    let cleanUtr = null;
+    let finalPayMethod = payment_method || 'UPI (QR Pay)';
+
+    if (isCash) {
+      finalPayMethod = 'Cash Paid';
+      cleanUtr = 'Cash Payment';
+    } else {
+      // Online Payment: UTR MUST BE REQUIRED AND STRICTLY NUMERIC ONLY (/^\d+$/)
+      if (!utr_number || !utr_number.toString().trim()) {
+        return res.status(400).json({ success: false, message: "UTR / Transaction ID is required for online payment." });
+      }
+      cleanUtr = utr_number.toString().trim();
+      if (!/^\d+$/.test(cleanUtr)) {
+        return res.status(400).json({ success: false, message: "Please enter a valid numeric UTR / Transaction ID." });
+      }
+
+      // Verification 3: Duplicate Payment UTR check
       const dupRes = await db.query(
-        `SELECT id FROM food_member_applications WHERE payment_reference = $1 AND id != $2;`,
-        [cleanUtr, 'NO_EXCLUDE']
+        `SELECT id FROM food_member_applications WHERE payment_reference = $1;`,
+        [cleanUtr]
       );
       if (dupRes.rows && dupRes.rows.length > 0) {
         return res.status(400).json({
           success: false,
-          message: `⚠️ This Payment UTR (${cleanUtr}) has already been submitted for a membership application.`
+          message: "This UTR / Transaction ID has already been used."
         });
       }
     }
@@ -4828,7 +4839,7 @@ app.post('/api/food-member/apply', authenticateToken, requireRole('CUSTOMER'), a
     }
 
     const appId = 'app_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-    const payRef = cleanUtr || ('PAY_FM_' + Date.now());
+    const payRef = cleanUtr;
 
     try {
       await db.executeTransaction(async (tx) => {
@@ -4839,7 +4850,7 @@ app.post('/api/food-member/apply', authenticateToken, requireRole('CUSTOMER'), a
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
           [
             appId, customerId, req.user.name, req.user.mobile, 10.00,
-            payment_method || 'UPI', 'VERIFICATION_PENDING', payRef, savedScreenshotUrl,
+            finalPayMethod, 'VERIFICATION_PENDING', payRef, savedScreenshotUrl,
             'PENDING_APPROVAL', nowIso, nowIso
           ]
         );
@@ -4851,7 +4862,7 @@ app.post('/api/food-member/apply', authenticateToken, requireRole('CUSTOMER'), a
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
           [
             payId, 'MEMBERSHIP_₹10', appId, customerId, req.user.name, req.user.mobile,
-            10.00, payment_method || 'UPI', 'Pending Verification', payRef, savedScreenshotUrl,
+            10.00, finalPayMethod, 'Pending Verification', payRef, savedScreenshotUrl,
             'Premium Food Member Card Membership Fee (₹10)'
           ]
         );
@@ -5336,6 +5347,16 @@ app.delete('/api/food-member/owner/application/:id', authenticateToken, requireR
       actor_role: 'OWNER',
       actor_id: req.user.id,
       details: `Owner deleted membership record ${appId}`
+    });
+
+    // Notify Customer about card removal
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: application.customer_id,
+      title: '❌ Premium Food Member Card Status',
+      message: 'Your Food Member Card has been removed by the Owner. Please contact the Owner for more information.',
+      type: 'MEMBER_CARD',
+      priority: 'HIGH'
     });
 
     res.json({

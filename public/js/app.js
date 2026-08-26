@@ -11988,11 +11988,11 @@ class TiffinApp {
 
         <!-- SIDE-BY-SIDE DOWNLOAD & PRINT BUTTONS -->
         <div class="card-actions-row" style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-          <button class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #1976D2; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.downloadMemberCard()">
-            <i class="fa-solid fa-download"></i> ⬇ Download
+          <button id="btnDownloadMemberCard" class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #1976D2; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.downloadMemberCard(this)">
+            <i class="fa-solid fa-download"></i> ⬇ Download Card
           </button>
-          <button class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #388E3C; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.printMemberCard()">
-            <i class="fa-solid fa-print"></i> 🖨 Print
+          <button id="btnPrintMemberCard" class="btn-primary" style="padding: 11px 22px; font-size: 0.9rem; font-weight: 700; background: #388E3C; min-width: 140px; border-radius: 10px; cursor: pointer;" onclick="app.printMemberCard(this)">
+            <i class="fa-solid fa-print"></i> 🖨 Print Card
           </button>
         </div>
       `;
@@ -12086,51 +12086,62 @@ class TiffinApp {
 
           <!-- Payment Options -->
           <form onsubmit="event.preventDefault(); app.submitMemberCardApplication();">
-            <div style="margin-bottom: 14px;">
-              <label style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 6px; color: var(--text-main, #FFF);">Select Payment Method:</label>
-              <select id="memberPayMethod" style="width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" onchange="app.toggleMemberPayFields()">
-                <option value="UPI (QR Pay)">UPI QR Pay / Google Pay / PhonePe / Paytm</option>
-                <option value="PhonePe">PhonePe Gateway</option>
-              </select>
+            
+            <!-- Cash Paid Checkbox (Alternative Payment Method) -->
+            <div style="margin-bottom: 14px; background: rgba(255, 255, 255, 0.05); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.92rem; font-weight: 700; color: #FFF; margin: 0;">
+                <input type="checkbox" id="chkMemberCashPaid" onchange="app.toggleMemberCashPaid()" style="width: 18px; height: 18px; accent-color: #4CAF50; cursor: pointer;">
+                <span>💵 Cash Paid (Alternative Payment Method)</span>
+              </label>
             </div>
 
-            <!-- UPI QR Pay Details Box -->
-            <div id="boxMemberUpiQr" style="background: rgba(0,0,0,0.25); border: 1px dashed var(--accent-gold, #FFD700); border-radius: 14px; padding: 16px 12px; text-align: center; margin-bottom: 16px; box-sizing: border-box;">
-              <p style="margin: 0 0 6px 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">Scan QR or pay <strong style="color: var(--accent-gold, #FFD700);">₹10</strong> to UPI ID:</p>
-              <div style="font-family: monospace; font-weight: 700; color: var(--accent-gold, #FFD700); font-size: 1.05rem; margin-bottom: 10px; word-break: break-all;">${upiId}</div>
-              
-              <div style="position: relative; display: inline-block; cursor: pointer;" onclick="app.zoomApplyModalQr()" title="Click to Zoom QR Scanner">
-                <img id="imgApplyModalQr" src="${qrImg}" alt="UPI QR Code Scanner" style="width: 140px; height: 140px; object-fit: contain; margin: 0 auto; display: block; border-radius: 10px; border: 2px solid var(--accent-gold, #FFD700); background: #FFF; padding: 4px;">
-                <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.8); color: #FFD700; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; border: 1px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.5);">
-                  <i class="fa-solid fa-magnifying-glass-plus"></i>
-                </div>
+            <div id="boxMemberOnlinePayGroup">
+              <div style="margin-bottom: 14px;">
+                <label style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 6px; color: var(--text-main, #FFF);">Select Payment Method:</label>
+                <select id="memberPayMethod" style="width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" onchange="app.toggleMemberPayFields()">
+                  <option value="UPI (QR Pay)">UPI QR Pay / Google Pay / PhonePe / Paytm</option>
+                  <option value="PhonePe">PhonePe Gateway</option>
+                </select>
               </div>
 
-              <!-- Dedicated Zoom Scanner Button -->
-              <div style="margin-top: 10px;">
-                <button type="button" class="btn-sm" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 18px; font-size: 0.85rem; font-weight: 700; color: #1A1A2E; background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%); border: none; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(255,215,0,0.35);" onclick="app.zoomApplyModalQr()">
-                  <i class="fa-solid fa-qrcode"></i> 🔍 Zoom Scanner / QR Code
-                </button>
-              </div>
-
-              <div style="text-align: left; margin-top: 14px;">
-                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">Enter UTR / Transaction Reference Number (Required):</label>
-                <input type="text" id="memberUtrInput" placeholder="e.g. 4235XXXXXXXX" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" required>
-              </div>
-
-              <!-- Payment Proof Screenshot Input -->
-              <div style="text-align: left; margin-top: 14px;">
-                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">
-                  📎 Upload Payment Proof Screenshot (Optional/Recommended):
-                </label>
-                <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="width: 100%; font-size: 0.85rem; color: var(--text-muted, #AAA); box-sizing: border-box;" onchange="app.handleScreenshotSelect(this)">
-                <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
-                  <img id="memberScreenshotPreviewImg" src="" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #555;">
-                  <div style="flex: 1; min-width: 0;">
-                    <div id="memberScreenshotFileName" style="font-size: 0.8rem; font-weight: 700; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
-                    <div id="memberScreenshotFileSize" style="font-size: 0.75rem; color: var(--text-muted, #AAA);"></div>
+              <!-- UPI QR Pay Details Box -->
+              <div id="boxMemberUpiQr" style="background: rgba(0,0,0,0.25); border: 1px dashed var(--accent-gold, #FFD700); border-radius: 14px; padding: 16px 12px; text-align: center; margin-bottom: 16px; box-sizing: border-box;">
+                <p style="margin: 0 0 6px 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">Scan QR or pay <strong style="color: var(--accent-gold, #FFD700);">₹10</strong> to UPI ID:</p>
+                <div style="font-family: monospace; font-weight: 700; color: var(--accent-gold, #FFD700); font-size: 1.05rem; margin-bottom: 10px; word-break: break-all;">${upiId}</div>
+                
+                <div style="position: relative; display: inline-block; cursor: pointer;" onclick="app.zoomApplyModalQr()" title="Click to Zoom QR Scanner">
+                  <img id="imgApplyModalQr" src="${qrImg}" alt="UPI QR Code Scanner" style="width: 140px; height: 140px; object-fit: contain; margin: 0 auto; display: block; border-radius: 10px; border: 2px solid var(--accent-gold, #FFD700); background: #FFF; padding: 4px;">
+                  <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.8); color: #FFD700; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; border: 1px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.5);">
+                    <i class="fa-solid fa-magnifying-glass-plus"></i>
                   </div>
-                  <button type="button" onclick="app.removeSelectedScreenshot()" style="color: #EF5350; border: none; background: none; font-size: 1rem; cursor: pointer;" title="Remove screenshot"><i class="fa-solid fa-trash"></i></button>
+                </div>
+
+                <!-- Dedicated Zoom Scanner Button -->
+                <div style="margin-top: 10px;">
+                  <button type="button" class="btn-sm" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 18px; font-size: 0.85rem; font-weight: 700; color: #1A1A2E; background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%); border: none; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(255,215,0,0.35);" onclick="app.zoomApplyModalQr()">
+                    <i class="fa-solid fa-qrcode"></i> 🔍 Zoom Scanner / QR Code
+                  </button>
+                </div>
+
+                <div style="text-align: left; margin-top: 14px;">
+                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">Enter Numeric UTR / Transaction ID (Required):</label>
+                  <input type="text" id="memberUtrInput" placeholder="e.g. 423588990012 (Numbers only)" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" required>
+                </div>
+
+                <!-- Payment Proof Screenshot Input (Optional) -->
+                <div style="text-align: left; margin-top: 14px;">
+                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">
+                    📎 Upload Payment Proof Screenshot (Optional):
+                  </label>
+                  <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="width: 100%; font-size: 0.85rem; color: var(--text-muted, #AAA); box-sizing: border-box;" onchange="app.handleScreenshotSelect(this)">
+                  <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
+                    <img id="memberScreenshotPreviewImg" src="" style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; border: 1px solid #555;">
+                    <div style="flex: 1; min-width: 0;">
+                      <div id="memberScreenshotFileName" style="font-size: 0.8rem; font-weight: 700; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+                      <div id="memberScreenshotFileSize" style="font-size: 0.75rem; color: var(--text-muted, #AAA);"></div>
+                    </div>
+                    <button type="button" onclick="app.removeSelectedScreenshot()" style="color: #EF5350; border: none; background: none; font-size: 1rem; cursor: pointer;" title="Remove screenshot"><i class="fa-solid fa-trash"></i></button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -12138,7 +12149,7 @@ class TiffinApp {
             <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap;">
               <button type="button" class="btn-secondary-outline" style="flex: 1; min-width: 100px; padding: 11px;" onclick="app.closeApplyMemberCardModal()">Cancel</button>
               <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="flex: 1.5; min-width: 160px; padding: 11px; font-weight: 700; background: #388E3C; cursor: pointer;">
-                <i class="fa-solid fa-paper-plane"></i> Pay ₹10 & Submit Proof
+                <i class="fa-solid fa-paper-plane"></i> Submit Application (₹10)
               </button>
             </div>
           </form>
@@ -12157,6 +12168,22 @@ class TiffinApp {
     const modal = document.getElementById('modalApplyMemberCard');
     if (modal) modal.remove();
     this.currentMemberScreenshotBase64 = null;
+  }
+
+  toggleMemberCashPaid() {
+    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
+    const onlineGroup = document.getElementById('boxMemberOnlinePayGroup');
+    const utrInput = document.getElementById('memberUtrInput');
+
+    if (onlineGroup) {
+      if (isCash) {
+        onlineGroup.style.display = 'none';
+        if (utrInput) utrInput.required = false;
+      } else {
+        onlineGroup.style.display = 'block';
+        if (utrInput) utrInput.required = true;
+      }
+    }
   }
 
   handleScreenshotSelect(input) {
@@ -12217,13 +12244,21 @@ class TiffinApp {
   }
 
   async submitMemberCardApplication() {
-    const method = document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)';
-    const utr = document.getElementById('memberUtrInput')?.value || '';
+    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
+    const method = isCash ? 'Cash Paid' : (document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)');
+    const utrInputVal = document.getElementById('memberUtrInput')?.value || '';
+    const cleanUtr = utrInputVal.trim();
     const btn = document.getElementById('btnSubmitMemberApp');
 
-    if (method !== 'PhonePe' && !utr.trim()) {
-      this.showToast('Please enter the 12-digit UTR/Transaction Reference Number.', 'error');
-      return;
+    if (!isCash && method !== 'PhonePe') {
+      if (!cleanUtr) {
+        this.showToast('Please enter the UTR / Transaction Reference Number.', 'error');
+        return;
+      }
+      if (!/^\d+$/.test(cleanUtr)) {
+        this.showToast('Please enter a valid numeric UTR / Transaction ID.', 'error');
+        return;
+      }
     }
 
     if (btn) {
@@ -12235,54 +12270,90 @@ class TiffinApp {
       const isResubmission = this.currentMemberState?.status === 'REJECTED' || this.currentMemberState?.application?.payment_status === 'REJECTED';
       const endpoint = isResubmission ? `${API_BASE}/food-member/resubmit-proof` : `${API_BASE}/food-member/apply`;
 
+      const payload = {
+        payment_method: method,
+        utr_number: isCash ? 'Cash Payment' : cleanUtr,
+        is_cash_paid: isCash,
+        payment_screenshot: this.currentMemberScreenshotBase64 || null
+      };
+
       const res = await this.fetchWithAuth(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          payment_method: method,
-          utr_number: utr.trim(),
-          payment_screenshot: this.currentMemberScreenshotBase64 || null
-        })
+        body: JSON.stringify(payload)
       });
-
       const data = await res.json();
+
       if (!data.success) {
-        throw new Error(data.message || 'Application submission failed.');
+        throw new Error(data.message || 'Submission failed.');
       }
 
-      this.showToast('🎉 Payment proof submitted successfully! Awaiting Owner verification.', 'success');
+      this.showToast('🎉 ' + data.message, 'success');
       this.closeApplyMemberCardModal();
       await this.loadFoodMemberCardState();
     } catch (err) {
-      console.error('Member Card Application Submission Error:', err);
-      this.showToast(err.message || 'Failed to submit payment proof.', 'error');
+      console.error('Submit application error:', err);
+      this.showToast(err.message || 'Failed to submit application.', 'error');
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Pay ₹10 & Submit Proof`;
+        btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Submit Application (₹10)`;
       }
     }
   }
 
   // Print Member Card (Isolates Card via @media print)
-  printMemberCard() {
+  printMemberCard(btnEl) {
     const cardEl = document.getElementById('printableFoodMemberCard');
     if (!cardEl) {
       this.showToast('No active Member Card available to print.', 'error');
       return;
     }
-    window.print();
+
+    const btn = btnEl || document.getElementById('btnPrintMemberCard');
+    const origHtml = btn ? btn.innerHTML : '';
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 🖨 Printing...`;
+    }
+
+    setTimeout(() => {
+      window.print();
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml || `<i class="fa-solid fa-print"></i> 🖨 Print`;
+      }
+    }, 400);
   }
 
-  // Download Member Card (Downloads HTML container as PDF/Image)
-  async downloadMemberCard() {
+  // Download Member Card (Downloads HTML container as PDF)
+  async downloadMemberCard(btnEl) {
     const cardEl = document.getElementById('printableFoodMemberCard');
     if (!cardEl) {
       this.showToast('No active Member Card available to download.', 'error');
       return;
     }
 
+    const btn = btnEl || document.getElementById('btnDownloadMemberCard');
+    const origHtml = btn ? btn.innerHTML : '';
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Downloading...`;
+    }
+
     this.showToast('Generating high-resolution Food Member Card download...', 'info');
+
+    const restoreBtn = () => {
+      if (btn) {
+        btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✓ Downloaded`;
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerHTML = origHtml || `<i class="fa-solid fa-download"></i> ⬇ Download`;
+        }, 2000);
+      }
+    };
 
     if (window.html2pdf) {
       const opt = {
@@ -12294,12 +12365,15 @@ class TiffinApp {
       };
       window.html2pdf().set(opt).from(cardEl).save().then(() => {
         this.showToast('✅ Member Card downloaded successfully!', 'success');
+        restoreBtn();
       }).catch(err => {
         console.error('html2pdf error:', err);
         window.print();
+        restoreBtn();
       });
     } else {
       window.print();
+      restoreBtn();
     }
   }
 

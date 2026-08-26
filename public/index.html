@@ -4534,16 +4534,16 @@
     <div class="modal-backdrop" id="modalConfirmDeleteMemberApp" onclick="if(event.target === this) app.closeDeleteMemberAppModal()">
       <div class="modal-card" style="max-width: 420px; width: 92%; padding: 20px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="font-size: 2.8rem; margin-bottom: 8px; color: #EF5350;">⚠️</div>
-        <h3 style="margin: 0 0 8px 0; color: #FFF; font-size: 1.25rem;">Delete Member Record?</h3>
+        <h3 style="margin: 0 0 8px 0; color: #FFF; font-size: 1.25rem;">Remove Premium Food Member Card?</h3>
         <p style="color: var(--text-muted, #AAA); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.4;">
-          Are you sure you want to delete this Premium Food Member application record? This action cannot be undone.
+          This will remove this Food Member Card from the customer's active membership view.
         </p>
         <div style="display: flex; gap: 12px; justify-content: center;">
           <button type="button" class="btn-secondary-outline" onclick="app.closeDeleteMemberAppModal()" style="flex: 1; padding: 10px;">
             Cancel
           </button>
           <button type="button" id="btnConfirmDeleteMemberApp" class="btn-primary" onclick="app.executeDeleteMemberApp()" style="flex: 1; padding: 10px; background: #D32F2F; font-weight: 700;">
-            <i class="fa-solid fa-trash-can"></i> Delete
+            <i class="fa-solid fa-trash-can"></i> Remove Card
           </button>
         </div>
       </div>
@@ -4553,9 +4553,9 @@
     <div class="modal-backdrop" id="modalConfirmDeleteAllMemberApps" onclick="if(event.target === this) app.closeDeleteAllMemberAppsModal()">
       <div class="modal-card" style="max-width: 450px; width: 92%; padding: 22px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="font-size: 3rem; margin-bottom: 8px; color: #D32F2F;">🚨</div>
-        <h3 style="margin: 0 0 8px 0; color: #EF5350; font-size: 1.3rem;">DELETE ALL MEMBER RECORDS?</h3>
+        <h3 style="margin: 0 0 8px 0; color: #EF5350; font-size: 1.3rem;">Delete All Premium Food Member Cards?</h3>
         <p style="color: var(--text-muted, #CCC); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.4;">
-          This will clear ALL Premium Food Member Card application & card records from the database. Financial payment records will be preserved.
+          This action affects Premium Food Member Card records only. Financial payment history and customer accounts remain untouched.
         </p>
         <div style="display: flex; gap: 12px; justify-content: center;">
           <button type="button" class="btn-secondary-outline" onclick="app.closeDeleteAllMemberAppsModal()" style="flex: 1; padding: 10px;">
@@ -4571,7 +4571,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=4"></script>
+    <script src="/js/app.js?v=5"></script>
 </body>
 
 </html>
