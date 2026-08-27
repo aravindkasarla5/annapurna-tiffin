@@ -12926,11 +12926,12 @@ class TiffinApp {
   }
 
   async executeDeleteMemberApp() {
-    if (!this.pendingDeleteMemberAppId) return;
+    if (!this.pendingDeleteMemberAppId || this.isDeletingMemberApp) return;
+    this.isDeletingMemberApp = true;
     const btn = document.getElementById('btnConfirmDeleteMemberApp');
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Deleting...`;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Deleting...`;
     }
 
     try {
@@ -12947,6 +12948,7 @@ class TiffinApp {
       console.error('Delete member application error:', err);
       this.showToast(err.message || 'Failed to delete record.', 'error');
     } finally {
+      this.isDeletingMemberApp = false;
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-trash-can"></i> Delete`;
