@@ -5003,10 +5003,16 @@ app.get('/api/food-member/owner/applications', authenticateToken, requireRole('O
     let querySql = `
       SELECT a.*, 
              p.screenshot_url as payment_ledger_screenshot,
-             c.member_id, c.status as card_status, c.valid_from, c.valid_until, c.qr_verification_code
+             c.id as card_id, c.member_id, 
+             COALESCE(c.status, CASE WHEN a.status = 'APPROVED' THEN 'ACTIVE' ELSE a.status END) as card_status, 
+             c.valid_from, c.valid_until, c.qr_verification_code
       FROM food_member_applications a
       LEFT JOIN payments p ON p.order_id = a.id
-      LEFT JOIN food_member_cards c ON c.application_id = a.id
+      LEFT JOIN LATERAL (
+        SELECT * FROM food_member_cards 
+        WHERE application_id = a.id OR customer_id = a.customer_id 
+        ORDER BY created_at DESC LIMIT 1
+      ) c ON true
     `;
     const params = [];
     if (status && status !== 'ALL') {
@@ -5048,20 +5054,31 @@ app.get('/api/food-member/owner/screenshot/:id', authenticateToken, requireRole(
     console.log(`[DEBUG] Payment proof request started for application: ${appId}`);
 
     const appRes = await db.query(
-      `SELECT a.id, a.screenshot_url, p.screenshot_url as payment_ledger_screenshot 
+      `SELECT a.id, a.screenshot_url, p.screenshot_url as payment_ledger_screenshot, c.application_id
        FROM food_member_applications a
-       LEFT JOIN payments p ON p.order_id = a.id
-       WHERE a.id = $1 OR a.customer_id = $1;`,
+       LEFT JOIN payments p ON (p.order_id = a.id OR p.customer_id = a.customer_id)
+       LEFT JOIN food_member_cards c ON (c.application_id = a.id OR c.customer_id = a.customer_id)
+       WHERE a.id = $1 OR a.customer_id = $1 OR c.id = $1 OR c.application_id = $1 OR p.id = $1 OR p.order_id = $1
+       ORDER BY a.created_at DESC LIMIT 1;`,
       [appId]
     );
 
-    if (!appRes.rows || appRes.rows.length === 0) {
-      console.log(`[DEBUG] Application ${appId} not found in database.`);
-      return res.status(404).json({ success: false, message: "⚠️ Membership application record not found." });
+    let rawScreenshot = null;
+    if (appRes.rows && appRes.rows.length > 0) {
+      const record = appRes.rows[0];
+      rawScreenshot = record.screenshot_url || record.payment_ledger_screenshot;
     }
 
-    const record = appRes.rows[0];
-    const rawScreenshot = record.screenshot_url || record.payment_ledger_screenshot;
+    if (!rawScreenshot) {
+      // Fallback 1: Query payments table directly
+      const payRes = await db.query(
+        `SELECT screenshot_url FROM payments WHERE order_id = $1 OR id = $1 ORDER BY created_at DESC LIMIT 1;`,
+        [appId]
+      );
+      if (payRes.rows && payRes.rows.length > 0) {
+        rawScreenshot = payRes.rows[0].screenshot_url;
+      }
+    }
 
     if (!rawScreenshot) {
       console.log(`[DEBUG] Payment proof reference is empty for application ${appId}`);
@@ -5080,6 +5097,10 @@ app.get('/api/food-member/owner/screenshot/:id', authenticateToken, requireRole(
         console.log(`[DEBUG] Serving base64 image, size: ${imageBuffer.length} bytes, content-type: ${mimeType}`);
         return res.status(200).send(imageBuffer);
       }
+    }
+
+    if (rawScreenshot.startsWith('http://') || rawScreenshot.startsWith('https://')) {
+      return res.redirect(rawScreenshot);
     }
 
     let cleanedPath = rawScreenshot.replace(/^[\/\\]+/, '');
@@ -5579,40 +5600,45 @@ app.post('/api/food-member/owner/suspend/:id', authenticateToken, requireRole('O
     const targetId = req.params.id;
     const nowIso = new Date().toISOString();
 
-    const cardRes = await db.query(
-      `SELECT * FROM food_member_cards WHERE id = $1 OR application_id = $1 OR customer_id = $1;`,
+    const appRes = await db.query(
+      `SELECT customer_id FROM food_member_applications WHERE id = $1;`,
       [targetId]
     );
-
-    if (!cardRes.rows || cardRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Member card record not found." });
-    }
-
-    const card = cardRes.rows[0];
+    const customerId = (appRes.rows && appRes.rows.length > 0) ? appRes.rows[0].customer_id : targetId;
 
     await db.query(
-      `UPDATE food_member_cards SET status = 'SUSPENDED', updated_at = $1 WHERE id = $2;`,
-      [nowIso, card.id]
+      `UPDATE food_member_cards 
+       SET status = 'SUSPENDED', updated_at = $1 
+       WHERE id = $2 OR application_id = $2 OR customer_id = $2 OR customer_id = $3;`,
+      [nowIso, targetId, customerId]
     );
 
-    await logMemberCardAudit({
-      customer_id: card.customer_id,
-      member_id: card.member_id,
-      action: 'CARD_SUSPENDED',
-      actor_role: 'OWNER',
-      actor_id: req.user.id,
-      details: 'Member card suspended by owner'
-    });
+    const cardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE id = $1 OR application_id = $1 OR customer_id = $1 OR customer_id = $2 ORDER BY created_at DESC LIMIT 1;`,
+      [targetId, customerId]
+    );
 
-    await createAndDispatchNotification({
-      target_role: 'CUSTOMER',
-      customer_id: card.customer_id,
-      title: '🔒 Premium Food Member Card Suspended',
-      message: 'Your Food Member Card has been suspended by the Owner. Please contact the Owner.',
-      type: 'MEMBER_CARD',
-      priority: 'HIGH',
-      action_url: '/#secCustomerMemberCard'
-    });
+    if (cardRes.rows && cardRes.rows.length > 0) {
+      const card = cardRes.rows[0];
+      await logMemberCardAudit({
+        customer_id: card.customer_id,
+        member_id: card.member_id,
+        action: 'CARD_SUSPENDED',
+        actor_role: 'OWNER',
+        actor_id: req.user.id,
+        details: 'Member card suspended by owner'
+      });
+
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: card.customer_id,
+        title: '🔒 Premium Food Member Card Suspended',
+        message: 'Your Food Member Card has been suspended by the Owner. Please contact the Owner.',
+        type: 'MEMBER_CARD',
+        priority: 'HIGH',
+        action_url: '/#secCustomerMemberCard'
+      });
+    }
 
     res.json({ success: true, message: "✅ Premium Food Member Card suspended." });
   } catch (err) {
@@ -5626,40 +5652,45 @@ app.post(['/api/food-member/owner/reactivate/:id', '/api/food-member/owner/unsus
     const targetId = req.params.id;
     const nowIso = new Date().toISOString();
 
-    const cardRes = await db.query(
-      `SELECT * FROM food_member_cards WHERE id = $1 OR application_id = $1 OR customer_id = $1;`,
+    const appRes = await db.query(
+      `SELECT customer_id FROM food_member_applications WHERE id = $1;`,
       [targetId]
     );
-
-    if (!cardRes.rows || cardRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Member card record not found." });
-    }
-
-    const card = cardRes.rows[0];
+    const customerId = (appRes.rows && appRes.rows.length > 0) ? appRes.rows[0].customer_id : targetId;
 
     await db.query(
-      `UPDATE food_member_cards SET status = 'ACTIVE', updated_at = $1 WHERE id = $2;`,
-      [nowIso, card.id]
+      `UPDATE food_member_cards 
+       SET status = 'ACTIVE', updated_at = $1 
+       WHERE id = $2 OR application_id = $2 OR customer_id = $2 OR customer_id = $3;`,
+      [nowIso, targetId, customerId]
     );
 
-    await logMemberCardAudit({
-      customer_id: card.customer_id,
-      member_id: card.member_id,
-      action: 'CARD_REACTIVATED',
-      actor_role: 'OWNER',
-      actor_id: req.user.id,
-      details: 'Member card unsuspended by owner'
-    });
+    const cardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE id = $1 OR application_id = $1 OR customer_id = $1 OR customer_id = $2 ORDER BY created_at DESC LIMIT 1;`,
+      [targetId, customerId]
+    );
 
-    await createAndDispatchNotification({
-      target_role: 'CUSTOMER',
-      customer_id: card.customer_id,
-      title: '✅ Premium Food Member Card Activated',
-      message: 'Your Premium Food Member Card has been reactivated. Enjoy your benefits!',
-      type: 'MEMBER_CARD',
-      priority: 'HIGH',
-      action_url: '/#secCustomerMemberCard'
-    });
+    if (cardRes.rows && cardRes.rows.length > 0) {
+      const card = cardRes.rows[0];
+      await logMemberCardAudit({
+        customer_id: card.customer_id,
+        member_id: card.member_id,
+        action: 'CARD_REACTIVATED',
+        actor_role: 'OWNER',
+        actor_id: req.user.id,
+        details: 'Member card unsuspended by owner'
+      });
+
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: card.customer_id,
+        title: '✅ Premium Food Member Card Activated',
+        message: 'Your Premium Food Member Card has been reactivated. Enjoy your benefits!',
+        type: 'MEMBER_CARD',
+        priority: 'HIGH',
+        action_url: '/#secCustomerMemberCard'
+      });
+    }
 
     res.json({ success: true, message: "✅ Premium Food Member Card activated successfully." });
   } catch (err) {

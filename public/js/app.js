@@ -12843,8 +12843,8 @@ class TiffinApp {
                     ` : ''}
                   </span>
                   ${hasScreenshot ? `
-                    <button type="button" class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewOwnerMemberCardScreenshot('${appItem.id}')" title="View Customer Payment Screenshot">
-                      <i class="fa-solid fa-image"></i> 👁 View Screenshot
+                    <button type="button" class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewOwnerMemberCardScreenshot('${appItem.id}', this)" title="View Customer Payment Screenshot">
+                      <i class="fa-solid fa-image"></i> 🖼️ 👁️ View Screenshot
                     </button>
                   ` : ''}
                 </div>
