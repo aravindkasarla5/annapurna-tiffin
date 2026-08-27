@@ -697,12 +697,15 @@ async function generateToken(userId, role = 'CUSTOMER') {
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const tokenHeader = req.headers['x-auth-token'];
+  const tokenQuery = req.query.token || req.query.t_auth;
   let token = null;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.substring(7);
   } else if (tokenHeader) {
     token = tokenHeader;
+  } else if (tokenQuery) {
+    token = tokenQuery;
   }
 
   if (!token) {
@@ -4809,8 +4812,8 @@ app.get('/api/food-member/status', authenticateToken, async (req, res) => {
       card,
       application,
       benefits: {
-        discount_amount: 5.00,
-        express_delivery_eligible: true
+        discount_amount: overallStatus === 'ACTIVE' ? 5.00 : 0.00,
+        express_delivery_eligible: overallStatus === 'ACTIVE'
       }
     });
   } catch (err) {
@@ -5048,7 +5051,7 @@ app.get('/api/food-member/owner/screenshot/:id', authenticateToken, requireRole(
       `SELECT a.id, a.screenshot_url, p.screenshot_url as payment_ledger_screenshot 
        FROM food_member_applications a
        LEFT JOIN payments p ON p.order_id = a.id
-       WHERE a.id = $1;`,
+       WHERE a.id = $1 OR a.customer_id = $1;`,
       [appId]
     );
 
@@ -5079,21 +5082,23 @@ app.get('/api/food-member/owner/screenshot/:id', authenticateToken, requireRole(
       }
     }
 
-    let relativePath = rawScreenshot;
-    if (relativePath.startsWith('/')) {
-      relativePath = relativePath.substring(1);
+    let cleanedPath = rawScreenshot.replace(/^[\/\\]+/, '');
+    const candidatePaths = [
+      path.join(__dirname, 'public', cleanedPath),
+      path.join(__dirname, cleanedPath),
+      path.join(__dirname, 'public', 'uploads', 'screenshots', path.basename(cleanedPath)),
+      path.join(__dirname, 'public', 'uploads', path.basename(cleanedPath))
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        console.log(`[DEBUG] File found on disk at ${p}. Sending file response.`);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        return res.status(200).sendFile(p);
+      }
     }
 
-    const fullFilePath = path.join(__dirname, 'public', relativePath);
-    console.log(`[DEBUG] Checking file path on disk: ${fullFilePath}`);
-
-    if (fs.existsSync(fullFilePath)) {
-      console.log(`[DEBUG] File found on disk. Sending file response.`);
-      res.setHeader('Cache-Control', 'private, max-age=3600');
-      return res.status(200).sendFile(fullFilePath);
-    }
-
-    console.log(`[DEBUG] File not found on disk at path: ${fullFilePath}`);
+    console.log(`[DEBUG] File not found on disk for rawScreenshot: ${rawScreenshot}`);
     return res.status(404).json({ success: false, message: "⚠️ Screenshot file unavailable on server disk." });
   } catch (err) {
     console.error('Fetch Owner Payment Screenshot Error:', err);
@@ -5568,26 +5573,98 @@ app.post('/api/food-member/resubmit-proof', authenticateToken, requireRole('CUST
   }
 });
 
-// 6. POST /api/food-member/owner/suspend/:id & reactivate/:id - Owner Card Controls
+// 6. POST /api/food-member/owner/suspend/:id & reactivate/:id / unsuspend/:id - Owner Card Controls
 app.post('/api/food-member/owner/suspend/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {
-    const cardId = req.params.id;
+    const targetId = req.params.id;
     const nowIso = new Date().toISOString();
-    await db.query(`UPDATE food_member_cards SET status = 'SUSPENDED', updated_at = $1 WHERE id = $2;`, [nowIso, cardId]);
-    res.json({ success: true, message: "Member card suspended." });
+
+    const cardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE id = $1 OR application_id = $1 OR customer_id = $1;`,
+      [targetId]
+    );
+
+    if (!cardRes.rows || cardRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Member card record not found." });
+    }
+
+    const card = cardRes.rows[0];
+
+    await db.query(
+      `UPDATE food_member_cards SET status = 'SUSPENDED', updated_at = $1 WHERE id = $2;`,
+      [nowIso, card.id]
+    );
+
+    await logMemberCardAudit({
+      customer_id: card.customer_id,
+      member_id: card.member_id,
+      action: 'CARD_SUSPENDED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: 'Member card suspended by owner'
+    });
+
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: card.customer_id,
+      title: '🔒 Premium Food Member Card Suspended',
+      message: 'Your Food Member Card has been suspended by the Owner. Please contact the Owner.',
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secCustomerMemberCard'
+    });
+
+    res.json({ success: true, message: "✅ Premium Food Member Card suspended." });
   } catch (err) {
+    console.error('Suspend card error:', err);
     res.status(500).json({ success: false, message: "Failed to suspend card." });
   }
 });
 
-app.post('/api/food-member/owner/reactivate/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+app.post(['/api/food-member/owner/reactivate/:id', '/api/food-member/owner/unsuspend/:id'], authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {
-    const cardId = req.params.id;
+    const targetId = req.params.id;
     const nowIso = new Date().toISOString();
-    await db.query(`UPDATE food_member_cards SET status = 'ACTIVE', updated_at = $1 WHERE id = $2;`, [nowIso, cardId]);
-    res.json({ success: true, message: "Member card reactivated." });
+
+    const cardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE id = $1 OR application_id = $1 OR customer_id = $1;`,
+      [targetId]
+    );
+
+    if (!cardRes.rows || cardRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Member card record not found." });
+    }
+
+    const card = cardRes.rows[0];
+
+    await db.query(
+      `UPDATE food_member_cards SET status = 'ACTIVE', updated_at = $1 WHERE id = $2;`,
+      [nowIso, card.id]
+    );
+
+    await logMemberCardAudit({
+      customer_id: card.customer_id,
+      member_id: card.member_id,
+      action: 'CARD_REACTIVATED',
+      actor_role: 'OWNER',
+      actor_id: req.user.id,
+      details: 'Member card unsuspended by owner'
+    });
+
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: card.customer_id,
+      title: '✅ Premium Food Member Card Activated',
+      message: 'Your Premium Food Member Card has been reactivated. Enjoy your benefits!',
+      type: 'MEMBER_CARD',
+      priority: 'HIGH',
+      action_url: '/#secCustomerMemberCard'
+    });
+
+    res.json({ success: true, message: "✅ Premium Food Member Card activated successfully." });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Failed to reactivate card." });
+    console.error('Reactivate/Unsuspend card error:', err);
+    res.status(500).json({ success: false, message: "Failed to activate card." });
   }
 });
 
@@ -5603,7 +5680,7 @@ app.delete('/api/food-member/owner/application/:id', authenticateToken, requireR
     const application = appRes.rows[0];
 
     await db.executeTransaction(async (tx) => {
-      await tx.query(`DELETE FROM food_member_cards WHERE application_id = $1 OR customer_id = $2;`, [appId, application.customer_id]);
+      await tx.query(`DELETE FROM food_member_cards WHERE application_id = $1 OR id = $1;`, [appId]);
       await tx.query(`DELETE FROM food_member_applications WHERE id = $1;`, [appId]);
     });
 
@@ -5627,7 +5704,7 @@ app.delete('/api/food-member/owner/application/:id', authenticateToken, requireR
 
     res.json({
       success: true,
-      message: "Premium Food Member record deleted successfully."
+      message: "✅ Food Member Card deleted successfully."
     });
   } catch (err) {
     console.error('Delete Member Record Error:', err);

@@ -12225,6 +12225,40 @@ class TiffinApp {
       return;
     }
 
+    // STATE: SUSPENDED
+    if (status === 'SUSPENDED') {
+      const phone = this.settings?.contact_phone || '9392874900';
+      const cleanPhone = phone.replace(/^\+91/, '').replace(/\s+/g, '');
+      container.innerHTML = `
+        <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid #EF5350; box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
+          <div style="width: 70px; height: 70px; background: rgba(244, 67, 54, 0.15); color: #E53935; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
+            🔒
+          </div>
+
+          <h3 style="margin: 0 0 10px 0; color: #EF5350; font-size: 1.4rem;">🔒 SUSPENDED</h3>
+          
+          <div style="background: rgba(244, 67, 54, 0.12); border: 1px solid #EF5350; padding: 12px 18px; border-radius: 10px; display: inline-block; margin-bottom: 20px;">
+            <span style="color: #EF5350; font-weight: 700;">Status: 🔒 SUSPENDED</span>
+            ${card && card.member_id ? `<span style="color: var(--text-muted, #AAA); font-size: 0.88rem; margin-left: 8px;">(ID: ${card.member_id})</span>` : ''}
+          </div>
+
+          <p style="font-size: 1rem; color: var(--text-muted, #CCC); max-width: 500px; margin: 0 auto 24px auto; line-height: 1.5;">
+            ⚠️ Your Food Member Card has been suspended by the Owner.<br>Please contact the Owner.
+          </p>
+
+          <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+            <a href="tel:+91${cleanPhone}" class="btn-primary" style="padding: 12px 24px; font-size: 0.95rem; font-weight: 700; background: linear-gradient(135deg, #0088CC 0%, #006699 100%); border-radius: 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
+              <i class="fa-solid fa-phone"></i> 📞 Contact Owner
+            </a>
+            <button class="btn-secondary-outline" style="padding: 12px 20px; font-weight: 700; cursor: pointer; border-radius: 12px;" onclick="app.loadFoodMemberCardState()">
+              <i class="fa-solid fa-rotate-right"></i> Check Status
+            </button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     // STATE 4: EXPIRED
     if (status === 'EXPIRED') {
       container.innerHTML = `
@@ -12906,7 +12940,7 @@ class TiffinApp {
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Deletion failed.');
 
-      this.showToast('🗑 Membership record deleted successfully.', 'info');
+      this.showToast('✅ Food Member Card deleted successfully.', 'success');
       this.closeDeleteMemberAppModal();
       await this.loadOwnerMemberApprovals();
     } catch (err) {
@@ -12966,29 +13000,68 @@ class TiffinApp {
     }
   }
 
-  viewOwnerMemberCardScreenshot(appId) {
-    console.log(`[DEBUG] Membership application loaded for ID: ${appId}`);
-    const appItem = this.ownerMemberApplicationsMap ? this.ownerMemberApplicationsMap.get(appId) : null;
-    const rawScreenshot = appItem ? (appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof) : null;
-
-    console.log(`[DEBUG] Payment proof reference received:`, rawScreenshot ? (rawScreenshot.startsWith('data:image/') ? 'Base64 Data' : rawScreenshot) : 'None');
-    console.log(`[DEBUG] View Screenshot clicked for appId: ${appId}`);
-
-    if (!rawScreenshot && !appItem) {
-      console.warn(`[DEBUG] Payment proof missing for application ID: ${appId}`);
-      this.showToast('⚠️ Payment screenshot not available for this record.', 'error');
-      return;
+  async viewOwnerMemberCardScreenshot(appId, btnEl = null) {
+    let origHtml = '';
+    if (btnEl) {
+      btnEl.disabled = true;
+      origHtml = btnEl.innerHTML;
+      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Loading Screenshot...`;
     }
 
-    let imgSource = '';
-    if (rawScreenshot && rawScreenshot.startsWith('data:image/')) {
-      imgSource = rawScreenshot;
-    } else {
-      imgSource = `${API_BASE}/food-member/owner/screenshot/${appId}?t=${Date.now()}`;
-    }
+    try {
+      console.log(`[DEBUG] View Screenshot requested for appId: ${appId}`);
+      const appItem = this.ownerMemberApplicationsMap ? this.ownerMemberApplicationsMap.get(appId) : null;
+      const rawScreenshot = appItem ? (appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof) : null;
 
-    console.log(`[DEBUG] Payment proof request started with source:`, imgSource.startsWith('data:') ? 'Base64 Data' : imgSource);
-    this.viewPaymentProof(imgSource, appId);
+      if (!appItem && !rawScreenshot) {
+        this.showToast('⚠️ Membership application record not found.', 'error');
+        return;
+      }
+
+      if (!rawScreenshot) {
+        this.showToast('⚠️ Payment screenshot not available for this record.', 'error');
+        return;
+      }
+
+      // If base64 data URI
+      if (typeof rawScreenshot === 'string' && rawScreenshot.startsWith('data:image/')) {
+        this.viewPaymentProof(rawScreenshot, appId);
+        return;
+      }
+
+      const token = this.authToken || localStorage.getItem('token') || '';
+      const endpoint = `${API_BASE}/food-member/owner/screenshot/${appId}?token=${encodeURIComponent(token)}&t=${Date.now()}`;
+
+      // Retrieve image blob using authenticated fetch
+      try {
+        const res = await this.fetchWithAuth(endpoint);
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob && blob.size > 0 && blob.type.startsWith('image/')) {
+            const blobUrl = URL.createObjectURL(blob);
+            this.viewPaymentProof(blobUrl, appId);
+            return;
+          }
+        }
+      } catch (blobErr) {
+        console.warn('[DEBUG] Authenticated screenshot blob fetch notice:', blobErr);
+      }
+
+      // Fallback: static URL with query token
+      let staticUrl = rawScreenshot.startsWith('/') ? rawScreenshot : `/${rawScreenshot}`;
+      if (!staticUrl.includes('?')) {
+        staticUrl += `?token=${encodeURIComponent(token)}&t=${Date.now()}`;
+      }
+      this.viewPaymentProof(staticUrl, appId);
+    } catch (err) {
+      console.error('Error viewing member card screenshot:', err);
+      this.showToast('❌ Unable to load payment screenshot.', 'error');
+    } finally {
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = origHtml || `<i class="fa-solid fa-image"></i> 👁 View Screenshot`;
+      }
+    }
   }
 
   viewPaymentProof(imgUrl, appId = null) {
@@ -13024,7 +13097,7 @@ class TiffinApp {
         console.error(`[DEBUG] Payment proof image load error:`, e);
         if (loadingEl) loadingEl.style.display = 'none';
         img.style.display = 'none';
-        if (errorMsgEl) errorMsgEl.textContent = '❌ Unable to load payment screenshot. Please try again.';
+        if (errorMsgEl) errorMsgEl.textContent = '❌ Unable to load payment screenshot.';
         if (errorEl) errorEl.style.display = 'flex';
       };
 
@@ -13193,7 +13266,6 @@ class TiffinApp {
   }
 
   async suspendMemberCard(appId, btnEl = null) {
-    if (!confirm('Suspend this active Premium Food Member Card?')) return;
     if (btnEl) {
       btnEl.disabled = true;
       btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Suspending...`;
@@ -13202,34 +13274,33 @@ class TiffinApp {
       const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/suspend/${appId}`, { method: 'POST' });
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Suspension failed.');
-      this.showToast('Card suspended successfully.', 'info');
+      this.showToast('✅ Premium Food Member Card suspended.', 'info');
       await this.loadOwnerMemberApprovals();
     } catch (err) {
       this.showToast(err.message || 'Failed to suspend card.', 'error');
       if (btnEl) {
         btnEl.disabled = false;
-        btnEl.innerHTML = `<i class="fa-solid fa-pause"></i> Suspend`;
+        btnEl.innerHTML = `<i class="fa-solid fa-lock"></i> 🔒 Suspend`;
       }
     }
   }
 
   async reactivateMemberCard(appId, btnEl = null) {
-    if (!confirm('Reactivate this suspended Premium Food Member Card?')) return;
     if (btnEl) {
       btnEl.disabled = true;
-      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Reactivating...`;
+      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Unsuspending...`;
     }
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reactivate/${appId}`, { method: 'POST' });
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/unsuspend/${appId}`, { method: 'POST' });
       const data = await res.json();
-      if (!data.success) throw new Error(data.message || 'Reactivation failed.');
-      this.showToast('Card reactivated successfully!', 'success');
+      if (!data.success) throw new Error(data.message || 'Activation failed.');
+      this.showToast('✅ Premium Food Member Card activated successfully.', 'success');
       await this.loadOwnerMemberApprovals();
     } catch (err) {
-      this.showToast(err.message || 'Failed to reactivate card.', 'error');
+      this.showToast(err.message || 'Failed to activate card.', 'error');
       if (btnEl) {
         btnEl.disabled = false;
-        btnEl.innerHTML = `<i class="fa-solid fa-play"></i> Reactivate`;
+        btnEl.innerHTML = `<i class="fa-solid fa-lock-open"></i> 🔓 Unsuspend`;
       }
     }
   }
