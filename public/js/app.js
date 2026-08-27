@@ -12642,12 +12642,6 @@ class TiffinApp {
                   <span>Fee: <strong style="color: #4CAF50;">₹${appItem.fee_amount}</strong></span>
                   <span>Method: <strong style="color: var(--accent-gold, #FFD700);">💵 Cash Payment</strong></span>
                   <span>Payment Status: ${isPayVerified ? '<strong style="color:#4CAF50;">VERIFIED / PAID</strong>' : '<strong style="color:#FFC107;">PENDING</strong>'}</span>
-                  <span>Ref: <strong style="font-family: monospace; color: var(--text-muted, #AAA);">${utrVal}</strong></span>
-                  ${hasScreenshot ? `
-                    <button type="button" class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewOwnerMemberCardScreenshot('${appItem.id}', this)" title="View Payment Screenshot">
-                      <i class="fa-solid fa-image"></i> 🖼️ View Screenshot
-                    </button>
-                  ` : ''}
                 </div>
               </div>
 
@@ -12739,7 +12733,7 @@ class TiffinApp {
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Deletion failed.');
 
-      this.showToast('✅ Food Member Card deleted successfully.', 'success');
+      this.showToast('✅ Premium Food Card deleted successfully.', 'success');
       this.closeDeleteMemberAppModal();
       await this.loadOwnerMemberApprovals();
     } catch (err) {
