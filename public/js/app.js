@@ -12104,30 +12104,47 @@ class TiffinApp {
 
     // STATE 2: PENDING_APPROVAL
     if (status === 'PENDING_APPROVAL') {
-      const payRef = application ? (application.payment_reference || 'Verified') : 'Verified';
+      const isPayVerified = application && application.payment_status === 'VERIFIED';
+
       container.innerHTML = `
         <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
-          <div style="width: 70px; height: 70px; background: rgba(255, 152, 0, 0.15); color: #FB8C00; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
-            ⏳
-          </div>
-
-          <h3 style="margin: 0 0 10px 0; color: var(--text-main, #FFF); font-size: 1.4rem;">PREMIUM FOOD MEMBER APPLICATION</h3>
           
-          <div style="background: rgba(255, 193, 7, 0.12); border: 1px solid #FFC107; padding: 12px 18px; border-radius: 10px; display: inline-block; margin-bottom: 20px;">
-            <span style="color: #FFC107; font-weight: 700;"><i class="fa-solid fa-circle-check"></i> ₹10 Payment: VERIFIED</span> 
-            <span style="color: var(--text-muted, #AAA); font-size: 0.85rem; margin-left: 8px;">(Ref: ${payRef})</span>
+          <div style="width: 70px; height: 70px; background: ${isPayVerified ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 152, 0, 0.15)'}; color: ${isPayVerified ? '#4CAF50' : '#FB8C00'}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
+            ${isPayVerified ? '🟢' : '⏳'}
           </div>
 
-          <p style="font-size: 1rem; color: var(--text-muted, #CCC); max-width: 500px; margin: 0 auto 20px auto; line-height: 1.5;">
-            Your Premium Food Member Card application has been submitted successfully. Please wait for Owner approval.
-          </p>
+          <h3 style="margin: 0 0 16px 0; color: var(--text-main, #FFF); font-size: 1.4rem;">PREMIUM FOOD MEMBER APPLICATION</h3>
+          
+          <!-- Status Badges Grid -->
+          <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 22px;">
+            <span style="background: ${isPayVerified ? 'rgba(46, 125, 50, 0.2)' : 'rgba(255, 193, 7, 0.18)'}; color: ${isPayVerified ? '#81C784' : '#FFC107'}; border: 1px solid ${isPayVerified ? '#4CAF50' : '#FFC107'}; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;">
+              ${isPayVerified ? '🟢 PAYMENT VERIFIED' : '🟡 PAYMENT PENDING'}
+            </span>
+            <span style="background: rgba(255, 193, 7, 0.18); color: #FFC107; border: 1px solid #FFC107; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;">
+              🟡 APPROVAL PENDING
+            </span>
+            <span style="background: rgba(255, 255, 255, 0.08); color: #AAA; border: 1px solid #555; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.88rem;">
+              ⏳ MEMBERSHIP: NOT ACTIVE
+            </span>
+          </div>
+
+          <div style="background: rgba(255, 255, 255, 0.04); border: 1px dashed var(--border-color, rgba(255,255,255,0.15)); border-radius: 12px; padding: 16px; margin-bottom: 22px; max-width: 540px; margin-left: auto; margin-right: auto;">
+            <div style="font-weight: 700; color: var(--accent-gold, #FFD700); margin-bottom: 6px; font-size: 0.95rem;">
+              💵 Payment Method: Cash Payment
+            </div>
+            <p style="font-size: 0.95rem; color: var(--text-muted, #CCC); margin: 0; line-height: 1.5;">
+              ${isPayVerified 
+                ? 'Your cash payment has been verified by the Owner. Your Premium Food Member Card is awaiting final approval.' 
+                : 'Please visit the Owner and pay the Premium Food Member Card amount in cash. Your payment will remain pending until the Owner verifies your payment.'}
+            </p>
+          </div>
 
           <div style="font-size: 0.88rem; color: var(--text-muted, #888);">
             Submitted on: ${application ? new Date(application.created_at).toLocaleString('en-IN') : 'Recently'}
           </div>
 
           <div style="margin-top: 25px;">
-            <button class="btn-secondary-outline" onclick="app.loadFoodMemberCardState()" style="padding: 10px 20px; font-weight: 700; cursor: pointer;"><i class="fa-solid fa-rotate"></i> Check Status</button>
+            <button class="btn-secondary-outline" onclick="app.loadFoodMemberCardState()" style="padding: 10px 22px; font-weight: 700; cursor: pointer; border-radius: 10px;"><i class="fa-solid fa-rotate"></i> Check Status</button>
           </div>
         </div>
       `;
@@ -12317,7 +12334,7 @@ class TiffinApp {
     }
   }
 
-  // Open Modal for ₹10 Membership Payment & Application Submission
+  // Open Modal for ₹10 Membership Application (Cash Payment Only)
   openApplyMemberCardModal() {
     if (!this.currentUser) {
       this.showToast('Please Login or Register to apply for Premium Food Membership.', 'error');
@@ -12325,22 +12342,18 @@ class TiffinApp {
       return;
     }
 
-    this.currentMemberScreenshotBase64 = null;
-    const upiId = this.settings ? (this.settings.upi_id || '9392974900@ybl') : '9392974900@ybl';
-    const qrImg = this.settings?.upi_qr_code || '/images/tiffin_logo.png';
-
     const modalHtml = `
       <div id="modalApplyMemberCard" class="modal-backdrop open visible active" style="position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important; z-index: 999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; padding: 12px !important; box-sizing: border-box !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; overflow-y: auto !important;" onclick="if(event.target === this) app.closeApplyMemberCardModal()">
-        <div class="modal-card" style="max-width: 520px; width: 100%; max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px 16px; border-radius: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #444); box-shadow: 0 12px 40px rgba(0,0,0,0.6); box-sizing: border-box;" onclick="event.stopPropagation()">
+        <div class="modal-card" style="max-width: 480px; width: 100%; max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 22px 18px; border-radius: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #444); box-shadow: 0 12px 40px rgba(0,0,0,0.6); box-sizing: border-box;" onclick="event.stopPropagation()">
           
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 12px; position: sticky; top: -20px; background: var(--bg-surface-elevated, #1E1E2E); z-index: 5; margin-top: -4px; padding-top: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 12px; position: sticky; top: -22px; background: var(--bg-surface-elevated, #1E1E2E); z-index: 5; margin-top: -4px; padding-top: 4px;">
             <h3 style="margin: 0; font-size: 1.25rem; color: var(--text-main, #FFF); display: flex; align-items: center; gap: 8px;">
               <i class="fa-solid fa-id-card" style="color: var(--accent-gold, #FFD700);"></i> Apply for Member Card
             </h3>
             <button type="button" onclick="app.closeApplyMemberCardModal()" style="background: rgba(255,255,255,0.1); border: none; font-size: 1.3rem; cursor: pointer; color: #FFF; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; line-height: 1;" title="Close Modal">&times;</button>
           </div>
 
-          <div style="background: rgba(255, 215, 0, 0.08); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; font-size: 0.88rem; border: 1px solid rgba(255,215,0,0.25);">
+          <div style="background: rgba(255, 215, 0, 0.08); border-radius: 14px; padding: 14px; margin-bottom: 18px; font-size: 0.88rem; border: 1px solid rgba(255,215,0,0.25);">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;">
               <span style="color: var(--text-muted, #AAA);">Membership Tier:</span> <strong style="color: var(--accent-gold, #FFD700);">Premium Food Member</strong>
             </div>
@@ -12352,86 +12365,21 @@ class TiffinApp {
             </div>
           </div>
 
-          <!-- Payment Options -->
           <form onsubmit="event.preventDefault(); app.submitMemberCardApplication();">
             
-            <!-- Cash Paid Checkbox (Alternative Payment Method) -->
-            <div style="margin-bottom: 14px; background: rgba(255, 255, 255, 0.05); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.1));">
-              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.92rem; font-weight: 700; color: #FFF; margin: 0;">
-                <input type="checkbox" id="chkMemberCashPaid" onchange="app.toggleMemberCashPaid()" style="width: 18px; height: 18px; accent-color: #4CAF50; cursor: pointer;">
-                <span>💵 Cash Paid (Alternative Payment Method)</span>
-              </label>
-            </div>
-
-            <div id="boxMemberOnlinePayGroup">
-              <div style="margin-bottom: 14px;">
-                <label style="font-weight: 600; font-size: 0.88rem; display: block; margin-bottom: 6px; color: var(--text-main, #FFF);">Select Payment Method:</label>
-                <select id="memberPayMethod" style="width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" onchange="app.toggleMemberPayFields()">
-                  <option value="UPI (QR Pay)">UPI QR Pay / Google Pay / PhonePe / Paytm</option>
-                  <option value="PhonePe">PhonePe Gateway</option>
-                </select>
+            <div style="margin-bottom: 20px; background: rgba(76, 175, 80, 0.1); border: 1px solid #4CAF50; border-radius: 14px; padding: 16px;">
+              <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #4CAF50; font-size: 1.05rem; margin-bottom: 8px;">
+                <i class="fa-solid fa-money-bill-wave"></i> Payment Method: 💵 Cash Payment
               </div>
-
-              <!-- UPI QR Pay Details Box -->
-              <div id="boxMemberUpiQr" style="background: rgba(0,0,0,0.25); border: 1px dashed var(--accent-gold, #FFD700); border-radius: 14px; padding: 16px 12px; text-align: center; margin-bottom: 16px; box-sizing: border-box;">
-                <p style="margin: 0 0 6px 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">Scan QR or pay <strong style="color: var(--accent-gold, #FFD700);">₹10</strong> to UPI ID:</p>
-                <div style="font-family: monospace; font-weight: 700; color: var(--accent-gold, #FFD700); font-size: 1.05rem; margin-bottom: 10px; word-break: break-all;">${upiId}</div>
-                
-                <div style="position: relative; display: inline-block; cursor: pointer;" onclick="app.zoomApplyModalQr()" title="Click to Zoom QR Scanner">
-                  <img id="imgApplyModalQr" src="${qrImg}" alt="UPI QR Code Scanner" style="width: 140px; height: 140px; object-fit: contain; margin: 0 auto; display: block; border-radius: 10px; border: 2px solid var(--accent-gold, #FFD700); background: #FFF; padding: 4px;">
-                  <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.8); color: #FFD700; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; border: 1px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.5);">
-                    <i class="fa-solid fa-magnifying-glass-plus"></i>
-                  </div>
-                </div>
-
-                <!-- Dedicated Zoom Scanner Button -->
-                <div style="margin-top: 10px;">
-                  <button type="button" class="btn-sm" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 18px; font-size: 0.85rem; font-weight: 700; color: #1A1A2E; background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%); border: none; border-radius: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(255,215,0,0.35);" onclick="app.zoomApplyModalQr()">
-                    <i class="fa-solid fa-qrcode"></i> 🔍 Zoom Scanner / QR Code
-                  </button>
-                </div>
-
-                <div style="text-align: left; margin-top: 14px;">
-                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 6px;">💳 UTR / Transaction ID (Required):</label>
-                  <input type="text" id="memberUtrInput" placeholder="e.g. 123456789012 (Numbers only)" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color, #444); background: rgba(0,0,0,0.3); color: var(--text-main, #FFF); font-size: 0.92rem; box-sizing: border-box;" required>
-                </div>
-
-                <!-- Payment Proof Screenshot Input (Required) -->
-                <div style="text-align: left; margin-top: 14px;">
-                  <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-main, #FFF); display: block; margin-bottom: 8px;">
-                    📷 Payment Screenshot / Proof (Required):
-                  </label>
-
-                  <input type="file" id="memberScreenshotInput" accept="image/jpeg,image/jpg,image/png,image/webp" style="display: none;" onchange="app.handleScreenshotSelect(this)">
-
-                  <label for="memberScreenshotInput" id="lblMemberScreenshotUpload" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; border-radius: 10px; background: rgba(255, 215, 0, 0.08); border: 1.5px dashed var(--accent-gold, #FFD700); color: var(--accent-gold, #FFD700); font-weight: 700; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; box-sizing: border-box; text-align: center;">
-                    <i class="fa-solid fa-camera" style="font-size: 1rem;"></i>
-                    <span id="txtMemberScreenshotUploadLabel">📷 Upload Payment Screenshot</span>
-                  </label>
-
-                  <div id="memberScreenshotPreviewContainer" style="margin-top: 10px; display: none; align-items: center; gap: 12px; background: rgba(255,255,255,0.06); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.15)); flex-wrap: wrap;">
-                    <img id="memberScreenshotPreviewImg" src="" style="width: 52px; height: 52px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold, #FFD700);">
-                    <div style="flex: 1; min-width: 120px; overflow: hidden;">
-                      <div id="memberScreenshotFileName" style="font-size: 0.85rem; font-weight: 700; color: #FFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
-                      <div id="memberScreenshotFileSize" style="font-size: 0.78rem; color: #4CAF50; font-weight: 600; margin-top: 2px;"></div>
-                    </div>
-                    <div style="display: flex; gap: 6px;">
-                      <label for="memberScreenshotInput" style="background: rgba(255, 215, 0, 0.15); color: #FFD700; border: 1px solid #FFD700; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                        <i class="fa-solid fa-arrows-rotate"></i> Change
-                      </label>
-                      <button type="button" onclick="app.removeSelectedScreenshot()" style="color: #EF5350; background: rgba(239, 83, 80, 0.12); border: 1px solid #EF5350; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Remove screenshot">
-                        <i class="fa-solid fa-trash"></i> Remove
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <p style="margin: 0; color: var(--text-muted, #DDD); font-size: 0.92rem; line-height: 1.5;">
+                Please visit the Owner and pay the Premium Food Member Card amount (₹10) in cash. Your payment will remain pending until the Owner verifies your payment.
+              </p>
             </div>
 
             <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap;">
-              <button type="button" class="btn-secondary-outline" style="flex: 1; min-width: 100px; padding: 11px;" onclick="app.closeApplyMemberCardModal()">Cancel</button>
-              <button type="submit" id="btnSubmitMemberApp" class="btn-primary btn-member-pay-submit" style="flex: 1.5; min-width: 160px;">
-                <i class="fa-solid fa-credit-card"></i> 💳 Pay & Submit
+              <button type="button" class="btn-secondary-outline" style="flex: 1; min-width: 100px; padding: 12px; font-weight: 600;" onclick="app.closeApplyMemberCardModal()">Cancel</button>
+              <button type="submit" id="btnSubmitMemberApp" class="btn-primary" style="flex: 1.5; min-width: 160px; padding: 12px; font-weight: 700; background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%); cursor: pointer;">
+                💵 Submit Application
               </button>
             </div>
           </form>
@@ -12449,184 +12397,37 @@ class TiffinApp {
   closeApplyMemberCardModal() {
     const modal = document.getElementById('modalApplyMemberCard');
     if (modal) modal.remove();
-    this.currentMemberScreenshotBase64 = null;
-  }
-
-  toggleMemberCashPaid() {
-    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
-    const onlineGroup = document.getElementById('boxMemberOnlinePayGroup');
-    const utrInput = document.getElementById('memberUtrInput');
-
-    if (onlineGroup) {
-      if (isCash) {
-        onlineGroup.style.display = 'none';
-        if (utrInput) utrInput.required = false;
-      } else {
-        onlineGroup.style.display = 'block';
-        if (utrInput) utrInput.required = true;
-      }
-    }
-  }
-
-  handleScreenshotSelect(input) {
-    const file = input.files ? input.files[0] : null;
-    if (!file) return;
-
-    if (!file.type.match('image.*')) {
-      this.showToast('Please select a valid image file (JPG, JPEG, PNG, WEBP).', 'error');
-      input.value = '';
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      this.showToast('Image file size exceeds 5MB limit. Please select a smaller image.', 'error');
-      input.value = '';
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      this.currentMemberScreenshotBase64 = e.target.result;
-      const previewContainer = document.getElementById('memberScreenshotPreviewContainer');
-      const previewImg = document.getElementById('memberScreenshotPreviewImg');
-      const fileNameEl = document.getElementById('memberScreenshotFileName');
-      const fileSizeEl = document.getElementById('memberScreenshotFileSize');
-      const uploadBtnLabel = document.getElementById('txtMemberScreenshotUploadLabel');
-
-      if (previewContainer && previewImg) {
-        previewImg.src = e.target.result;
-        if (fileNameEl) fileNameEl.textContent = file.name;
-        if (fileSizeEl) fileSizeEl.textContent = `${(file.size / 1024).toFixed(1)} KB`;
-        previewContainer.style.display = 'flex';
-      }
-      if (uploadBtnLabel) {
-        uploadBtnLabel.textContent = `✓ Screenshot Selected (${file.name})`;
-      }
-    };
-    reader.readAsDataURL(file);
-  }
-
-  removeSelectedScreenshot() {
-    this.currentMemberScreenshotBase64 = null;
-    const input = document.getElementById('memberScreenshotInput');
-    if (input) input.value = '';
-    const container = document.getElementById('memberScreenshotPreviewContainer');
-    if (container) container.style.display = 'none';
-    const uploadBtnLabel = document.getElementById('txtMemberScreenshotUploadLabel');
-    if (uploadBtnLabel) uploadBtnLabel.textContent = '📷 Upload Payment Screenshot';
-  }
-
-  toggleMemberPayFields() {
-    const method = document.getElementById('memberPayMethod')?.value;
-    const box = document.getElementById('boxMemberUpiQr');
-    const utrInput = document.getElementById('memberUtrInput');
-    if (box && utrInput) {
-      if (method === 'PhonePe') {
-        box.style.display = 'none';
-        utrInput.required = false;
-      } else {
-        box.style.display = 'block';
-        utrInput.required = true;
-      }
-    }
   }
 
   async submitMemberCardApplication() {
-    const isCash = document.getElementById('chkMemberCashPaid')?.checked;
-    const method = isCash ? 'Cash Paid' : (document.getElementById('memberPayMethod')?.value || 'UPI (QR Pay)');
-    const utrInputVal = document.getElementById('memberUtrInput')?.value || '';
-    const cleanUtr = utrInputVal.trim();
     const btn = document.getElementById('btnSubmitMemberApp');
-
-    if (isCash) {
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Submitting...`;
-      }
-
-      try {
-        const res = await this.fetchWithAuth(`${API_BASE}/food-member/apply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            payment_method: 'Cash Paid',
-            is_cash_paid: true,
-            utr_number: `CASH_${Date.now()}`,
-            payment_screenshot: null
-          })
-        });
-        const data = await res.json();
-        if (!data.success) throw new Error(data.message || 'Submission failed.');
-
-        if (btn) btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✅ Submitted`;
-        this.showToast('✅ Application Submitted Successfully', 'success');
-        this.closeApplyMemberCardModal();
-        await this.loadFoodMemberCardState();
-      } catch (err) {
-        console.error('Submit cash member application error:', err);
-        this.showToast(err.message || '❌ Unable to submit your application right now. Please try again.', 'error');
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = `<i class="fa-solid fa-credit-card"></i> 💳 Pay & Submit`;
-        }
-      }
-      return;
-    }
-
-    // 1. FRONTEND UTR VALIDATION (Required + Numeric)
-    if (!cleanUtr) {
-      this.showToast('❌ UTR is required.', 'error');
-      return;
-    }
-    if (!/^\d+$/.test(cleanUtr)) {
-      this.showToast('❌ Please enter a valid numeric UTR / Transaction ID.', 'error');
-      return;
-    }
-
-    // 2. FRONTEND PAYMENT SCREENSHOT VALIDATION (Required)
-    if (!this.currentMemberScreenshotBase64) {
-      this.showToast('⚠️ Payment screenshot is required.', 'error');
-      return;
-    }
-
-    // 3. SET BUTTON STATE TO [ ⏳ Submitting... ]
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Submitting...`;
     }
 
     try {
-      const endpoint = `${API_BASE}/food-member/apply`;
-      const payload = {
-        payment_method: method,
-        utr_number: cleanUtr,
-        payment_screenshot: this.currentMemberScreenshotBase64
-      };
-
-      const res = await this.fetchWithAuth(endpoint, {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          payment_method: 'Cash Payment',
+          is_cash_paid: true
+        })
       });
       const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Submission failed.');
 
-      if (!data.success) {
-        throw new Error(data.message || 'Submission failed.');
-      }
-
-      if (btn) {
-        btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✅ Submitted`;
-      }
-
+      if (btn) btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✅ Submitted`;
       this.showToast('✅ Application Submitted Successfully', 'success');
       this.closeApplyMemberCardModal();
       await this.loadFoodMemberCardState();
     } catch (err) {
-      console.error('Submit online application error:', err);
+      console.error('Submit cash member application error:', err);
       this.showToast(err.message || '❌ Unable to submit your application right now. Please try again.', 'error');
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-credit-card"></i> 💳 Pay & Submit`;
+        btn.innerHTML = `💵 Submit Application`;
       }
     }
   }
@@ -12792,16 +12593,20 @@ class TiffinApp {
           const isPayRejected = appItem.payment_status === 'REJECTED';
 
           const statusBadge = isApproved 
-            ? `<span style="background: rgba(46, 125, 50, 0.15); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">✅ APPROVED (${appItem.member_id || 'Active'})</span>`
+            ? `<span style="background: rgba(46, 125, 50, 0.15); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">🟢 APPROVED (${appItem.member_id || 'Active'})</span>`
             : isRejected 
-            ? `<span style="background: rgba(198, 40, 40, 0.15); color: #EF5350; border: 1px solid rgba(239, 83, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">❌ REJECTED</span>`
-            : `<span style="background: rgba(230, 81, 0, 0.15); color: #FF9800; border: 1px solid rgba(255, 152, 0, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">⏳ PENDING APPROVAL</span>`;
+            ? `<span style="background: rgba(198, 40, 40, 0.15); color: #EF5350; border: 1px solid rgba(239, 83, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">🔴 REJECTED</span>`
+            : `<span style="background: rgba(230, 81, 0, 0.15); color: #FF9800; border: 1px solid rgba(255, 152, 0, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">🟡 APPROVAL PENDING</span>`;
 
           const payStatusBadge = isPayVerified
-            ? `<span style="color: #4CAF50; font-weight: 700;">✓ VERIFIED</span>`
+            ? `<span style="background: rgba(46, 125, 50, 0.15); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">🟢 VERIFIED / PAID</span>`
             : isPayRejected
-            ? `<span style="color: #EF5350; font-weight: 700;">❌ REJECTED</span>`
-            : `<span style="color: #FFC107; font-weight: 700;">⏳ VERIFICATION PENDING</span>`;
+            ? `<span style="background: rgba(198, 40, 40, 0.15); color: #EF5350; border: 1px solid rgba(239, 83, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">🔴 REJECTED</span>`
+            : `<span style="background: rgba(255, 193, 7, 0.15); color: #FFC107; border: 1px solid rgba(255, 193, 7, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">🟡 PAYMENT PENDING</span>`;
+
+          const memberStatusBadge = (isApproved && cardStatus === 'ACTIVE')
+            ? `<span style="background: rgba(46, 125, 50, 0.15); color: #4CAF50; border: 1px solid rgba(76, 175, 80, 0.4); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">🟢 MEMBERSHIP ACTIVE</span>`
+            : `<span style="background: rgba(255, 255, 255, 0.08); color: #AAA; border: 1px solid #555; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">⏳ NOT ACTIVE</span>`;
 
           const validFromFormatted = appItem.valid_from ? new Date(appItem.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
           const validUntilFormatted = appItem.valid_until ? new Date(appItem.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
@@ -12813,9 +12618,11 @@ class TiffinApp {
             <div class="card-item" style="border: 1px solid var(--border-color, #333); border-radius: 14px; padding: 18px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word; min-width: 0;">
               
               <div style="flex: 1; min-width: 240px; max-width: 100%;">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
                   <strong style="font-size: 1.15rem; color: var(--text-main, #FFF); font-weight: 700;">${appItem.customer_name}</strong>
                   ${statusBadge}
+                  ${payStatusBadge}
+                  ${memberStatusBadge}
                   ${appItem.member_id ? `<span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800; background: rgba(255,215,0,0.12); padding: 2px 8px; border-radius: 6px; font-size: 0.85rem;">ID: ${appItem.member_id}</span>` : ''}
                 </div>
 
@@ -12833,18 +12640,12 @@ class TiffinApp {
 
                 <div style="background: rgba(255, 255, 255, 0.06); padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); flex-wrap: wrap; color: var(--text-main, #FFF);">
                   <span>Fee: <strong style="color: #4CAF50;">₹${appItem.fee_amount}</strong></span>
-                  <span>Payment Proof: ${payStatusBadge}</span>
-                  <span>Method: <strong>${appItem.payment_method || 'UPI'}</strong></span>
-                  <span>Ref/UTR: <strong style="font-family: monospace; color: var(--accent-gold, #FFD700);">${utrVal}</strong>
-                    ${utrVal !== 'N/A' ? `
-                      <button type="button" onclick="app.copyUtrToClipboard('${utrVal}')" style="background: none; border: none; color: var(--accent-gold, #FFD700); cursor: pointer; padding: 2px 4px; margin-left: 4px;" title="Copy UTR">
-                        <i class="fa-solid fa-copy"></i>
-                      </button>
-                    ` : ''}
-                  </span>
+                  <span>Method: <strong style="color: var(--accent-gold, #FFD700);">💵 Cash Payment</strong></span>
+                  <span>Payment Status: ${isPayVerified ? '<strong style="color:#4CAF50;">VERIFIED / PAID</strong>' : '<strong style="color:#FFC107;">PENDING</strong>'}</span>
+                  <span>Ref: <strong style="font-family: monospace; color: var(--text-muted, #AAA);">${utrVal}</strong></span>
                   ${hasScreenshot ? `
-                    <button type="button" class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewOwnerMemberCardScreenshot('${appItem.id}', this)" title="View Customer Payment Screenshot">
-                      <i class="fa-solid fa-image"></i> 🖼️ 👁️ View Screenshot
+                    <button type="button" class="btn-sm btn-outline btn-action-view-screenshot" onclick="app.viewOwnerMemberCardScreenshot('${appItem.id}', this)" title="View Payment Screenshot">
+                      <i class="fa-solid fa-image"></i> 🖼️ View Screenshot
                     </button>
                   ` : ''}
                 </div>
@@ -12852,15 +12653,12 @@ class TiffinApp {
 
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
                 ${!isPayVerified && !isApproved ? `
-                  <button type="button" class="btn-sm btn-primary btn-action-verify-pay" onclick="app.verifyMemberPayment('${appItem.id}', this)" title="Verify ₹10 Payment Proof">
-                    <i class="fa-solid fa-circle-check"></i> Verify Payment
-                  </button>
-                  <button type="button" class="btn-sm btn-outline btn-action-reject-pay" onclick="app.openRejectPaymentModal('${appItem.id}')" title="Reject Payment Proof">
-                    <i class="fa-solid fa-xmark"></i> Reject Payment
+                  <button type="button" class="btn-sm btn-primary btn-action-verify-pay" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%); cursor: pointer;" onclick="app.verifyMemberPayment('${appItem.id}', this)" title="Verify Cash Payment">
+                    <i class="fa-solid fa-circle-check"></i> Verify Cash Payment
                   </button>
                 ` : ''}
                 ${isPending ? `
-                  <button type="button" class="btn-sm btn-primary btn-action-approve-card" onclick="app.approveMemberCard('${appItem.id}', this)" title="Approve Membership Application">
+                  <button type="button" class="btn-sm btn-primary btn-action-approve-card" style="background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%); cursor: pointer;" onclick="app.approveMemberCard('${appItem.id}', this)" title="Approve Membership Application">
                     <i class="fa-solid fa-check"></i> Approve Card
                   </button>
                   <button type="button" class="btn-sm btn-outline btn-action-reject-card" onclick="app.rejectMemberCard('${appItem.id}')" title="Reject Membership Application">
@@ -13196,10 +12994,10 @@ class TiffinApp {
   }
 
   async verifyMemberPayment(appId, btnEl = null) {
-    if (!confirm('Verify this customer ₹10 membership payment proof?')) return;
+    if (!confirm('Verify that the customer has paid ₹10 in cash?')) return;
     if (btnEl) {
       btnEl.disabled = true;
-      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Verifying...`;
+      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Verifying Payment...`;
     }
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/verify-payment/${appId}`, { method: 'POST' });
@@ -13212,7 +13010,7 @@ class TiffinApp {
       this.showToast(err.message || 'Failed to verify payment.', 'error');
       if (btnEl) {
         btnEl.disabled = false;
-        btnEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Verify Payment`;
+        btnEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Verify Cash Payment`;
       }
     }
   }
@@ -13308,6 +13106,12 @@ class TiffinApp {
   }
 
   async approveMemberCard(appId, btnEl = null) {
+    const appItem = this.ownerMemberApplicationsMap ? this.ownerMemberApplicationsMap.get(appId) : null;
+    if (appItem && appItem.payment_status !== 'VERIFIED') {
+      this.showToast('⚠️ Payment verification required. Please verify the cash payment before approving the Premium Food Member Card.', 'error');
+      return;
+    }
+
     if (!confirm('Approve this customer application and issue an active 3-Month Premium Food Member Card?')) return;
 
     if (btnEl) {

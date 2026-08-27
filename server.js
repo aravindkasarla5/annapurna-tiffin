@@ -4822,10 +4822,9 @@ app.get('/api/food-member/status', authenticateToken, async (req, res) => {
   }
 });
 
-// 2. POST /api/food-member/apply - Customer Application with ₹10 Verified Payment
+// 2. POST /api/food-member/apply - Customer Application with Cash Payment (Pending Owner Verification)
 app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
   try {
-    const { payment_method, utr_number, payment_screenshot, is_cash_paid } = req.body;
     const customerId = req.user.id;
     const nowIso = new Date().toISOString();
 
@@ -4855,67 +4854,9 @@ app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
       });
     }
 
-    const isCashPaid = payment_method === 'Cash Paid' || is_cash_paid === true;
-
-    let cleanUtr = '';
-    let savedScreenshotUrl = null;
-
-    if (isCashPaid) {
-      // Cash Paid Payment Method: Generates cash reference
-      cleanUtr = (utr_number && /^\d+$/.test(utr_number.toString().trim())) 
-        ? utr_number.toString().trim() 
-        : Date.now().toString();
-      
-      if (payment_screenshot && payment_screenshot.startsWith('data:image/')) {
-        try {
-          savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
-        } catch (e) {}
-      }
-    } else {
-      // Online UPI Payment Method: Mandatory Numeric UTR + Screenshot
-      if (!utr_number || !utr_number.toString().trim()) {
-        return res.status(400).json({ success: false, message: "❌ UTR / Transaction ID is required." });
-      }
-      cleanUtr = utr_number.toString().trim();
-      if (!/^\d+$/.test(cleanUtr)) {
-        return res.status(400).json({ success: false, message: "❌ Please enter a valid numeric UTR / Transaction ID." });
-      }
-
-      // Duplicate UTR Check (Cross-checks Applications & Payment Ledger)
-      const dupAppRes = await db.query(
-        `SELECT id FROM food_member_applications WHERE payment_reference = $1;`,
-        [cleanUtr]
-      );
-      const dupPayRes = await db.query(
-        `SELECT id FROM payments WHERE utr_number = $1;`,
-        [cleanUtr]
-      );
-      if ((dupAppRes.rows && dupAppRes.rows.length > 0) || (dupPayRes.rows && dupPayRes.rows.length > 0)) {
-        return res.status(400).json({
-          success: false,
-          message: "❌ This UTR / Transaction ID has already been used."
-        });
-      }
-
-      // Payment Screenshot Validation: STRICTLY MANDATORY for Online Payments
-      if (!payment_screenshot) {
-        return res.status(400).json({ success: false, message: "⚠️ Payment screenshot is required." });
-      }
-      if (!payment_screenshot.startsWith('data:image/')) {
-        return res.status(400).json({ success: false, message: "Invalid image format. Allowed formats: JPG, JPEG, PNG, WEBP." });
-      }
-
-      try {
-        savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
-      } catch (uploadErr) {
-        console.error('Member screenshot upload error:', uploadErr);
-        return res.status(400).json({ success: false, message: "Failed to upload payment screenshot." });
-      }
-    }
-
-    const finalPayMethod = isCashPaid ? 'Cash Paid' : (payment_method || 'UPI (QR Pay)');
+    const finalPayMethod = 'Cash Payment';
     const appId = 'app_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-    const payRef = cleanUtr;
+    const payRef = 'CASH_' + Date.now();
 
     try {
       await db.executeTransaction(async (tx) => {
@@ -4926,20 +4867,20 @@ app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
           [
             appId, customerId, req.user.name, req.user.mobile, 10.00,
-            finalPayMethod, 'VERIFICATION_PENDING', payRef, savedScreenshotUrl,
+            finalPayMethod, 'VERIFICATION_PENDING', payRef, null,
             'PENDING_APPROVAL', nowIso, nowIso
           ]
         );
 
-        // Record in payments table so Owner payment history shows the ₹10 fee
+        // Record in payments table as Pending Verification so Owner payment history tracks it
         const payId = 'pay_fm_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
         await tx.query(
           `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, screenshot_url, notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
           [
             payId, 'MEMBERSHIP_₹10', appId, customerId, req.user.name, req.user.mobile,
-            10.00, finalPayMethod, 'Pending Verification', payRef, savedScreenshotUrl,
-            'Premium Food Member Card Membership Fee (₹10)'
+            10.00, finalPayMethod, 'Pending Verification', payRef, null,
+            'Premium Food Member Card Membership Fee (₹10 Cash Payment)'
           ]
         );
       });
@@ -4963,21 +4904,14 @@ app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
       action: 'APPLICATION_CREATED',
       actor_role: 'CUSTOMER',
       actor_id: customerId,
-      details: `Submitted ₹10 membership application (Ref: ${payRef})`
+      details: `Submitted ₹10 membership cash application (Ref: ${payRef})`
     });
 
-    await logMemberCardAudit({
-      customer_id: customerId,
-      action: 'MEMBERSHIP_PAYMENT_VERIFIED',
-      actor_role: 'SYSTEM',
-      details: `₹10 payment verified for application ${appId}`
-    });
-
-    // Notify Owner
+    // Notify Owner of Cash Payment Application
     await createAndDispatchNotification({
       target_role: 'OWNER',
       title: '🍽️ New Food Member Application',
-      message: `New Premium Food Member Card application submitted by ${req.user.name} (₹10 Paid).`,
+      message: `New Premium Food Member Card application submitted by ${req.user.name} (💵 Cash Payment Pending).`,
       type: 'MEMBER_CARD',
       priority: 'HIGH',
       action_url: '/#secOwnerMemberCardApprovals'
@@ -4987,7 +4921,7 @@ app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
 
     res.json({
       success: true,
-      message: "Your Premium Food Member Card application has been submitted successfully. Please wait for Owner approval.",
+      message: "Please visit the Owner and pay the Premium Food Member Card amount in cash. Your payment will remain pending until the Owner verifies your payment.",
       application: newAppRes.rows[0]
     });
   } catch (err) {
@@ -5142,6 +5076,13 @@ app.post('/api/food-member/owner/approve/:id', authenticateToken, requireRole('O
 
     if (application.status !== 'PENDING_APPROVAL') {
       return res.status(400).json({ success: false, message: `Application status is already ${application.status}.` });
+    }
+
+    if (application.payment_status !== 'VERIFIED') {
+      return res.status(400).json({
+        success: false,
+        message: "⚠️ Payment verification required. Please verify the cash payment before approving the Premium Food Member Card."
+      });
     }
 
     let createdCard = null;
