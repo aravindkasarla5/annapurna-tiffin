@@ -12537,7 +12537,9 @@ class TiffinApp {
         if (cntRejected) cntRejected.textContent = `(${data.counts.rejected || 0})`;
       }
 
-      this.renderOwnerMemberAppsUI(data.data || []);
+      // Cache full list for client-side search filtering
+      this.ownerMemberAppsCache = data.data || [];
+      this.renderOwnerMemberAppsUI(this.getFilteredOwnerMemberApps());
     } catch (err) {
       console.error('Error loading owner member applications:', err);
       listContainer.innerHTML = `<p style="color: #E53935; text-align: center; padding: 20px;">Failed to load applications: ${err.message}</p>`;
@@ -12563,17 +12565,81 @@ class TiffinApp {
     this.loadOwnerMemberApprovals();
   }
 
+  handleOwnerMemberAppsSearch(val) {
+    this.ownerMemberSearchQuery = val || '';
+    const clearBtn = document.getElementById('btnClearOwnerMemberAppsSearch');
+    if (clearBtn) {
+      clearBtn.style.display = (this.ownerMemberSearchQuery.trim().length > 0) ? 'block' : 'none';
+    }
+    this.renderOwnerMemberAppsUI(this.getFilteredOwnerMemberApps());
+  }
+
+  clearOwnerMemberAppsSearch() {
+    this.ownerMemberSearchQuery = '';
+    const input = document.getElementById('txtOwnerMemberAppsSearch');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('btnClearOwnerMemberAppsSearch');
+    if (clearBtn) clearBtn.style.display = 'none';
+    const countBadge = document.getElementById('lblOwnerMemberAppsSearchResultCount');
+    if (countBadge) countBadge.style.display = 'none';
+    this.renderOwnerMemberAppsUI(this.getFilteredOwnerMemberApps());
+  }
+
+  getFilteredOwnerMemberApps() {
+    if (!this.ownerMemberAppsCache) return [];
+    let list = [...this.ownerMemberAppsCache];
+    const query = (this.ownerMemberSearchQuery || '').trim().toLowerCase();
+    if (!query) return list;
+
+    return list.filter(item => {
+      const name = (item.customer_name || '').toLowerCase();
+      const cardId = (item.member_id || item.card_id || '').toLowerCase();
+      const mobile = (item.customer_mobile || '').toLowerCase();
+      const appId = (item.id || '').toLowerCase();
+      const utr = (item.payment_reference || '').toLowerCase();
+      const qrCode = (item.qr_verification_code || '').toLowerCase();
+      const status = (item.status || '').toLowerCase();
+      const payStatus = (item.payment_status || '').toLowerCase();
+      const cardStatus = (item.card_status || '').toLowerCase();
+      const reason = (item.rejection_reason || '').toLowerCase();
+      const fee = String(item.fee_amount || '').toLowerCase();
+
+      return name.includes(query) || 
+             cardId.includes(query) || 
+             mobile.includes(query) || 
+             appId.includes(query) || 
+             utr.includes(query) || 
+             qrCode.includes(query) ||
+             status.includes(query) ||
+             payStatus.includes(query) ||
+             cardStatus.includes(query) ||
+             reason.includes(query) ||
+             fee.includes(query);
+    });
+  }
+
   renderOwnerMemberAppsUI(apps) {
     const listContainer = document.getElementById('ownerMemberAppsList');
     if (!listContainer) return;
 
     this.ownerMemberApplicationsMap = new Map();
 
+    const isSearching = (this.ownerMemberSearchQuery || '').trim().length > 0;
+    const countBadge = document.getElementById('lblOwnerMemberAppsSearchResultCount');
+    if (countBadge) {
+      if (isSearching) {
+        countBadge.textContent = `${apps ? apps.length : 0} Found`;
+        countBadge.style.display = 'inline-block';
+      } else {
+        countBadge.style.display = 'none';
+      }
+    }
+
     if (!apps || apps.length === 0) {
       listContainer.innerHTML = `
         <div style="text-align: center; padding: 40px 20px; color: var(--text-muted, #888);">
-          <i class="fa-solid fa-id-card" style="font-size: 2.5rem; opacity: 0.3; margin-bottom: 10px;"></i>
-          <p style="margin: 0; font-size: 0.95rem;">No membership applications found in this view.</p>
+          <i class="fa-solid ${isSearching ? 'fa-magnifying-glass' : 'fa-id-card'}" style="font-size: 2.5rem; opacity: 0.3; margin-bottom: 10px;"></i>
+          <p style="margin: 0; font-size: 0.95rem;">${isSearching ? `No matching food cards found for "${this.ownerMemberSearchQuery}".` : 'No membership applications found in this view.'}</p>
         </div>
       `;
       return;
@@ -12611,8 +12677,6 @@ class TiffinApp {
           const validFromFormatted = appItem.valid_from ? new Date(appItem.valid_from).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
           const validUntilFormatted = appItem.valid_until ? new Date(appItem.valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
           const appDateFormatted = appItem.created_at ? new Date(appItem.created_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
-          const utrVal = appItem.payment_reference || 'N/A';
-          const hasScreenshot = !!(appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof);
 
           return `
             <div class="card-item" style="border: 1px solid var(--border-color, #333); border-radius: 14px; padding: 18px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 15px; box-sizing: border-box; overflow-wrap: break-word; word-break: break-word; min-width: 0;">
@@ -12641,14 +12705,17 @@ class TiffinApp {
                 <div style="background: rgba(255, 255, 255, 0.06); padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); flex-wrap: wrap; color: var(--text-main, #FFF);">
                   <span>Fee: <strong style="color: #4CAF50;">₹${appItem.fee_amount}</strong></span>
                   <span>Method: <strong style="color: var(--accent-gold, #FFD700);">💵 Cash Payment</strong></span>
-                  <span>Payment Status: ${isPayVerified ? '<strong style="color:#4CAF50;">VERIFIED / PAID</strong>' : '<strong style="color:#FFC107;">PENDING</strong>'}</span>
+                  <span>Payment Status: ${isPayVerified ? '<strong style="color:#4CAF50;">VERIFIED / PAID</strong>' : isPayRejected ? '<strong style="color:#EF5350;">REJECTED</strong>' : '<strong style="color:#FFC107;">PENDING</strong>'}</span>
                 </div>
               </div>
 
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
-                ${!isPayVerified && !isApproved ? `
+                ${!isPayVerified && !isApproved && !isPayRejected ? `
                   <button type="button" class="btn-sm btn-primary btn-action-verify-pay" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%); cursor: pointer;" onclick="app.verifyMemberPayment('${appItem.id}', this)" title="Verify Cash Payment">
                     <i class="fa-solid fa-circle-check"></i> Verify Cash Payment
+                  </button>
+                  <button type="button" class="btn-sm btn-outline btn-action-reject-pay" style="color: #EF5350; border-color: #EF5350; cursor: pointer;" onclick="app.openRejectPaymentModal('${appItem.id}')" title="Reject Payment Proof">
+                    <i class="fa-solid fa-ban"></i> Reject Payment
                   </button>
                 ` : ''}
                 ${isPending ? `
@@ -12701,39 +12768,41 @@ class TiffinApp {
     this.pendingDeleteMemberAppId = appId;
     const modal = document.getElementById('modalConfirmDeleteMemberApp');
     if (modal) {
-      modal.classList.add('open');
-      modal.classList.add('visible');
-      modal.classList.add('active');
+      modal.style.display = 'flex';
+      modal.style.zIndex = '999999';
+      modal.classList.add('open', 'visible', 'active');
     }
   }
 
   closeDeleteMemberAppModal() {
     const modal = document.getElementById('modalConfirmDeleteMemberApp');
     if (modal) {
-      modal.classList.remove('open');
-      modal.classList.remove('visible');
-      modal.classList.remove('active');
+      modal.classList.remove('open', 'visible', 'active');
+      modal.style.display = 'none';
     }
     this.pendingDeleteMemberAppId = null;
+    this.isDeletingMemberApp = false;
   }
 
   async executeDeleteMemberApp() {
     if (!this.pendingDeleteMemberAppId || this.isDeletingMemberApp) return;
     this.isDeletingMemberApp = true;
     const btn = document.getElementById('btnConfirmDeleteMemberApp');
+    let origHtml = btn ? btn.innerHTML : '';
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Deleting...`;
     }
 
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/application/${this.pendingDeleteMemberAppId}`, {
+      const targetId = this.pendingDeleteMemberAppId;
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/application/${targetId}`, {
         method: 'DELETE'
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Deletion failed.');
 
-      this.showToast('✅ Premium Food Card deleted successfully.', 'success');
+      this.showToast('✅ Premium Food Member Card deleted successfully.', 'success');
       this.closeDeleteMemberAppModal();
       await this.loadOwnerMemberApprovals();
     } catch (err) {
@@ -12743,7 +12812,7 @@ class TiffinApp {
       this.isDeletingMemberApp = false;
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-trash-can"></i> Delete`;
+        btn.innerHTML = origHtml || `<i class="fa-solid fa-trash-can"></i> Delete`;
       }
     }
   }
@@ -12751,26 +12820,29 @@ class TiffinApp {
   openDeleteAllMemberAppsModal() {
     const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
     if (modal) {
-      modal.classList.add('open');
-      modal.classList.add('visible');
-      modal.classList.add('active');
+      modal.style.display = 'flex';
+      modal.style.zIndex = '999999';
+      modal.classList.add('open', 'visible', 'active');
     }
   }
 
   closeDeleteAllMemberAppsModal() {
     const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
     if (modal) {
-      modal.classList.remove('open');
-      modal.classList.remove('visible');
-      modal.classList.remove('active');
+      modal.classList.remove('open', 'visible', 'active');
+      modal.style.display = 'none';
     }
+    this.isDeletingAllMemberApps = false;
   }
 
   async executeDeleteAllMemberApps() {
+    if (this.isDeletingAllMemberApps) return;
+    this.isDeletingAllMemberApps = true;
     const btn = document.getElementById('btnConfirmDeleteAllMemberApps');
+    let origHtml = btn ? btn.innerHTML : '';
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Clearing All...`;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Deleting...`;
     }
 
     try {
@@ -12780,16 +12852,17 @@ class TiffinApp {
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Failed to clear records.');
 
-      this.showToast('🗑 All Premium Food Member records cleared successfully.', 'info');
+      this.showToast('✅ Premium Food Card records deleted successfully.', 'info');
       this.closeDeleteAllMemberAppsModal();
       await this.loadOwnerMemberApprovals();
     } catch (err) {
       console.error('Delete all member applications error:', err);
       this.showToast(err.message || 'Failed to clear records.', 'error');
     } finally {
+      this.isDeletingAllMemberApps = false;
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-trash-can"></i> DELETE ALL`;
+        btn.innerHTML = origHtml || `<i class="fa-solid fa-trash-can"></i> DELETE ALL`;
       }
     }
   }
@@ -12803,7 +12876,6 @@ class TiffinApp {
     }
 
     try {
-      console.log(`[DEBUG] View Screenshot requested for appId: ${appId}`);
       const appItem = this.ownerMemberApplicationsMap ? this.ownerMemberApplicationsMap.get(appId) : null;
       const rawScreenshot = appItem ? (appItem.screenshot_url || appItem.payment_ledger_screenshot || appItem.payment_proof) : null;
 
@@ -12817,7 +12889,6 @@ class TiffinApp {
         return;
       }
 
-      // If base64 data URI
       if (typeof rawScreenshot === 'string' && rawScreenshot.startsWith('data:image/')) {
         this.viewPaymentProof(rawScreenshot, appId);
         return;
@@ -12826,7 +12897,6 @@ class TiffinApp {
       const token = this.authToken || localStorage.getItem('token') || '';
       const endpoint = `${API_BASE}/food-member/owner/screenshot/${appId}?token=${encodeURIComponent(token)}&t=${Date.now()}`;
 
-      // Retrieve image blob using authenticated fetch
       try {
         const res = await this.fetchWithAuth(endpoint);
         if (res.ok) {
@@ -12841,7 +12911,6 @@ class TiffinApp {
         console.warn('[DEBUG] Authenticated screenshot blob fetch notice:', blobErr);
       }
 
-      // Fallback: static URL with query token
       let staticUrl = rawScreenshot.startsWith('/') ? rawScreenshot : `/${rawScreenshot}`;
       if (!staticUrl.includes('?')) {
         staticUrl += `?token=${encodeURIComponent(token)}&t=${Date.now()}`;
@@ -12860,7 +12929,6 @@ class TiffinApp {
 
   viewPaymentProof(imgUrl, appId = null) {
     if (!imgUrl) {
-      console.warn(`[DEBUG] Payment proof URL is empty.`);
       this.showToast('⚠️ Payment screenshot not available for this record.', 'error');
       return;
     }
@@ -12880,8 +12948,6 @@ class TiffinApp {
       img.style.display = 'none';
 
       img.onload = () => {
-        console.log(`[DEBUG] Payment proof loaded successfully.`);
-        console.log(`[DEBUG] Image viewer opened.`);
         if (loadingEl) loadingEl.style.display = 'none';
         if (errorEl) errorEl.style.display = 'none';
         img.style.display = 'block';
@@ -12901,8 +12967,7 @@ class TiffinApp {
         retryBtn.onclick = () => this.viewOwnerMemberCardScreenshot(appId);
       }
 
-      modal.classList.add('visible');
-      modal.classList.add('open');
+      modal.classList.add('visible', 'open', 'active');
       this.setupImageZoomTouchHandlers();
     }
   }
@@ -12915,7 +12980,7 @@ class TiffinApp {
 
   closeViewPaymentProofModal() {
     const modal = document.getElementById('modalViewPaymentProof');
-    if (modal) modal.classList.remove('visible');
+    if (modal) modal.classList.remove('visible', 'open', 'active');
   }
 
   setZoomScale(scale) {
@@ -12988,7 +13053,10 @@ class TiffinApp {
   }
 
   async verifyMemberPayment(appId, btnEl = null) {
+    if (this.isProcessingMemberAction) return;
     if (!confirm('Verify that the customer has paid ₹10 in cash?')) return;
+    this.isProcessingMemberAction = true;
+    let origHtml = btnEl ? btnEl.innerHTML : '';
     if (btnEl) {
       btnEl.disabled = true;
       btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Verifying Payment...`;
@@ -13004,8 +13072,10 @@ class TiffinApp {
       this.showToast(err.message || 'Failed to verify payment.', 'error');
       if (btnEl) {
         btnEl.disabled = false;
-        btnEl.innerHTML = `<i class="fa-solid fa-circle-check"></i> Verify Cash Payment`;
+        btnEl.innerHTML = origHtml || `<i class="fa-solid fa-circle-check"></i> Verify Cash Payment`;
       }
+    } finally {
+      this.isProcessingMemberAction = false;
     }
   }
 
@@ -13015,24 +13085,23 @@ class TiffinApp {
     const txt = document.getElementById('txtPaymentRejectionReason');
     if (txt) txt.value = '';
     if (modal) {
-      modal.classList.add('open');
-      modal.classList.add('visible');
-      modal.classList.add('active');
+      modal.style.display = 'flex';
+      modal.style.zIndex = '999999';
+      modal.classList.add('open', 'visible', 'active');
     }
   }
 
   closeRejectPaymentModal() {
     const modal = document.getElementById('modalRejectMemberPayment');
     if (modal) {
-      modal.classList.remove('open');
-      modal.classList.remove('visible');
-      modal.classList.remove('active');
+      modal.classList.remove('open', 'visible', 'active');
+      modal.style.display = 'none';
     }
     this.pendingRejectAppId = null;
   }
 
   async submitPaymentRejection() {
-    if (!this.pendingRejectAppId) return;
+    if (!this.pendingRejectAppId || this.isProcessingMemberAction) return;
     const reasonEl = document.getElementById('txtPaymentRejectionReason');
     const reason = reasonEl ? reasonEl.value.trim() : '';
 
@@ -13041,6 +13110,7 @@ class TiffinApp {
       return;
     }
 
+    this.isProcessingMemberAction = true;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/reject-payment/${this.pendingRejectAppId}`, {
         method: 'POST',
@@ -13056,10 +13126,15 @@ class TiffinApp {
     } catch (err) {
       console.error('Reject payment error:', err);
       this.showToast(err.message || 'Failed to reject payment proof.', 'error');
+    } finally {
+      this.isProcessingMemberAction = false;
     }
   }
 
   async suspendMemberCard(appId, btnEl = null) {
+    if (this.isProcessingMemberAction) return;
+    this.isProcessingMemberAction = true;
+    let origHtml = btnEl ? btnEl.innerHTML : '';
     if (btnEl) {
       btnEl.disabled = true;
       btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Suspending...`;
@@ -13074,12 +13149,17 @@ class TiffinApp {
       this.showToast(err.message || 'Failed to suspend card.', 'error');
       if (btnEl) {
         btnEl.disabled = false;
-        btnEl.innerHTML = `<i class="fa-solid fa-lock"></i> 🔒 Suspend`;
+        btnEl.innerHTML = origHtml || `<i class="fa-solid fa-pause"></i> Suspend`;
       }
+    } finally {
+      this.isProcessingMemberAction = false;
     }
   }
 
   async reactivateMemberCard(appId, btnEl = null) {
+    if (this.isProcessingMemberAction) return;
+    this.isProcessingMemberAction = true;
+    let origHtml = btnEl ? btnEl.innerHTML : '';
     if (btnEl) {
       btnEl.disabled = true;
       btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Unsuspending...`;
@@ -13094,12 +13174,15 @@ class TiffinApp {
       this.showToast(err.message || 'Failed to activate card.', 'error');
       if (btnEl) {
         btnEl.disabled = false;
-        btnEl.innerHTML = `<i class="fa-solid fa-lock-open"></i> 🔓 Unsuspend`;
+        btnEl.innerHTML = origHtml || `<i class="fa-solid fa-play"></i> Reactivate`;
       }
+    } finally {
+      this.isProcessingMemberAction = false;
     }
   }
 
   async approveMemberCard(appId, btnEl = null) {
+    if (this.isProcessingMemberAction) return;
     const appItem = this.ownerMemberApplicationsMap ? this.ownerMemberApplicationsMap.get(appId) : null;
     if (appItem && appItem.payment_status !== 'VERIFIED') {
       this.showToast('⚠️ Payment verification required. Please verify the cash payment before approving the Premium Food Member Card.', 'error');
@@ -13108,6 +13191,8 @@ class TiffinApp {
 
     if (!confirm('Approve this customer application and issue an active 3-Month Premium Food Member Card?')) return;
 
+    this.isProcessingMemberAction = true;
+    let origHtml = btnEl ? btnEl.innerHTML : '';
     if (btnEl) {
       btnEl.disabled = true;
       btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ⏳ Approving...`;
@@ -13128,12 +13213,13 @@ class TiffinApp {
       this.showToast(err.message || 'Failed to approve application.', 'error');
       if (btnEl) {
         btnEl.disabled = false;
-        btnEl.innerHTML = `<i class="fa-solid fa-check"></i> Approve Card`;
+        btnEl.innerHTML = origHtml || `<i class="fa-solid fa-check"></i> Approve Card`;
       }
+    } finally {
+      this.isProcessingMemberAction = false;
     }
   }
 
-  // Open Rejection Confirmation Modal
   rejectMemberCard(appId) {
     this.pendingRejectMemberAppId = appId;
     
@@ -13175,10 +13261,12 @@ class TiffinApp {
     const modal = document.getElementById('modalConfirmRejectMemberApp');
     if (modal) modal.remove();
     this.pendingRejectMemberAppId = null;
+    this.isRejectingMemberApp = false;
   }
 
   async executeRejectMemberCard() {
-    if (!this.pendingRejectMemberAppId) return;
+    if (!this.pendingRejectMemberAppId || this.isRejectingMemberApp) return;
+    this.isRejectingMemberApp = true;
     const btn = document.getElementById('btnConfirmRejectMemberCard');
     const reasonInput = document.getElementById('txtMemberRejectionReasonInput');
     const reason = reasonInput ? reasonInput.value.trim() : 'Details mismatch';
@@ -13208,10 +13296,11 @@ class TiffinApp {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-xmark"></i> Confirm Reject`;
       }
+    } finally {
+      this.isRejectingMemberApp = false;
     }
   }
 
-  // Open Re-Approval Confirmation Modal
   reapproveMemberCard(appId) {
     this.pendingReapproveMemberAppId = appId;
     
@@ -13248,10 +13337,12 @@ class TiffinApp {
     const modal = document.getElementById('modalConfirmReapproveMemberApp');
     if (modal) modal.remove();
     this.pendingReapproveMemberAppId = null;
+    this.isReapprovingMemberApp = false;
   }
 
   async executeReapproveMemberCard() {
-    if (!this.pendingReapproveMemberAppId) return;
+    if (!this.pendingReapproveMemberAppId || this.isReapprovingMemberApp) return;
+    this.isReapprovingMemberApp = true;
     const btn = document.getElementById('btnConfirmReapproveMemberCard');
 
     if (btn) {
@@ -13267,9 +13358,6 @@ class TiffinApp {
       if (!data.success) {
         throw new Error(data.message || 'Re-approval failed.');
       }
-      if (btn) {
-        btn.innerHTML = `<i class="fa-solid fa-circle-check"></i> ✅ Approved`;
-      }
       this.showToast(`🎉 ${data.message}`, 'success');
       this.closeReapproveMemberCardModal();
       await this.loadOwnerMemberApprovals();
@@ -13280,6 +13368,8 @@ class TiffinApp {
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-check"></i> Confirm Re-Approve`;
       }
+    } finally {
+      this.isReapprovingMemberApp = false;
     }
   }
 }

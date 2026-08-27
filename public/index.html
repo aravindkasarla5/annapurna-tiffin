@@ -2581,6 +2581,20 @@
             </div>
           </div>
 
+          <!-- Real-Time Search Bar Row -->
+          <div style="margin-bottom: 16px; position: relative; display: flex; align-items: center; width: 100%;">
+            <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 14px; color: var(--text-muted, #888); font-size: 0.95rem; pointer-events: none;"></i>
+            <input type="text" id="txtOwnerMemberAppsSearch" placeholder="🔍 Search by Name, Mobile, Member ID, Status (Pending, Approved, Verified)..." 
+                   oninput="app.handleOwnerMemberAppsSearch(this.value)" 
+                   onkeydown="if(event.key === 'Escape') app.clearOwnerMemberAppsSearch()"
+                   style="width: 100%; padding: 10px 85px 10px 38px; border-radius: 10px; border: 1px solid var(--border-color, rgba(255,255,255,0.15)); background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); font-size: 0.92rem; outline: none; transition: border-color 0.2s, box-shadow 0.2s; box-sizing: border-box;" />
+            <span id="lblOwnerMemberAppsSearchResultCount" style="position: absolute; right: 36px; font-size: 0.78rem; font-weight: 700; color: var(--accent-gold, #FFD700); background: rgba(255,215,0,0.15); padding: 2px 8px; border-radius: 10px; display: none;"></span>
+            <button type="button" id="btnClearOwnerMemberAppsSearch" onclick="app.clearOwnerMemberAppsSearch()" 
+                    style="position: absolute; right: 10px; background: none; border: none; color: var(--text-muted, #888); font-size: 1.1rem; cursor: pointer; display: none; padding: 4px 8px; font-weight: bold;" title="Clear search (Esc)">
+              ✕
+            </button>
+          </div>
+
           <!-- Filter Bar Row: Filter Tabs Grouped Below Title -->
           <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; border-bottom: 1px solid var(--border-color, #EEE); padding-bottom: 15px;">
             <button type="button" class="member-filter-btn active" id="btnFilterMemberAppsAll" onclick="app.filterOwnerMemberApps('ALL')">
@@ -4528,7 +4542,7 @@
     </div>
 
     <!-- Reject Payment Proof Modal (Owner) -->
-    <div class="modal-backdrop" id="modalRejectMemberPayment" onclick="if(event.target === this) app.closeRejectPaymentModal()">
+    <div class="modal-backdrop" id="modalRejectMemberPayment" onclick="if(event.target === this) app.closeRejectPaymentModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999;">
       <div class="modal-card" style="max-width: 460px; width: 92%; padding: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 10px;">
           <h3 style="margin: 0; font-size: 1.15rem; color: #EF5350;"><i class="fa-solid fa-circle-xmark"></i> Reject Payment Proof</h3>
@@ -4548,8 +4562,10 @@
           </button>
         </div>
       </div>
+    </div>
+
     <!-- Confirm Individual Member Record Delete Modal (Owner) -->
-    <div class="modal-backdrop" id="modalConfirmDeleteMemberApp" onclick="if(event.target === this) app.closeDeleteMemberAppModal()">
+    <div class="modal-backdrop" id="modalConfirmDeleteMemberApp" onclick="if(event.target === this) app.closeDeleteMemberAppModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999;">
       <div class="modal-card" style="max-width: 420px; width: 92%; padding: 20px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="font-size: 2.8rem; margin-bottom: 8px; color: #EF5350;">⚠️</div>
         <h3 style="margin: 0 0 8px 0; color: #FFF; font-size: 1.25rem;">Confirm Delete</h3>
@@ -4568,7 +4584,7 @@
     </div>
 
     <!-- Confirm Delete All Member Records Modal (Owner) -->
-    <div class="modal-backdrop" id="modalConfirmDeleteAllMemberApps" onclick="if(event.target === this) app.closeDeleteAllMemberAppsModal()">
+    <div class="modal-backdrop" id="modalConfirmDeleteAllMemberApps" onclick="if(event.target === this) app.closeDeleteAllMemberAppsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999;">
       <div class="modal-card" style="max-width: 450px; width: 92%; padding: 22px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="font-size: 3rem; margin-bottom: 8px; color: #D32F2F;">🚨</div>
         <h3 style="margin: 0 0 8px 0; color: #EF5350; font-size: 1.3rem;">Delete All Premium Food Member Cards?</h3>
@@ -4589,7 +4605,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=9"></script>
+    <script src="/js/app.js?v=10"></script>
 </body>
 
 </html>

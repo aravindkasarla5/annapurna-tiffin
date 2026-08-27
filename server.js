@@ -4942,11 +4942,11 @@ app.get('/api/food-member/owner/applications', authenticateToken, requireRole('O
              c.valid_from, c.valid_until, c.qr_verification_code
       FROM food_member_applications a
       LEFT JOIN payments p ON p.order_id = a.id
-      LEFT JOIN LATERAL (
-        SELECT * FROM food_member_cards 
+      LEFT JOIN food_member_cards c ON c.id = (
+        SELECT id FROM food_member_cards 
         WHERE application_id = a.id OR customer_id = a.customer_id 
         ORDER BY created_at DESC LIMIT 1
-      ) c ON true
+      )
     `;
     const params = [];
     if (status && status !== 'ALL') {
@@ -5643,36 +5643,58 @@ app.post(['/api/food-member/owner/reactivate/:id', '/api/food-member/owner/unsus
 // 6B. DELETE /api/food-member/owner/application/:id - Owner Delete Individual Member Application/Card Record
 app.delete('/api/food-member/owner/application/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {
-    const appId = req.params.id;
+    const targetId = req.params.id;
 
-    const appRes = await db.query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
-    if (!appRes.rows || appRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Application record not found." });
-    }
-    const application = appRes.rows[0];
+    // Find in applications
+    const appRes = await db.query(
+      `SELECT * FROM food_member_applications WHERE id = $1 OR customer_id = $1;`, 
+      [targetId]
+    );
+    // Find in cards
+    const cardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE id = $1 OR application_id = $1 OR customer_id = $1;`, 
+      [targetId]
+    );
+
+    const application = (appRes.rows && appRes.rows.length > 0) ? appRes.rows[0] : null;
+    const card = (cardRes.rows && cardRes.rows.length > 0) ? cardRes.rows[0] : null;
+
+    const appId = application ? application.id : (card ? card.application_id : targetId);
+    const customerId = application ? application.customer_id : (card ? card.customer_id : null);
+    const cardId = card ? card.id : null;
 
     await db.executeTransaction(async (tx) => {
-      await tx.query(`DELETE FROM food_member_cards WHERE application_id = $1 OR id = $1;`, [appId]);
-      await tx.query(`DELETE FROM food_member_applications WHERE id = $1;`, [appId]);
+      if (appId) {
+        await tx.query(`DELETE FROM food_member_cards WHERE application_id = $1 OR id = $1;`, [appId]);
+        await tx.query(`DELETE FROM food_member_applications WHERE id = $1;`, [appId]);
+      }
+      if (cardId) {
+        await tx.query(`DELETE FROM food_member_cards WHERE id = $1;`, [cardId]);
+      }
+      if (targetId) {
+        await tx.query(`DELETE FROM food_member_cards WHERE id = $1 OR application_id = $1;`, [targetId]);
+        await tx.query(`DELETE FROM food_member_applications WHERE id = $1;`, [targetId]);
+      }
     });
 
-    await logMemberCardAudit({
-      customer_id: application.customer_id,
-      action: 'APPLICATION_DELETED',
-      actor_role: 'OWNER',
-      actor_id: req.user.id,
-      details: `Owner deleted membership record ${appId}`
-    });
+    if (customerId) {
+      await logMemberCardAudit({
+        customer_id: customerId,
+        action: 'APPLICATION_DELETED',
+        actor_role: 'OWNER',
+        actor_id: req.user.id,
+        details: `Owner deleted membership record ${targetId}`
+      });
 
-    // Notify Customer about card removal
-    await createAndDispatchNotification({
-      target_role: 'CUSTOMER',
-      customer_id: application.customer_id,
-      title: '❌ Premium Food Member Card Status',
-      message: 'Your Food Member Card has been removed by the Owner. Please contact the Owner for more information.',
-      type: 'MEMBER_CARD',
-      priority: 'HIGH'
-    });
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: customerId,
+        title: '❌ Premium Food Member Card Status',
+        message: 'Your Food Member Card has been removed by the Owner. Please contact the Owner for more information.',
+        type: 'MEMBER_CARD',
+        priority: 'HIGH'
+      });
+    }
 
     res.json({
       success: true,
@@ -5680,7 +5702,7 @@ app.delete('/api/food-member/owner/application/:id', authenticateToken, requireR
     });
   } catch (err) {
     console.error('Delete Member Record Error:', err);
-    res.status(500).json({ success: false, message: "Failed to delete membership record." });
+    res.status(500).json({ success: false, message: "Failed to delete membership record: " + (err.message || '') });
   }
 });
 
@@ -5706,7 +5728,7 @@ app.delete('/api/food-member/owner/applications/all', authenticateToken, require
     });
   } catch (err) {
     console.error('Delete All Member Records Error:', err);
-    res.status(500).json({ success: false, message: "Failed to clear membership records." });
+    res.status(500).json({ success: false, message: "Failed to clear membership records: " + (err.message || '') });
   }
 });
 
