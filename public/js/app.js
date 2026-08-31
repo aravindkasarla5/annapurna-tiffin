@@ -13853,17 +13853,11 @@ class TiffinApp {
 
   async openCreatePollModal() {
     const modal = document.getElementById('modalCreatePoll');
-    if (!modal) {
-      console.error('modalCreatePoll element not found');
-      return;
-    }
+    if (!modal) return;
 
-    modal.style.display = 'flex';
-    modal.style.opacity = '1';
-    modal.style.visibility = 'visible';
-    modal.style.pointerEvents = 'auto';
-    modal.classList.add('active', 'open', 'visible');
+    modal.removeAttribute('style');
     modal.classList.remove('hidden');
+    modal.classList.add('open', 'active');
 
     try {
       if (!this.menuItems || this.menuItems.length === 0) {
@@ -13895,12 +13889,8 @@ class TiffinApp {
   closeCreatePollModal() {
     const modal = document.getElementById('modalCreatePoll');
     if (modal) {
-      modal.style.display = 'none';
-      modal.style.opacity = '0';
-      modal.style.visibility = 'hidden';
-      modal.style.pointerEvents = 'none';
-      modal.classList.remove('active', 'open', 'visible');
-      modal.classList.add('hidden');
+      modal.removeAttribute('style');
+      modal.classList.remove('open', 'active', 'visible');
     }
   }
 
@@ -13909,10 +13899,10 @@ class TiffinApp {
     if (!container) return;
 
     const currentRows = container.querySelectorAll('.poll-option-select-row');
-    if (currentRows.length >= 3) {
+    if (currentRows.length >= 5) {
       const msg = document.getElementById('lblPollOptionValidationMsg');
       if (msg) {
-        msg.innerText = 'Maximum 3 food options are allowed.';
+        msg.innerText = 'Maximum 5 food options are allowed.';
         msg.style.display = 'block';
         setTimeout(() => { msg.style.display = 'none'; }, 3000);
       }
@@ -13934,7 +13924,7 @@ class TiffinApp {
         ${tiffinsOptionsHtml}
       </select>
       ${rowIndex > 2 ? `
-        <button type="button" class="btn-sm-status" onclick="document.getElementById('${rowId}').remove()" style="background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336; padding: 6px 12px;">
+        <button type="button" class="btn-sm-status" onclick="document.getElementById('${rowId}').remove()" style="background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336; padding: 6px 12px; cursor: pointer;">
           ✕
         </button>
       ` : ''}
@@ -13961,8 +13951,8 @@ class TiffinApp {
       return;
     }
 
-    if (food_ids.length > 3) {
-      this.showToast('Maximum 3 food options are allowed.', 'warning');
+    if (food_ids.length > 5) {
+      this.showToast('Maximum 5 food options are allowed.', 'warning');
       return;
     }
 
@@ -15046,14 +15036,9 @@ class TiffinApp {
 
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.style.display = 'flex';
-      modal.style.opacity = '1';
-      modal.style.visibility = 'visible';
-      modal.style.pointerEvents = 'auto';
-      modal.classList.add('active', 'open', 'visible');
+      modal.removeAttribute('style');
       modal.classList.remove('hidden');
-    } else {
-      console.error('modalCreateEditAddon element not found');
+      modal.classList.add('open', 'active');
     }
   }
 
@@ -15078,24 +15063,17 @@ class TiffinApp {
 
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.style.display = 'flex';
-      modal.style.opacity = '1';
-      modal.style.visibility = 'visible';
-      modal.style.pointerEvents = 'auto';
-      modal.classList.add('active', 'open', 'visible');
+      modal.removeAttribute('style');
       modal.classList.remove('hidden');
+      modal.classList.add('open', 'active');
     }
   }
 
   closeCreateEditAddonModal() {
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.style.display = 'none';
-      modal.style.opacity = '0';
-      modal.style.visibility = 'hidden';
-      modal.style.pointerEvents = 'none';
-      modal.classList.remove('active', 'open', 'visible');
-      modal.classList.add('hidden');
+      modal.removeAttribute('style');
+      modal.classList.remove('open', 'active', 'visible');
     }
   }
 

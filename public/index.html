@@ -5139,8 +5139,8 @@
         </div>
       </div>
     <!-- 🗳️ Create Menu Vote Poll Modal (Owner) -->
-    <div class="modal-backdrop hidden" id="modalCreatePoll" onclick="if(event.target === this) app.closeCreatePollModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
-      <div class="modal-card" style="max-width: 550px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
+    <div class="modal-backdrop" id="modalCreatePoll" onclick="app.closeCreatePollModal()">
+      <div class="modal-card" style="max-width: 550px; width: 92%; padding: 24px; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px; border: 1.5px solid var(--border-color); box-shadow: 0 20px 50px rgba(0,0,0,0.85);" onclick="event.stopPropagation()">
         <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
           <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
             <span>🗳️</span> + Create Menu Vote
@@ -5167,7 +5167,7 @@
 
           <div class="form-group" style="margin-bottom: 1rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted);">2. Select Food Options (Min: 2, Max: 3)</label>
+              <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted);">2. Select Food Options (Min: 2, Max: 5)</label>
               <button type="button" class="btn-sm-status" onclick="app.addPollOptionRow()" style="background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.75rem; padding: 3px 10px; border-radius: 12px; cursor: pointer;">
                 <i class="fa-solid fa-plus"></i> Add Option
               </button>
@@ -5311,8 +5311,8 @@
     </div>
 
     <!-- 🥘 Owner Create / Edit Add-on Modal -->
-    <div class="modal-backdrop hidden" id="modalCreateEditAddon" onclick="if(event.target === this) app.closeCreateEditAddonModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
-      <div class="modal-card" style="max-width: 520px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
+    <div class="modal-backdrop" id="modalCreateEditAddon" onclick="app.closeCreateEditAddonModal()">
+      <div class="modal-card" style="max-width: 520px; width: 92%; padding: 24px; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px; border: 1.5px solid var(--border-color); box-shadow: 0 20px 50px rgba(0,0,0,0.85);" onclick="event.stopPropagation()">
         <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
           <h3 id="lblAddonModalTitle" style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
             <span>🥘</span> Add New Add-on
