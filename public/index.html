@@ -72,6 +72,11 @@
         <span class="badge hidden" id="cartBadgeCount">0</span>
       </button>
 
+      <!-- 2b. AI Order Assistant Button (Visible ONLY for customer) -->
+      <button class="ai-assistant-btn hidden" id="btnAiAssistantHeader" onclick="app.openAiAssistantModal()" title="AI Order Assistant">
+        <i class="fa-solid fa-robot"></i> <span>AI Assistant</span>
+      </button>
+
       <!-- 3. Profile Icon & Badge with Full Name (Visible ONLY after login, clicking switches to My Profile) -->
       <button class="header-profile-card hidden" id="btnHeaderProfile"
         onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerSettings' : 'secCustomerProfile')"
@@ -319,6 +324,11 @@
               Order</span>
           </div>
         </div>
+      </div>
+
+      <!-- 🗳️ Customer Menu Voting Card Container ("Choose Tomorrow's Special") -->
+      <div id="customerVotingContainer" style="margin-bottom: 1.5rem;">
+        <!-- Rendered dynamically by app.js when an active poll exists -->
       </div>
 
       <!-- Section Title & Search Toolbar -->
@@ -2699,6 +2709,468 @@
       </div>
     </section>
 
+    <!-- 🗳️ Owner Customer Menu Voting Section -->
+    <section id="secOwnerVoting" class="view-section hidden">
+      <div class="owner-support-header" style="margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div class="owner-support-title-group">
+          <h2 class="section-title" style="margin: 0; font-size: 1.35rem; display: flex; align-items: center; gap: 8px;">
+            <span>🗳️</span> Customer Menu Voting ("Choose Tomorrow's Special")
+          </h2>
+          <p class="owner-support-sub" style="margin: 4px 0 0 0; color: var(--text-muted); font-size: 0.85rem;">
+            Create menu polls for customers to vote on tomorrow's special dish. Track live results and publish the winner.
+          </p>
+        </div>
+        <button class="btn-primary-block" onclick="app.openCreatePollModal()" style="width: auto; padding: 8px 18px; display: flex; align-items: center; gap: 6px;">
+          <i class="fa-solid fa-plus"></i> + Create Menu Vote
+        </button>
+      </div>
+
+      <!-- Voting Polls Filter Toolbar -->
+      <div class="owner-tkt-toolbar" style="margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div class="filter-chips">
+          <button class="filter-chip active" id="chipPollAll" onclick="app.filterOwnerPolls('ALL')">All Polls</button>
+          <button class="filter-chip" id="chipPollActive" onclick="app.filterOwnerPolls('ACTIVE')">🟢 Active</button>
+          <button class="filter-chip" id="chipPollScheduled" onclick="app.filterOwnerPolls('SCHEDULED')">🟡 Scheduled</button>
+          <button class="filter-chip" id="chipPollCompleted" onclick="app.filterOwnerPolls('COMPLETED')">🏆 Completed</button>
+          <button class="filter-chip" id="chipPollCancelled" onclick="app.filterOwnerPolls('CANCELLED')">⚪ Cancelled</button>
+        </div>
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass search-icon"></i>
+          <input type="text" class="form-control search-input" id="txtOwnerPollSearch" placeholder="Search poll question..." oninput="app.loadOwnerPolls()">
+        </div>
+      </div>
+
+      <!-- Polls Container -->
+      <div id="ownerPollsContainer" style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- 🛡️ Owner Security & Anti-Fraud Center Section -->
+    <section id="secOwnerSecurity" class="view-section hidden">
+      <!-- Security Status Header Banner -->
+      <div style="background: linear-gradient(135deg, rgba(26, 35, 126, 0.4), rgba(13, 71, 161, 0.25)); border: 1px solid rgba(64, 196, 255, 0.4); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+        <div>
+          <h2 style="font-size: 1.35rem; font-weight: 800; color: #FFF; margin: 0 0 0.35rem 0; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-shield-halved" style="color: #40C4FF;"></i> 🛡️ Security & Anti-Fraud Center
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+            Server-side duplicate protection, payment & reward replay monitoring, and real-time security events engine.
+          </p>
+        </div>
+        <div id="securityStatusBadgeContainer" style="display: flex; align-items: center; gap: 10px;">
+          <span class="status-badge" id="lblSecurityStatusBadge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid #4CAF50; font-size: 0.9rem; font-weight: 800; padding: 6px 16px; border-radius: 20px;">
+            🟢 Protected
+          </span>
+        </div>
+      </div>
+
+      <!-- Security KPI Stats Grid -->
+      <div class="stats-grid" style="margin-bottom: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+        <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem;">
+          <div class="stat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span class="stat-label" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">SUSPICIOUS EVENTS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(255, 152, 0, 0.15); color: #FF9800; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statSecSuspiciousCount" style="font-size: 1.5rem; font-weight: 800; color: #FF9800;">0</div>
+        </div>
+
+        <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem;">
+          <div class="stat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span class="stat-label" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">BLOCKED ATTEMPTS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <i class="fa-solid fa-ban"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statSecBlockedAttempts" style="font-size: 1.5rem; font-weight: 800; color: #4CAF50;">0</div>
+        </div>
+
+        <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem;">
+          <div class="stat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span class="stat-label" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">DUPLICATE ATTEMPTS</span>
+            <div class="stat-icon-wrapper" style="background: rgba(244, 67, 54, 0.15); color: #F44336; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <i class="fa-solid fa-clone"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statSecDuplicateAttempts" style="font-size: 1.5rem; font-weight: 800; color: #F44336;">0</div>
+        </div>
+
+        <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem;">
+          <div class="stat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span class="stat-label" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">PAYMENT ISSUES</span>
+            <div class="stat-icon-wrapper" style="background: rgba(156, 39, 176, 0.15); color: #AB47BC; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <i class="fa-solid fa-credit-card"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statSecPaymentIssues" style="font-size: 1.5rem; font-weight: 800; color: #AB47BC;">0</div>
+        </div>
+
+        <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem;">
+          <div class="stat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span class="stat-label" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">REWARD ISSUES</span>
+            <div class="stat-icon-wrapper" style="background: rgba(255, 215, 0, 0.15); color: #FFD700; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <i class="fa-solid fa-gift"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statSecRewardIssues" style="font-size: 1.5rem; font-weight: 800; color: #FFD700;">0</div>
+        </div>
+
+        <div class="stat-card" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem;">
+          <div class="stat-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <span class="stat-label" style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">EVENTS TODAY</span>
+            <div class="stat-icon-wrapper" style="background: rgba(64, 196, 255, 0.15); color: #40C4FF; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+              <i class="fa-solid fa-calendar-day"></i>
+            </div>
+          </div>
+          <div class="stat-val" id="statSecEventsToday" style="font-size: 1.5rem; font-weight: 800; color: #40C4FF;">0</div>
+        </div>
+      </div>
+
+      <!-- Security Views Tab Selector Bar: [ Security Events ] [ Owner Audit Logs ] -->
+      <div style="display: flex; gap: 10px; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+        <button type="button" class="tab-btn active" id="btnTabSecurityEvents" onclick="app.switchSecuritySubTab('EVENTS')">
+          <i class="fa-solid fa-list-check"></i> Security Events
+        </button>
+        <button type="button" class="tab-btn" id="btnTabAuditLogs" onclick="app.switchSecuritySubTab('AUDIT')">
+          <i class="fa-solid fa-file-shield"></i> Owner Audit Logs
+        </button>
+      </div>
+
+      <!-- VIEW 1: SECURITY EVENTS LIST & FILTERS -->
+      <div id="subviewSecurityEvents">
+        <div class="owner-tkt-toolbar" style="margin-bottom: 1.25rem; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; align-items: center;">
+          <div class="filter-chips" style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <select class="form-control" id="selSecRiskFilter" onchange="app.loadSecurityEvents()" style="width: auto; font-size: 0.82rem; padding: 6px 12px;">
+              <option value="ALL">All Risk Levels</option>
+              <option value="CRITICAL">🔴 Critical</option>
+              <option value="HIGH">🟠 High</option>
+              <option value="MEDIUM">🟡 Medium</option>
+              <option value="LOW">🟢 Low</option>
+            </select>
+            <select class="form-control" id="selSecStatusFilter" onchange="app.loadSecurityEvents()" style="width: auto; font-size: 0.82rem; padding: 6px 12px;">
+              <option value="ALL">All Statuses</option>
+              <option value="NEW">New Unresolved</option>
+              <option value="UNDER_REVIEW">Under Review</option>
+              <option value="RESOLVED">Resolved</option>
+              <option value="DISMISSED">Dismissed</option>
+            </select>
+            <select class="form-control" id="selSecEventTypeFilter" onchange="app.loadSecurityEvents()" style="width: auto; font-size: 0.82rem; padding: 6px 12px;">
+              <option value="ALL">All Event Types</option>
+              <option value="DUPLICATE_ORDER">Duplicate Order</option>
+              <option value="DUPLICATE_PAYMENT">Duplicate Payment</option>
+              <option value="REWARD_ABUSE">Reward Abuse</option>
+              <option value="REFERRAL_ABUSE">Referral Abuse</option>
+              <option value="PREMIUM_CARD_ABUSE">Premium Card</option>
+              <option value="AUTH_FAILURE">Auth Failure</option>
+              <option value="SUSPICIOUS_ACTIVITY">Suspicious Activity</option>
+            </select>
+          </div>
+
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" class="form-control search-input" id="txtSecEventSearch" placeholder="Search event #, customer, order, UTR..." oninput="app.loadSecurityEvents()">
+          </div>
+        </div>
+
+        <div id="securityEventsCardsContainer" style="display: flex; flex-direction: column; gap: 1rem;">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+
+        <!-- Security Events Pagination -->
+        <div id="securityEventsPagination" style="margin-top: 1.25rem; display: flex; justify-content: center; align-items: center; gap: 8px;">
+          <!-- Pagination buttons rendered by app.js -->
+        </div>
+      </div>
+
+      <!-- VIEW 2: OWNER AUDIT LOGS -->
+      <div id="subviewAuditLogs" class="hidden">
+        <div class="owner-tkt-toolbar" style="margin-bottom: 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div class="search-box" style="width: 100%; max-width: 400px;">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" class="form-control search-input" id="txtAuditLogSearch" placeholder="Search audit logs by action, actor, details..." oninput="app.loadAuditLogs()">
+          </div>
+        </div>
+
+        <div id="auditLogsTableContainer">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+
+        <div id="auditLogsPagination" style="margin-top: 1.25rem; display: flex; justify-content: center; align-items: center; gap: 8px;">
+          <!-- Pagination buttons -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 💸 Owner Refund Management Section -->
+    <section id="secOwnerRefunds" class="view-section hidden">
+      <!-- Section Header -->
+      <div style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.15), rgba(217, 83, 30, 0.1)); border: 1px solid var(--accent-gold); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+        <div>
+          <h2 style="font-size: 1.35rem; font-weight: 800; color: #FFF; margin: 0 0 0.35rem 0; display: flex; align-items: center; gap: 8px;">
+            <span>💸</span> Refund Management
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+            Track customer refunds, status transitions, timeline logs, and financial reconciliation.
+          </p>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards Grid (6 Cards) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Refunds Today</span>
+          <h3 id="statOwnerRefundsToday" style="margin: 4px 0 0 0; font-size: 1.6rem; color: #FFF; font-weight: 800;">0</h3>
+        </div>
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(255,152,0,0.1); border: 1px solid #FF9800; text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: #FF9800; text-transform: uppercase;">Pending Refunds</span>
+          <h3 id="statOwnerPendingRefunds" style="margin: 4px 0 0 0; font-size: 1.6rem; color: #FF9800; font-weight: 800;">0</h3>
+        </div>
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(64,196,255,0.1); border: 1px solid #40C4FF; text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: #40C4FF; text-transform: uppercase;">Processing</span>
+          <h3 id="statOwnerProcessingRefunds" style="margin: 4px 0 0 0; font-size: 1.6rem; color: #40C4FF; font-weight: 800;">0</h3>
+        </div>
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(76,175,80,0.1); border: 1px solid #4CAF50; text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: #4CAF50; text-transform: uppercase;">Completed</span>
+          <h3 id="statOwnerCompletedRefunds" style="margin: 4px 0 0 0; font-size: 1.6rem; color: #4CAF50; font-weight: 800;">0</h3>
+        </div>
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(244,67,54,0.1); border: 1px solid #F44336; text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: #F44336; text-transform: uppercase;">Failed</span>
+          <h3 id="statOwnerFailedRefunds" style="margin: 4px 0 0 0; font-size: 1.6rem; color: #F44336; font-weight: 800;">0</h3>
+        </div>
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(255,215,0,0.1); border: 1px solid var(--accent-gold); text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-gold); text-transform: uppercase;">Total Refunded</span>
+          <h3 id="statOwnerTotalRefunded" style="margin: 4px 0 0 0; font-size: 1.4rem; color: var(--accent-gold); font-weight: 800;">₹0</h3>
+        </div>
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div class="card" style="padding: 1.25rem; border-radius: var(--radius-lg); background: var(--card-bg, #1E1E2E); border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <select class="form-control" id="selOwnerRefundStatusFilter" onchange="app.loadOwnerRefundsList()" style="width: auto; font-size: 0.82rem;">
+              <option value="ALL">All Statuses</option>
+              <option value="REFUND_REQUESTED">Requested</option>
+              <option value="REFUND_UNDER_REVIEW">Under Review</option>
+              <option value="REFUND_APPROVED">Approved</option>
+              <option value="REFUND_INITIATED">Initiated</option>
+              <option value="REFUND_PROCESSING">Processing</option>
+              <option value="REFUND_COMPLETED">Completed</option>
+              <option value="REFUND_FAILED">Failed</option>
+              <option value="REFUND_REJECTED">Rejected</option>
+              <option value="REFUND_CANCELLED">Cancelled</option>
+            </select>
+
+            <select class="form-control" id="selOwnerRefundTypeFilter" onchange="app.loadOwnerRefundsList()" style="width: auto; font-size: 0.82rem;">
+              <option value="ALL">All Refund Types</option>
+              <option value="FULL">Full Refund</option>
+              <option value="PARTIAL">Partial Refund</option>
+            </select>
+          </div>
+
+          <div class="search-box" style="flex: 1; max-width: 380px;">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" class="form-control search-input" id="txtOwnerRefundSearch" placeholder="Search Order #, RFN- ref, Name, Mobile, UTR..." oninput="app.loadOwnerRefundsList()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Refund Records List Container -->
+      <div id="ownerRefundsListContainer" style="display: flex; flex-direction: column; gap: 1rem;">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+
+      <!-- Pagination Container -->
+      <div id="ownerRefundsPagination" style="margin-top: 1.25rem; display: flex; justify-content: center; align-items: center; gap: 8px;">
+        <!-- Rendered by app.js -->
+      </div>
+    </section>
+
+    <!-- 🥘 Owner Add-ons / Extra Items Management Section -->
+    <section id="secOwnerAddons" class="view-section hidden">
+      <!-- Header Banner -->
+      <div style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.15), rgba(217, 83, 30, 0.1)); border: 1px solid var(--accent-gold); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+        <div>
+          <h2 style="font-size: 1.35rem; font-weight: 800; color: #FFF; margin: 0 0 0.35rem 0; display: flex; align-items: center; gap: 8px;">
+            <span>🥘</span> Add-ons / Extra Items Management
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+            Manage extra food items (Chutney, Sambar, Extra Idly), update prices, toggle availability, and track sales revenue.
+          </p>
+        </div>
+        <button type="button" class="btn-primary-block" onclick="app.openCreateAddonModal()" style="width: auto; padding: 10px 20px; display: inline-flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-plus"></i> + Add New Add-on
+        </button>
+      </div>
+
+      <!-- KPI Performance Summary Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Total Add-on Items</span>
+          <h3 id="statTotalAddons" style="margin: 4px 0 0 0; font-size: 1.6rem; color: #FFF; font-weight: 800;">0</h3>
+        </div>
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(76,175,80,0.1); border: 1px solid #4CAF50; text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: #4CAF50; text-transform: uppercase;">Currently Available</span>
+          <h3 id="statAvailableAddons" style="margin: 4px 0 0 0; font-size: 1.6rem; color: #4CAF50; font-weight: 800;">0</h3>
+        </div>
+        <div class="card" style="padding: 1rem; border-radius: 12px; background: rgba(255,215,0,0.1); border: 1px solid var(--accent-gold); text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: var(--accent-gold); text-transform: uppercase;">Add-ons Sales Revenue</span>
+          <h3 id="statAddonSalesRevenue" style="margin: 4px 0 0 0; font-size: 1.5rem; color: var(--accent-gold); font-weight: 800;">₹0</h3>
+        </div>
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div class="card" style="padding: 1.25rem; border-radius: var(--radius-lg); background: var(--card-bg, #1E1E2E); border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <select class="form-control" id="selOwnerAddonStatusFilter" onchange="app.loadOwnerAddonsList()" style="width: auto; font-size: 0.82rem;">
+              <option value="ALL">All Statuses</option>
+              <option value="AVAILABLE">🟢 Available Only</option>
+              <option value="UNAVAILABLE">🔴 Unavailable Only</option>
+              <option value="DISABLED">⚫ Disabled Only</option>
+            </select>
+          </div>
+
+          <div class="search-box" style="flex: 1; max-width: 380px;">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" class="form-control search-input" id="txtOwnerAddonSearch" placeholder="Search add-on name or description..." oninput="app.loadOwnerAddonsList()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Add-ons Cards Grid Container -->
+      <div id="ownerAddonsListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem;">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- 🧠 Owner Business Copilot Section -->
+    <section id="secOwnerBusinessCopilot" class="view-section hidden">
+      <!-- Top Header Banner & Filter Toolbar -->
+      <div style="background: linear-gradient(135deg, rgba(33, 150, 243, 0.15), rgba(156, 39, 176, 0.12)); border: 1.5px solid rgba(33, 150, 243, 0.4); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+        <div>
+          <h2 style="font-size: 1.35rem; font-weight: 800; color: #FFF; margin: 0 0 0.35rem 0; display: flex; align-items: center; gap: 8px;">
+            <span>🧠</span> Owner Business Copilot
+            <span style="font-size: 0.72rem; font-weight: 700; background: linear-gradient(135deg, #2196F3, #9C27B0); color: #FFF; padding: 2px 10px; border-radius: 12px; text-transform: uppercase;">AI Analytics</span>
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+            Good day, Owner 👋 Here's your real-time business intelligence, best seller insights, and explainable recommendations.
+          </p>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <select id="selCopilotDateRange" class="form-control" onchange="app.changeCopilotDateRange(this.value)" style="width: auto; font-size: 0.85rem; font-weight: 700;">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7days">Last 7 Days</option>
+            <option value="30days">Last 30 Days</option>
+          </select>
+          <button type="button" class="btn-primary-block" onclick="app.loadBusinessCopilotDashboard()" style="width: auto; padding: 8px 16px; font-size: 0.85rem;">
+            <i class="fa-solid fa-rotate"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 1.25rem; text-align: right;">
+        <i class="fa-solid fa-clock"></i> Last updated: <span id="lblCopilotLastUpdated" style="color: #FFF; font-weight: 700;">Just now</span>
+      </div>
+
+      <!-- Container for Dynamic Copilot Content -->
+      <div id="copilotContentContainer">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- 🛒 Owner Smart Cart Offers Management Section -->
+    <section id="secOwnerSmartOffers" class="view-section hidden">
+      <!-- Header Banner & Analytics Cards -->
+      <div style="background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(46, 125, 50, 0.1)); border: 1.5px solid #4CAF50; border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <h2 style="font-size: 1.35rem; font-weight: 800; color: #FFF; margin: 0 0 0.35rem 0; display: flex; align-items: center; gap: 8px;">
+            <span>🛒</span> Smart Cart Offers & Combo Management
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+            Configure customer cart-level combo suggestions and track promotional performance.
+          </p>
+        </div>
+
+        <button type="button" class="btn-primary-block" onclick="app.openCreateSmartOfferModal()" style="width: auto; padding: 10px 20px; font-weight: 800; font-size: 0.9rem; background: linear-gradient(135deg, #4CAF50, #2E7D32); border: none; color: #FFF;">
+          <i class="fa-solid fa-plus"></i> Add New Combo Offer
+        </button>
+      </div>
+
+      <!-- Smart Cart Performance KPI Summary -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.1rem; text-align: center;">
+          <div style="font-size: 0.78rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Shown to Customers</div>
+          <div id="lblSmartImpCount" style="font-size: 1.8rem; font-weight: 900; color: #FFF; margin: 4px 0;">0</div>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">Cart Impressions</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.1rem; text-align: center;">
+          <div style="font-size: 0.78rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Accepted Offers</div>
+          <div id="lblSmartAcceptedCount" style="font-size: 1.8rem; font-weight: 900; color: #4CAF50; margin: 4px 0;">0</div>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">1-Tap Additions</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.1rem; text-align: center;">
+          <div style="font-size: 0.78rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Conversion Rate</div>
+          <div id="lblSmartConversionRate" style="font-size: 1.8rem; font-weight: 900; color: var(--accent-gold); margin: 4px 0;">0%</div>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">Acceptance Pct</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.1rem; text-align: center;">
+          <div style="font-size: 0.78rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Customer Savings</div>
+          <div id="lblSmartTotalSavings" style="font-size: 1.8rem; font-weight: 900; color: #40C4FF; margin: 4px 0;">₹0</div>
+          <div style="font-size: 0.74rem; color: var(--text-muted);">Total Combo Savings</div>
+        </div>
+      </div>
+
+      <!-- Smart Offers Grid Container -->
+      <div id="ownerSmartOffersContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem;">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </section>
+
+    <!-- Modal for Creating/Editing Smart Cart Offer -->
+    <div class="modal-backdrop" id="modalSmartOfferBackdrop" onclick="app.toggleSmartOfferModal(false)">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 480px;">
+        <div class="modal-header">
+          <h3 id="lblSmartOfferModalTitle"><i class="fa-solid fa-tags" style="color: #4CAF50;"></i> Create Smart Cart Offer</h3>
+          <button type="button" class="icon-btn" onclick="app.toggleSmartOfferModal(false)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form onsubmit="app.saveOwnerSmartOffer(event)">
+          <input type="hidden" id="txtSmartOfferId">
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Offer Name</label>
+            <input type="text" id="txtSmartOfferName" class="form-control" placeholder="e.g. Vada Combo Discount" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Eligible Food Item Name</label>
+            <input type="text" id="txtSmartOfferItem" class="form-control" placeholder="e.g. Vada or Idly" required>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Required Qty</label>
+              <input type="number" id="numSmartOfferMinQty" min="1" max="50" class="form-control" value="2" required>
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Discount Amount (₹)</label>
+              <input type="number" id="numSmartOfferDiscount" min="1" step="0.5" class="form-control" value="10.00" required>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Status</label>
+            <select id="selSmartOfferStatus" class="form-control">
+              <option value="Active">Active (Live in Cart)</option>
+              <option value="Inactive">Inactive (Disabled)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-primary-block" style="background: linear-gradient(135deg, #4CAF50, #2E7D32); color: #FFF;">
+            <i class="fa-solid fa-check"></i> Save Combo Offer
+          </button>
+        </form>
+      </div>
+    </div>
+
   </main>
 
   <!-- Site Footer -->
@@ -2776,6 +3248,7 @@
       <!-- Dynamic Cart Items -->
     </div>
     <div class="cart-footer">
+      <div id="smartCartOptimizerContainer"></div>
       <div class="cart-summary-row">
         <span>Subtotal</span>
         <span id="cartSubtotal">₹0</span>
@@ -2787,6 +3260,48 @@
       <button class="btn-primary-block" id="btnProceedOrder" onclick="app.openOrderCheckoutModal()">
         Proceed to Order <i class="fa-solid fa-arrow-right"></i>
       </button>
+    </div>
+  </div>
+
+  <!-- 🤖 AI Order Assistant Modal -->
+  <div class="modal-backdrop" id="modalAiAssistant" onclick="app.toggleAiAssistantModal(false)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 580px; width: 92%; max-height: 90vh; display: flex; flex-direction: column; padding: 0;">
+      <div class="modal-header" style="background: linear-gradient(135deg, rgba(33, 150, 243, 0.2), rgba(156, 39, 176, 0.15)); border-bottom: 1px solid rgba(33, 150, 243, 0.3); padding: 1rem 1.25rem;">
+        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 8px;">
+          <span>🤖</span> AI Order Assistant
+          <span style="font-size: 0.7rem; font-weight: 800; background: #2196F3; color: #FFF; padding: 2px 8px; border-radius: 10px;">SMART MENU</span>
+        </h3>
+        <button type="button" class="icon-btn" onclick="app.toggleAiAssistantModal(false)"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div style="padding: 1rem 1.25rem; flex: 1; overflow-y: auto;">
+        <div style="background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.3); border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 1rem; font-size: 0.84rem; color: #FFF;">
+          👋 Tell me what you'd like! For example: <em>"Breakfast for 3 people under ₹200"</em> or <em>"Meal for 2 with Idly & Vada"</em>.
+        </div>
+
+        <!-- Quick Prompt Pills -->
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1.15rem;">
+          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Breakfast for 3 people under ₹200')">🍽️ Breakfast for 3 (Under ₹200)</button>
+          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Meal for 2 under ₹100')">💰 Meal for 2 (Under ₹100)</button>
+          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Breakfast for 4 people with Idly and Vada')">👨‍👩‍👧 Meal for 4 (Idly & Vada)</button>
+          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Popular breakfast variety combo')">🔥 Popular Variety Combo</button>
+        </div>
+
+        <!-- Dynamic Results Container -->
+        <div id="aiAssistantResultsContainer">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </div>
+
+      <!-- Input Bar -->
+      <div style="padding: 1rem 1.25rem; background: var(--bg-surface-elevated); border-top: 1px solid var(--border-color);">
+        <form onsubmit="app.sendAiAssistantPrompt(event)" style="display: flex; gap: 8px;">
+          <input type="text" id="txtAiAssistantPrompt" class="form-control" placeholder="Describe your order (e.g. Breakfast for 3 under ₹200)..." required style="flex: 1; font-size: 0.88rem;">
+          <button type="submit" class="btn-primary-block" id="btnSendAiPrompt" style="width: auto; padding: 0 16px; background: linear-gradient(135deg, #2196F3, #1565C0); border: none; color: #FFF; font-weight: 800;">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Suggest
+          </button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -4599,6 +5114,226 @@
             <i class="fa-solid fa-trash-can"></i> DELETE ALL
           </button>
         </div>
+      </div>
+    <!-- 🗳️ Create Menu Vote Poll Modal (Owner) -->
+    <div class="modal-backdrop hidden" id="modalCreatePoll" onclick="if(event.target === this) app.closeCreatePollModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+      <div class="modal-card" style="max-width: 550px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
+            <span>🗳️</span> + Create Menu Vote
+          </h3>
+          <button type="button" class="icon-btn" onclick="app.closeCreatePollModal()" style="background: none; border: none; color: #AAA; font-size: 1.2rem; cursor: pointer;">✕</button>
+        </div>
+
+        <form id="createPollForm" onsubmit="app.submitCreatePoll(event)">
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">1. Poll Question</label>
+            <input type="text" class="form-control" id="txtPollQuestion" value="Choose Tomorrow's Special" required placeholder="e.g. Choose Tomorrow's Special">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+            <div class="form-group">
+              <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Voting Start Date & Time</label>
+              <input type="datetime-local" class="form-control" id="txtPollStartAt" required>
+            </div>
+            <div class="form-group">
+              <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Voting End Date & Time</label>
+              <input type="datetime-local" class="form-control" id="txtPollEndAt" required>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted);">2. Select Food Options (Min: 2, Max: 3)</label>
+              <button type="button" class="btn-sm-status" onclick="app.addPollOptionRow()" style="background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold); font-size: 0.75rem; padding: 3px 10px; border-radius: 12px; cursor: pointer;">
+                <i class="fa-solid fa-plus"></i> Add Option
+              </button>
+            </div>
+
+            <!-- Container for 2 to 3 food option select dropdowns -->
+            <div id="pollOptionRowsContainer" style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <!-- Populated by JS -->
+            </div>
+            <p id="lblPollOptionValidationMsg" style="font-size: 0.78rem; color: #FF5252; margin: 6px 0 0 0; display: none;"></p>
+          </div>
+
+          <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 1.5rem;">
+            <button type="button" class="btn-secondary-outline" onclick="app.closeCreatePollModal()" style="padding: 10px 18px;">Cancel</button>
+            <button type="submit" class="btn-primary-block" style="width: auto; padding: 10px 24px;">Create Menu Vote</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 🛡️ Security Event Details Modal (Owner) -->
+    <div class="modal-backdrop hidden" id="modalSecurityEventDetails" onclick="if(event.target === this) app.closeSecurityEventDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+      <div class="modal-card" style="max-width: 600px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-shield-halved" style="color: #40C4FF;"></i> Security Event Details
+          </h3>
+          <button type="button" class="icon-btn" onclick="app.closeSecurityEventDetailsModal()" style="background: none; border: none; color: #AAA; font-size: 1.2rem; cursor: pointer;">✕</button>
+        </div>
+
+        <div id="securityEventDetailsBody">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+
+        <div style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+          <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Owner Internal Notes</label>
+          <textarea class="form-control" id="txtSecEventInternalNote" rows="2" placeholder="Add investigation notes or action details..."></textarea>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-top: 1rem;">
+            <button type="button" class="btn-sm-status" onclick="app.updateSecurityEventStatus('UNDER_REVIEW')" style="background: rgba(255,152,0,0.2); color: #FF9800; border: 1px solid #FF9800; padding: 8px 16px;">
+              Mark Under Review
+            </button>
+            <button type="button" class="btn-sm-status" onclick="app.updateSecurityEventStatus('DISMISSED')" style="background: rgba(158,158,158,0.2); color: #B0BEC5; border: 1px solid #B0BEC5; padding: 8px 16px;">
+              Dismiss Event
+            </button>
+            <button type="button" class="btn-primary-block" onclick="app.updateSecurityEventStatus('RESOLVED')" style="width: auto; padding: 8px 20px; background: #4CAF50;">
+              ✓ Resolve Security Event
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 💸 Customer Refund Details Modal -->
+    <div class="modal-backdrop hidden" id="modalCustomerRefundDetails" onclick="if(event.target === this) app.closeCustomerRefundDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+      <div class="modal-card" style="max-width: 580px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
+            <span>💸</span> Refund Details
+          </h3>
+          <button type="button" class="icon-btn" onclick="app.closeCustomerRefundDetailsModal()" style="background: none; border: none; color: #AAA; font-size: 1.2rem; cursor: pointer;">✕</button>
+        </div>
+
+        <div id="customerRefundDetailsBody">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 1.25rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+          <button type="button" class="btn-secondary-outline" onclick="app.closeCustomerRefundDetailsModal()" style="padding: 8px 18px;">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🧾 Refund Receipt Printable Modal -->
+    <div class="modal-backdrop hidden" id="modalRefundReceipt" onclick="if(event.target === this) app.closeRefundReceiptModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+      <div class="modal-card" style="max-width: 480px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: #FFF; color: #111; border-radius: 16px; box-shadow: 0 12px 36px rgba(0,0,0,0.4);" onclick="event.stopPropagation()">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px dashed #DDD; padding-bottom: 1rem; margin-bottom: 1rem;">
+          <div>
+            <h3 style="margin: 0 0 2px 0; color: #D9531E; font-size: 1.2rem; font-weight: 800;">ANNAPURNA TIFFIN CENTER</h3>
+            <span style="font-size: 0.78rem; color: #666; font-weight: 700; text-transform: uppercase;">Official Refund Receipt</span>
+          </div>
+          <button type="button" class="icon-btn" onclick="app.closeRefundReceiptModal()" style="background: none; border: none; color: #666; font-size: 1.2rem; cursor: pointer;">✕</button>
+        </div>
+
+        <div id="refundReceiptModalBody">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1.5rem; border-top: 1px solid #EEE; padding-top: 1rem;">
+          <button type="button" onclick="window.print()" style="padding: 8px 16px; background: #111; color: #FFF; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">
+            <i class="fa-solid fa-print"></i> Print Receipt
+          </button>
+          <button type="button" onclick="app.closeRefundReceiptModal()" style="padding: 8px 16px; background: #EEE; color: #333; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 👨‍💼 Owner Refund Details & Action Modal -->
+    <div class="modal-backdrop hidden" id="modalOwnerRefundDetails" onclick="if(event.target === this) app.closeOwnerRefundDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+      <div class="modal-card" style="max-width: 620px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
+            <span>💸</span> Manage Customer Refund
+          </h3>
+          <button type="button" class="icon-btn" onclick="app.closeOwnerRefundDetailsModal()" style="background: none; border: none; color: #AAA; font-size: 1.2rem; cursor: pointer;">✕</button>
+        </div>
+
+        <div id="ownerRefundDetailsBody">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+
+        <div style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+          <label style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Update Status & Log Note</label>
+          <div style="display: flex; gap: 10px; margin-bottom: 1rem; flex-wrap: wrap;">
+            <select class="form-control" id="selOwnerActionRefundStatus" style="flex: 1; min-width: 200px;">
+              <option value="REFUND_UNDER_REVIEW">🔵 Under Review</option>
+              <option value="REFUND_APPROVED">🟠 Approved</option>
+              <option value="REFUND_INITIATED">🔵 Initiated to Provider</option>
+              <option value="REFUND_PROCESSING">🟣 Processing</option>
+              <option value="REFUND_COMPLETED">🟢 Mark Completed</option>
+              <option value="REFUND_FAILED">🔴 Mark Failed</option>
+              <option value="REFUND_REJECTED">⚫ Reject Refund Request</option>
+            </select>
+          </div>
+          <textarea class="form-control" id="txtOwnerRefundStatusNote" rows="2" placeholder="Add status transition details or notes for customer..."></textarea>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-top: 1rem;">
+            <button type="button" id="btnOwnerRetryRefund" class="btn-sm-status hidden" onclick="app.retryFailedRefund()" style="background: rgba(255,152,0,0.2); color: #FF9800; border: 1px solid #FF9800; padding: 8px 16px;">
+              🔄 Retry Refund
+            </button>
+            <button type="button" class="btn-primary-block" onclick="app.submitOwnerRefundStatusUpdate()" style="width: auto; padding: 8px 20px;">
+              ✓ Update Status
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🥘 Owner Create / Edit Add-on Modal -->
+    <div class="modal-backdrop hidden" id="modalCreateEditAddon" onclick="if(event.target === this) app.closeCreateEditAddonModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+      <div class="modal-card" style="max-width: 520px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+          <h3 id="lblAddonModalTitle" style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
+            <span>🥘</span> Add New Add-on
+          </h3>
+          <button type="button" class="icon-btn" onclick="app.closeCreateEditAddonModal()" style="background: none; border: none; color: #AAA; font-size: 1.2rem; cursor: pointer;">✕</button>
+        </div>
+
+        <form id="frmCreateEditAddon" onsubmit="app.submitAddonForm(event)">
+          <input type="hidden" id="txtAddonId" value="">
+
+          <div class="form-group" style="margin-bottom: 1.15rem;">
+            <label style="font-size: 0.84rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Add-on Name *</label>
+            <input type="text" class="form-control" id="txtAddonName" required placeholder="e.g. Extra Chutney, Extra Sambar, Extra Idly">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.15rem;">
+            <div class="form-group">
+              <label style="font-size: 0.84rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Price (₹) *</label>
+              <input type="number" step="1" min="1" class="form-control" id="txtAddonPrice" required placeholder="e.g. 5">
+            </div>
+
+            <div class="form-group">
+              <label style="font-size: 0.84rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Availability *</label>
+              <select class="form-control" id="selAddonAvailability">
+                <option value="true">🟢 Available</option>
+                <option value="false">🔴 Currently Unavailable</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 1.15rem;">
+            <label style="font-size: 0.84rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">Description (Optional)</label>
+            <textarea class="form-control" id="txtAddonDescription" rows="2" placeholder="e.g. Fresh Coconut & Peanut Chutney"></textarea>
+          </div>
+
+          <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <button type="button" class="btn-secondary-outline" onclick="app.closeCreateEditAddonModal()" style="padding: 8px 18px;">
+              Cancel
+            </button>
+            <button type="submit" class="btn-primary-block" style="width: auto; padding: 8px 22px;">
+              ✓ Save Add-on
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 

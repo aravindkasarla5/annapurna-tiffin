@@ -7808,3 +7808,441 @@ body.guest-mode #btnMobileMenuToggle {
 .btn-action-delete:active {
   transform: translateY(1px) scale(0.96) !important;
 }
+
+/* =========================================================================
+   CUSTOMER MENU VOTING & SECURITY CENTER STYLES
+   ========================================================================= */
+
+.poll-option-card {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.poll-option-card:hover {
+  border-color: var(--accent-gold) !important;
+  transform: translateY(-2px);
+}
+.poll-option-card.voted-mode:hover {
+  transform: none;
+}
+
+.sec-card-critical {
+  border-left: 4px solid #F44336 !important;
+}
+.sec-card-high {
+  border-left: 4px solid #FF9800 !important;
+}
+.sec-card-medium {
+  border-left: 4px solid #FFC107 !important;
+}
+.sec-card-low {
+  border-left: 4px solid #4CAF50 !important;
+}
+
+/* =========================================================================
+   REFUND TRACKING SYSTEM STYLES
+   ========================================================================= */
+
+.refund-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  position: relative;
+  margin: 1rem 0;
+  padding-left: 0.5rem;
+}
+
+.refund-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  position: relative;
+}
+
+.refund-step-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 800;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+.refund-step.completed .refund-step-icon {
+  background: #4CAF50;
+  color: #FFF;
+}
+
+.refund-step.active .refund-step-icon {
+  background: #AB47BC;
+  color: #FFF;
+  box-shadow: 0 0 12px rgba(171, 71, 188, 0.6);
+}
+
+.refund-step.pending .refund-step-icon {
+  background: rgba(255, 255, 255, 0.1);
+  color: #AAA;
+  border: 1px solid var(--border-color);
+}
+
+.refund-step.failed .refund-step-icon {
+  background: #F44336;
+  color: #FFF;
+}
+
+.refund-step-line {
+  position: absolute;
+  top: 28px;
+  left: 13px;
+  width: 2px;
+  height: calc(100% + 0.25rem);
+  background: rgba(255, 255, 255, 0.15);
+  z-index: 1;
+}
+
+.refund-step:last-child .refund-step-line {
+  display: none;
+}
+
+.refund-step-content {
+  flex: 1;
+}
+
+.refund-step-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #FFF;
+  margin: 0 0 2px 0;
+}
+
+.refund-step.pending .refund-step-title {
+  color: #888;
+}
+
+.refund-step-time {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+/* =========================================================================
+   ADD-ONS / EXTRA ITEMS STYLES
+   ========================================================================= */
+
+.addon-card {
+  background: var(--card-bg, #1E1E2E);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.15rem;
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.addon-card:hover {
+  border-color: var(--accent-gold);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.addon-qty-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 3px 8px;
+}
+
+.addon-qty-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #FFF;
+  font-weight: 800;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.addon-qty-btn:hover {
+  background: var(--primary);
+}
+
+.addon-qty-val {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--accent-gold);
+  min-width: 18px;
+  text-align: center;
+}
+
+/* =========================================================================
+   LIVE PREPARATION TIME STYLES
+   ========================================================================= */
+
+.prep-countdown-card {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.12), rgba(234, 162, 33, 0.05));
+  border: 1.5px solid var(--accent-gold);
+  border-radius: 16px;
+  padding: 1.15rem;
+  text-align: center;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.prep-timer-badge {
+  font-size: 2.1rem;
+  font-weight: 900;
+  color: var(--accent-gold);
+  font-family: var(--font-number);
+  letter-spacing: 0.5px;
+  margin: 4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.prep-preset-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.prep-preset-btn:hover {
+  background: var(--accent-gold);
+  color: #000;
+  border-color: var(--accent-gold);
+}
+
+/* =========================================================================
+   OWNER BUSINESS COPILOT STYLES
+   ========================================================================= */
+
+.copilot-kpi-card {
+  background: var(--card-bg, #1E1E2E);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 1.15rem;
+  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.copilot-kpi-card:hover {
+  border-color: #2196F3;
+  box-shadow: 0 6px 20px rgba(33, 150, 243, 0.2);
+}
+
+.copilot-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.copilot-trend-up {
+  background: rgba(76, 175, 80, 0.18);
+  color: #4CAF50;
+  border: 1px solid #4CAF50;
+}
+
+.copilot-trend-down {
+  background: rgba(244, 67, 54, 0.18);
+  color: #F44336;
+  border: 1px solid #F44336;
+}
+
+.copilot-trend-neutral {
+  background: rgba(158, 158, 158, 0.18);
+  color: #9E9E9E;
+  border: 1px solid #9E9E9E;
+}
+
+.confidence-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.confidence-high {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+  border: 1px solid #4CAF50;
+}
+
+.confidence-medium {
+  background: rgba(255, 152, 0, 0.2);
+  color: #FF9800;
+  border: 1px solid #FF9800;
+}
+
+.confidence-low {
+  background: rgba(158, 158, 158, 0.2);
+  color: #9E9E9E;
+  border: 1px solid #9E9E9E;
+}
+
+.bar-chart-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 140px;
+  padding-top: 1rem;
+  overflow-x: auto;
+}
+
+.bar-chart-col {
+  flex: 1;
+  min-width: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bar-chart-bar {
+  width: 100%;
+  max-width: 28px;
+  background: linear-gradient(180deg, #2196F3, #1565C0);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease;
+}
+
+.bar-chart-bar.peak {
+  background: linear-gradient(180deg, var(--accent-gold), #FF9800);
+}
+
+/* =========================================================================
+   SMART CART OPTIMIZER STYLES
+   ========================================================================= */
+
+.smart-cart-card {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(46, 125, 50, 0.08));
+  border: 1.5px solid #4CAF50;
+  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.85rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.smart-btn-one-tap {
+  background: linear-gradient(135deg, #4CAF50, #2E7D32);
+  color: #FFF;
+  font-weight: 800;
+  font-size: 0.82rem;
+  padding: 6px 14px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
+}
+
+.smart-btn-one-tap:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.6);
+}
+
+.smart-success-banner {
+  background: linear-gradient(135deg, rgba(234, 162, 33, 0.2), rgba(255, 179, 0, 0.1));
+  border: 1.5px solid var(--accent-gold);
+  border-radius: 14px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+  color: #FFF;
+  font-size: 0.84rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* =========================================================================
+   AI ORDER ASSISTANT STYLES
+   ========================================================================= */
+
+.ai-assistant-btn {
+  background: linear-gradient(135deg, #2196F3, #1565C0);
+  color: #FFF;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.35);
+}
+
+.ai-assistant-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(33, 150, 243, 0.5);
+}
+
+.ai-quick-pill {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ai-quick-pill:hover {
+  background: rgba(33, 150, 243, 0.2);
+  color: #FFF;
+  border-color: #2196F3;
+}
+
+.ai-option-card {
+  background: var(--bg-surface-elevated, #1E1E2E);
+  border: 1.5px solid var(--border-color);
+  border-radius: 14px;
+  padding: 1.15rem;
+  margin-bottom: 1rem;
+  transition: all 0.25s ease;
+}
+
+.ai-option-card:hover {
+  border-color: #2196F3;
+  box-shadow: 0 6px 20px rgba(33, 150, 243, 0.2);
+}
+
+
+
+
+
+
+

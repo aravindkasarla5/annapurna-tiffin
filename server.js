@@ -516,7 +516,14 @@ async function checkDuplicateUtr(utrNumber, currentOrderId = null) {
     }
     const oRes = await db.query(orderQuery, params);
     if (oRes.rows && oRes.rows.length > 0) {
-      return oRes.rows[0].order_number;
+      const existingOrderNum = oRes.rows[0].order_number;
+      logSecurityEvent({
+        event_type: 'DUPLICATE_PAYMENT',
+        risk_level: 'HIGH',
+        order_id: currentOrderId,
+        details: `Duplicate UTR reference "${cleanUtr}" submitted for order ${currentOrderId || 'N/A'} (Already used in Order ${existingOrderNum})`
+      });
+      return existingOrderNum;
     }
 
     // Search payments table
@@ -528,7 +535,14 @@ async function checkDuplicateUtr(utrNumber, currentOrderId = null) {
     }
     const pRes = await db.query(payQuery, payParams);
     if (pRes.rows && pRes.rows.length > 0) {
-      return pRes.rows[0].order_number;
+      const existingOrderNum = pRes.rows[0].order_number;
+      logSecurityEvent({
+        event_type: 'DUPLICATE_PAYMENT',
+        risk_level: 'HIGH',
+        order_id: currentOrderId,
+        details: `Duplicate UTR reference "${cleanUtr}" submitted for order ${currentOrderId || 'N/A'} (Already used in Payment for Order ${existingOrderNum})`
+      });
+      return existingOrderNum;
     }
   } catch (err) {
     console.error('Error checking duplicate UTR:', err.message);
@@ -2310,7 +2324,7 @@ app.get('/api/customer/queue-progress', authenticateToken, requireRole('CUSTOMER
     
     // Fetch all active orders in kitchen queue
     const activeRes = await db.query(
-      "SELECT id, order_number, customer_id, order_status, created_at, pickup_pin FROM orders WHERE order_status IN ('Received', 'Preparing', 'Ready') ORDER BY created_at ASC, id ASC;"
+      "SELECT id, order_number, customer_id, order_status, created_at, pickup_pin, preparation_minutes, estimated_ready_at FROM orders WHERE order_status IN ('Received', 'Preparing', 'Ready') ORDER BY created_at ASC, id ASC;"
     );
     const activeOrders = activeRes.rows || [];
 
@@ -2364,6 +2378,8 @@ app.get('/api/customer/queue-progress', authenticateToken, requireRole('CUSTOMER
         order_number: custOrder.order_number,
         order_status: custOrder.order_status,
         pickup_pin: custOrder.pickup_pin || '',
+        preparation_minutes: custOrder.preparation_minutes || 15,
+        estimated_ready_at: custOrder.estimated_ready_at || new Date(new Date(custOrder.created_at || Date.now()).getTime() + (custOrder.preparation_minutes || 15) * 60000).toISOString(),
         currently_serving_token: currentlyServingToken,
         currently_serving_order_number: preparingOrder ? preparingOrder.order_number : custOrder.order_number,
         currently_serving_status: preparingOrder ? preparingOrder.order_status : custOrder.order_status,
@@ -2918,6 +2934,46 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       };
     });
 
+    // Process optional Add-ons with Server-Side Price Protection
+    const reqAddons = req.body.add_ons || [];
+    let formattedAddons = [];
+    let addonsTotal = 0;
+
+    if (Array.isArray(reqAddons) && reqAddons.length > 0) {
+      for (const addonReq of reqAddons) {
+        const addonId = addonReq.add_on_id || addonReq.id;
+        const qty = Math.min(10, Math.max(1, parseInt(addonReq.quantity || '1', 10)));
+        if (!addonId) continue;
+
+        const dbAddonRes = await db.query(
+          `SELECT * FROM add_ons WHERE id = $1 AND enabled = true;`,
+          [addonId]
+        );
+        if (!dbAddonRes.rows || dbAddonRes.rows.length === 0) {
+          return res.status(400).json({ success: false, message: `Selected extra add-on is disabled or unavailable.` });
+        }
+        const dbAddon = dbAddonRes.rows[0];
+
+        if (!dbAddon.available) {
+          return res.status(400).json({ success: false, message: `Add-on "${dbAddon.name}" is currently out of stock / unavailable.` });
+        }
+
+        const unitPrice = Number(dbAddon.price || 0);
+        const subtotal = unitPrice * qty;
+        addonsTotal += subtotal;
+
+        formattedAddons.push({
+          add_on_id: dbAddon.id,
+          add_on_name: dbAddon.name,
+          quantity: qty,
+          unit_price: unitPrice,
+          subtotal: subtotal
+        });
+      }
+    }
+
+    grand_total += addonsTotal;
+
     const newOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
     let createdOrder = null;
 
@@ -3030,30 +3086,47 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
         }
       }
 
-      if (foodMemberDiscount > 0) {
+      // Apply Premium Discount to Net Amount if applicable
+      if (foodMemberDiscount > 0 && netAmount > 5.00) {
         netAmount = Math.max(0, netAmount - foodMemberDiscount);
       }
 
-      // Create Order Record
+      // Create Order Record with Add-ons & Live Preparation Time
       const nowIso = new Date().toISOString();
       const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
+      const initialPrepMins = Math.min(180, Math.max(1, parseInt(req.body.preparation_minutes || '15', 10)));
+      const estimatedReadyAt = new Date(Date.now() + initialPrepMins * 60000).toISOString();
+
       await tx.query(
         `INSERT INTO orders (
           id, order_number, customer_id, customer_name, customer_mobile, 
           order_type, delivery_address, notes, total_amount, used_wallet_amount, 
-          net_amount, payment_method, payment_status, order_status, items,
+          net_amount, payment_method, payment_status, order_status, items, add_ons,
           utr_number, payment_screenshot, screenshot_url, pickup_pin, pickup_pin_verified,
-          food_member_discount, is_express_delivery, is_premium_member, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24);`,
+          food_member_discount, is_express_delivery, is_premium_member, preparation_minutes, estimated_ready_at, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27);`,
         [
           newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
           order_type || 'Takeaway', delivery_address || null, notes || null,
           grand_total, walletDeducted, netAmount, finalPayMethod,
-          finalPayStatus, 'Received', JSON.stringify(formattedItems),
+          finalPayStatus, 'Received', JSON.stringify(formattedItems), JSON.stringify(formattedAddons),
           cleanUtr, savedScreenshotUrl, savedScreenshotUrl, pickupPin, false,
-          foodMemberDiscount, isExpressDelivery ? 1 : 0, isPremiumMember ? 1 : 0, nowIso
+          foodMemberDiscount, isExpressDelivery ? 1 : 0, isPremiumMember ? 1 : 0,
+          initialPrepMins, estimatedReadyAt, nowIso
         ]
       );
+
+      // Insert into order_add_ons table for structured querying
+      for (const ao of formattedAddons) {
+        await tx.query(
+          `INSERT INTO order_add_ons (id, order_id, add_on_id, add_on_name, quantity, unit_price, subtotal, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
+          [
+            'oao_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            newOrderId, ao.add_on_id, ao.add_on_name, ao.quantity, ao.unit_price, ao.subtotal, nowIso
+          ]
+        );
+      }
 
       // Create Payment Record
       const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
@@ -3416,6 +3489,26 @@ app.post('/api/orders/:id/cancel', authenticateToken, requireRole('CUSTOMER'), a
         `UPDATE payments SET payment_status = 'Cancelled' WHERE order_number = $1;`,
         [order.order_number]
       );
+
+      // Automatic Refund Request creation for paid orders
+      try {
+        const netPaid = Number(order.net_amount || order.total_amount || 0);
+        const payStatus = (order.payment_status || '').toLowerCase();
+        const payMethod = (order.payment_method || '').toLowerCase();
+
+        if (netPaid > 0 && (payStatus.includes('paid') || payStatus.includes('verified') || payMethod.includes('upi') || payMethod.includes('card') || payMethod.includes('online'))) {
+          await createRefundRecord({
+            order_id: order.id,
+            customer_id: req.user.id,
+            refund_amount: netPaid,
+            reason: `Order #${order.order_number} cancelled: ${cancellationReason}`,
+            actor_type: 'CUSTOMER',
+            actor_id: req.user.id
+          });
+        }
+      } catch (refErr) {
+        console.warn('Auto refund creation notice:', refErr.message);
+      }
 
       // Send Customer & Owner Notifications
       await createAndDispatchNotification({
@@ -6516,6 +6609,2333 @@ app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Delete Notification Error:', err);
     res.status(500).json({ success: false, message: "Failed to delete notification." });
+  }
+});
+
+// =========================================================================
+// CENTRAL SECURITY EVENT & AUDIT LOGGING ENGINE
+// =========================================================================
+
+async function logSecurityEvent({
+  event_type = 'SUSPICIOUS_ACTIVITY',
+  risk_level = 'LOW',
+  customer_id = null,
+  order_id = null,
+  payment_id = null,
+  details = '',
+  internal_note = ''
+}) {
+  try {
+    const id = 'sec_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const nowIso = new Date().toISOString();
+    await db.query(
+      `INSERT INTO security_events (id, event_type, risk_level, customer_id, order_id, payment_id, details, status, internal_note, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'NEW', $8, $9, $9);`,
+      [id, event_type, risk_level, customer_id, order_id, payment_id, details, internal_note, nowIso]
+    );
+
+    const eventObj = { id, event_type, risk_level, customer_id, order_id, payment_id, details, status: 'NEW', internal_note, created_at: nowIso, updated_at: nowIso };
+
+    // Broadcast Security Alert live to connected Owner WebSocket clients
+    activeWsClients.forEach((client, ws) => {
+      if (ws.readyState === 1 && client.role === 'OWNER') {
+        try { ws.send(JSON.stringify({ type: 'SECURITY_ALERT', data: eventObj })); } catch (e) {}
+      }
+    });
+
+    // Send real-time Push Alert to Owner for HIGH or CRITICAL risk events
+    if (risk_level === 'HIGH' || risk_level === 'CRITICAL') {
+      await createAndDispatchNotification({
+        target_role: 'OWNER',
+        title: `🚨 Security Alert (${risk_level})`,
+        message: `${event_type.replace(/_/g, ' ')}: ${details || 'Unusual security event logged.'}`,
+        type: 'SYSTEM',
+        priority: risk_level === 'CRITICAL' ? 'CRITICAL' : 'HIGH'
+      });
+    }
+
+    return eventObj;
+  } catch (err) {
+    console.error('[Security Engine Log Notice]:', err.message);
+    return null;
+  }
+}
+
+async function logOwnerAuditAction({
+  actor_id = null,
+  actor_name = 'Owner',
+  action,
+  resource_type = null,
+  resource_id = null,
+  details = '',
+  ip_address = null
+}) {
+  try {
+    if (!action) return;
+    const id = 'aud_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const nowIso = new Date().toISOString();
+    await db.query(
+      `INSERT INTO owner_audit_logs (id, actor_id, actor_name, action, resource_type, resource_id, details, ip_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      [id, actor_id, actor_name, action, resource_type, resource_id, details, ip_address, nowIso]
+    );
+  } catch (err) {
+    console.error('[Audit Log Notice]:', err.message);
+  }
+}
+
+// Helper: Format Menu Poll & Calculate Real-Time Stats & Winners
+async function updateAndFormatPoll(poll) {
+  if (!poll) return null;
+  const now = new Date();
+  const startAt = new Date(poll.start_at);
+  const endAt = new Date(poll.end_at);
+
+  let currentStatus = poll.status;
+  if (currentStatus !== 'CANCELLED' && currentStatus !== 'COMPLETED') {
+    if (now < startAt) {
+      currentStatus = 'SCHEDULED';
+    } else if (now >= startAt && now <= endAt && currentStatus !== 'CLOSED') {
+      currentStatus = 'ACTIVE';
+    } else if (now > endAt && currentStatus === 'ACTIVE') {
+      currentStatus = 'CLOSED';
+    }
+  }
+
+  if (currentStatus !== poll.status) {
+    await db.query('UPDATE menu_polls SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2;', [currentStatus, poll.id]);
+    poll.status = currentStatus;
+  }
+
+  const optRes = await db.query(
+    `SELECT o.id as option_id, o.poll_id, o.food_id, t.name as food_name, t.description as food_description, t.price as food_price, t.image as food_image, t.is_available
+     FROM menu_poll_options o
+     LEFT JOIN tiffins t ON o.food_id = t.id
+     WHERE o.poll_id = $1;`,
+    [poll.id]
+  );
+  const options = optRes.rows || [];
+
+  const voteRes = await db.query(
+    `SELECT option_id, COUNT(*) as vote_count FROM menu_poll_votes WHERE poll_id = $1 GROUP BY option_id;`,
+    [poll.id]
+  );
+  const voteMap = {};
+  let totalVotes = 0;
+  (voteRes.rows || []).forEach(r => {
+    const count = Number(r.vote_count || r.c || 0);
+    voteMap[r.option_id] = count;
+    totalVotes += count;
+  });
+
+  let maxVotes = -1;
+  let leadingOptions = [];
+
+  const formattedOptions = options.map(opt => {
+    const count = voteMap[opt.option_id] || 0;
+    const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+
+    if (count > maxVotes) {
+      maxVotes = count;
+      leadingOptions = [{ option_id: opt.option_id, food_id: opt.food_id, food_name: opt.food_name, votes: count, percentage: pct }];
+    } else if (count === maxVotes && count > 0) {
+      leadingOptions.push({ option_id: opt.option_id, food_id: opt.food_id, food_name: opt.food_name, votes: count, percentage: pct });
+    }
+
+    return {
+      id: opt.option_id,
+      food_id: opt.food_id,
+      food_name: opt.food_name || 'Menu Dish',
+      description: opt.food_description || '',
+      price: Number(opt.food_price || 0),
+      image: opt.food_image || '',
+      is_available: opt.is_available !== false,
+      votes: count,
+      percentage: pct
+    };
+  });
+
+  let isTie = false;
+  let winner = null;
+
+  if (poll.winner_food_id) {
+    const winOpt = formattedOptions.find(o => o.food_id === poll.winner_food_id);
+    if (winOpt) {
+      winner = {
+        food_id: winOpt.food_id,
+        food_name: winOpt.food_name,
+        votes: winOpt.votes,
+        percentage: winOpt.percentage,
+        selection_type: poll.winner_selection_type || 'AUTOMATIC'
+      };
+    }
+  } else if (totalVotes > 0 && leadingOptions.length > 0) {
+    if (leadingOptions.length === 1) {
+      winner = leadingOptions[0];
+      if (currentStatus === 'CLOSED' || currentStatus === 'COMPLETED') {
+        await db.query(
+          `UPDATE menu_polls SET winner_food_id = $1, status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND (winner_food_id IS NULL OR status = 'CLOSED');`,
+          [winner.food_id, poll.id]
+        );
+        poll.status = 'COMPLETED';
+        poll.winner_food_id = winner.food_id;
+      }
+    } else if (leadingOptions.length > 1) {
+      isTie = true;
+    }
+  }
+
+  return {
+    id: poll.id,
+    question: poll.question || "Choose Tomorrow's Special",
+    start_at: poll.start_at,
+    end_at: poll.end_at,
+    status: poll.status,
+    winner_food_id: poll.winner_food_id || (winner ? winner.food_id : null),
+    winner_selection_type: poll.winner_selection_type || 'AUTOMATIC',
+    tomorrow_special_published: Boolean(poll.tomorrow_special_published),
+    created_at: poll.created_at,
+    total_votes: totalVotes,
+    options: formattedOptions,
+    is_tie: isTie,
+    leading_options: leadingOptions,
+    winner: winner
+  };
+}
+
+// =========================================================================
+// CUSTOMER MENU VOTING API ENDPOINTS
+// =========================================================================
+
+// 1. Create Menu Voting Poll (Owner Only)
+app.post('/api/menu-voting/polls', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { question, start_at, end_at, food_ids } = req.body;
+    const pollQuestion = (question || "Choose Tomorrow's Special").trim();
+
+    if (!Array.isArray(food_ids) || food_ids.length < 2) {
+      return res.status(400).json({ success: false, message: "A minimum of 2 food options is required." });
+    }
+
+    if (food_ids.length > 3) {
+      return res.status(400).json({ success: false, message: "Maximum 3 food options are allowed." });
+    }
+
+    const startDate = new Date(start_at);
+    const endDate = new Date(end_at);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid start or end voting date/time." });
+    }
+
+    if (endDate <= startDate) {
+      return res.status(400).json({ success: false, message: "Voting end time must be after start time." });
+    }
+
+    // Verify all selected food items exist in tiffins table
+    const foodCheckRes = await db.query('SELECT id FROM tiffins WHERE id = ANY($1::varchar[]);', [food_ids]);
+    if (!foodCheckRes.rows || foodCheckRes.rows.length !== food_ids.length) {
+      // Fallback check for SQLite parameter query
+      const sqRes = await db.query(`SELECT id FROM tiffins WHERE id IN (${food_ids.map((_, i) => `$${i + 1}`).join(',')});`, food_ids);
+      if ((sqRes.rows || []).length < 2) {
+        return res.status(400).json({ success: false, message: "One or more selected menu dishes are invalid." });
+      }
+    }
+
+    const pollId = 'poll_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const nowIso = new Date().toISOString();
+
+    let initialStatus = 'SCHEDULED';
+    const now = new Date();
+    if (now >= startDate && now <= endDate) initialStatus = 'ACTIVE';
+
+    await db.query(
+      `INSERT INTO menu_polls (id, question, start_at, end_at, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $6);`,
+      [pollId, pollQuestion, startDate.toISOString(), endDate.toISOString(), initialStatus, nowIso]
+    );
+
+    for (let fId of food_ids) {
+      const optId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+      await db.query(
+        `INSERT INTO menu_poll_options (id, poll_id, food_id, created_at)
+         VALUES ($1, $2, $3, $4);`,
+        [optId, pollId, fId, nowIso]
+      );
+    }
+
+    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [pollId]);
+    const formattedPoll = await updateAndFormatPoll(pollRes.rows[0]);
+
+    // Dispatch WebSocket Notification for new poll
+    activeWsClients.forEach((client, ws) => {
+      if (ws.readyState === 1) {
+        try { ws.send(JSON.stringify({ type: 'POLL_CREATED', data: formattedPoll })); } catch (e) {}
+      }
+    });
+
+    // Notify Customers if poll is currently Active
+    if (initialStatus === 'ACTIVE') {
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        title: '🗳️ New Menu Vote!',
+        message: 'Choose tomorrow’s special. Cast your vote now!',
+        type: 'MENU',
+        action_url: '/#secCustomerHome'
+      });
+    }
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name,
+      action: 'CREATE_MENU_POLL',
+      resource_type: 'MENU_POLL',
+      resource_id: pollId,
+      details: `Created menu poll: "${pollQuestion}" with ${food_ids.length} options`
+    });
+
+    res.json({ success: true, poll: formattedPoll, message: "Menu voting poll created successfully." });
+  } catch (err) {
+    console.error('Create Poll Error:', err);
+    res.status(500).json({ success: false, message: "Failed to create menu voting poll." });
+  }
+});
+
+// 2. List Polls (Owner Only)
+app.get('/api/menu-voting/polls', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { status, search } = req.query;
+    let sql = 'SELECT * FROM menu_polls';
+    let params = [];
+    let conditions = [];
+
+    if (status && status !== 'ALL') {
+      conditions.push(`status = $${params.length + 1}`);
+      params.push(status.toUpperCase());
+    }
+
+    if (search && search.trim()) {
+      conditions.push(`LOWER(question) LIKE $${params.length + 1}`);
+      params.push(`%${search.trim().toLowerCase()}%`);
+    }
+
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    sql += ' ORDER BY created_at DESC;';
+
+    const pollRes = await db.query(sql, params);
+    const formattedPolls = [];
+    for (let p of (pollRes.rows || [])) {
+      const f = await updateAndFormatPoll(p);
+      if (f) formattedPolls.push(f);
+    }
+
+    res.json({ success: true, data: formattedPolls });
+  } catch (err) {
+    console.error('List Polls Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch menu voting polls." });
+  }
+});
+
+// 3. Get Active Poll for Customer
+app.get('/api/menu-voting/active', optionalAuth, async (req, res) => {
+  try {
+    const pollRes = await db.query("SELECT * FROM menu_polls WHERE status IN ('ACTIVE', 'SCHEDULED') ORDER BY created_at DESC LIMIT 1;");
+    if (!pollRes.rows || pollRes.rows.length === 0) {
+      // Fallback: check most recent active poll
+      const lastPollRes = await db.query("SELECT * FROM menu_polls ORDER BY created_at DESC LIMIT 1;");
+      if (!lastPollRes.rows || lastPollRes.rows.length === 0) {
+        return res.json({ success: true, poll: null });
+      }
+      const fPoll = await updateAndFormatPoll(lastPollRes.rows[0]);
+      let userVote = null;
+      if (req.user) {
+        const vRes = await db.query('SELECT option_id FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2;', [fPoll.id, req.user.id]);
+        if (vRes.rows.length > 0) userVote = vRes.rows[0].option_id;
+      }
+      return res.json({ success: true, poll: fPoll, has_voted: Boolean(userVote), voted_option_id: userVote });
+    }
+
+    const formatted = await updateAndFormatPoll(pollRes.rows[0]);
+    let userVote = null;
+    if (req.user) {
+      const vRes = await db.query('SELECT option_id FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2;', [formatted.id, req.user.id]);
+      if (vRes.rows.length > 0) userVote = vRes.rows[0].option_id;
+    }
+
+    res.json({
+      success: true,
+      poll: formatted,
+      has_voted: Boolean(userVote),
+      voted_option_id: userVote
+    });
+  } catch (err) {
+    console.error('Get Active Poll Error:', err);
+    res.status(500).json({ success: false, message: "Failed to load active poll." });
+  }
+});
+
+// 4. Get Single Poll Detail & Real-Time Results
+app.get('/api/menu-voting/polls/:id', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollRes.rows || pollRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Poll not found." });
+    }
+
+    const formatted = await updateAndFormatPoll(pollRes.rows[0]);
+    let userVote = null;
+    if (req.user) {
+      const vRes = await db.query('SELECT option_id FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2;', [formatted.id, req.user.id]);
+      if (vRes.rows.length > 0) userVote = vRes.rows[0].option_id;
+    }
+
+    res.json({
+      success: true,
+      poll: formatted,
+      has_voted: Boolean(userVote),
+      voted_option_id: userVote
+    });
+  } catch (err) {
+    console.error('Get Poll Detail Error:', err);
+    res.status(500).json({ success: false, message: "Failed to load poll details." });
+  }
+});
+
+// 5. Submit Customer Vote (Strict Server-Side 1-Vote Protection)
+app.post('/api/menu-voting/polls/:id/vote', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { option_id } = req.body;
+    const customerId = req.user.id;
+
+    if (!option_id) {
+      return res.status(400).json({ success: false, message: "Please select a food dish option to vote." });
+    }
+
+    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollRes.rows || pollRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Voting poll not found." });
+    }
+
+    const poll = pollRes.rows[0];
+    const formatted = await updateAndFormatPoll(poll);
+
+    if (formatted.status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, message: `Voting is currently closed for this poll (Status: ${formatted.status}).` });
+    }
+
+    // Verify selected option belongs to this poll
+    const optCheck = await db.query('SELECT id FROM menu_poll_options WHERE id = $1 AND poll_id = $2;', [option_id, id]);
+    if (!optCheck.rows || optCheck.rows.length === 0) {
+      return res.status(400).json({ success: false, message: "Invalid poll option selected." });
+    }
+
+    // SERVER-SIDE VOTE DUP CHECK
+    const existingVoteRes = await db.query('SELECT option_id FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2;', [id, customerId]);
+    if (existingVoteRes.rows && existingVoteRes.rows.length > 0) {
+      await logSecurityEvent({
+        event_type: 'REWARD_ABUSE',
+        risk_level: 'MEDIUM',
+        customer_id: customerId,
+        details: `Customer attempt to submit duplicate vote for poll ${id}`
+      });
+      return res.status(400).json({
+        success: false,
+        code: 'DUPLICATE_VOTE',
+        message: "✅ You have already voted in this poll. Duplicate votes are strictly prevented."
+      });
+    }
+
+    const voteId = 'vote_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    try {
+      await db.query(
+        `INSERT INTO menu_poll_votes (id, poll_id, option_id, customer_id, created_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP);`,
+        [voteId, id, option_id, customerId]
+      );
+    } catch (vErr) {
+      // Database Unique Constraint catch fallback
+      return res.status(400).json({
+        success: false,
+        code: 'DUPLICATE_VOTE',
+        message: "✅ Your vote has already been recorded."
+      });
+    }
+
+    // Fetch updated live results
+    const updatedPoll = await updateAndFormatPoll(pollRes.rows[0]);
+
+    // Broadcast live WebSocket Vote Update to all connected clients
+    activeWsClients.forEach((client, ws) => {
+      if (ws.readyState === 1) {
+        try { ws.send(JSON.stringify({ type: 'VOTE_UPDATE', poll_id: id, poll: updatedPoll })); } catch (e) {}
+      }
+    });
+
+    const votedOption = updatedPoll.options.find(o => o.id === option_id);
+
+    res.json({
+      success: true,
+      message: `✅ Your vote has been recorded. You voted for ${votedOption ? votedOption.food_name : 'your selected dish'}.`,
+      poll: updatedPoll,
+      voted_option_id: option_id
+    });
+  } catch (err) {
+    console.error('Submit Vote Error:', err);
+    res.status(500).json({ success: false, message: "Failed to submit vote." });
+  }
+});
+
+// 6. Close Poll Manually (Owner Only)
+app.post('/api/menu-voting/polls/:id/close', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollRes.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
+
+    await db.query("UPDATE menu_polls SET status = 'CLOSED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;", [id]);
+    const updatedPoll = await updateAndFormatPoll(pollRes.rows[0]);
+
+    activeWsClients.forEach((client, ws) => {
+      if (ws.readyState === 1) {
+        try { ws.send(JSON.stringify({ type: 'POLL_CLOSED', data: updatedPoll })); } catch (e) {}
+      }
+    });
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name,
+      action: 'CLOSE_MENU_POLL',
+      resource_type: 'MENU_POLL',
+      resource_id: id,
+      details: `Closed voting for poll "${updatedPoll.question}"`
+    });
+
+    res.json({ success: true, poll: updatedPoll, message: "Poll closed successfully." });
+  } catch (err) {
+    console.error('Close Poll Error:', err);
+    res.status(500).json({ success: false, message: "Failed to close poll." });
+  }
+});
+
+// 7. Cancel Poll (Owner Only)
+app.post('/api/menu-voting/polls/:id/cancel', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollRes.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
+
+    await db.query("UPDATE menu_polls SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;", [id]);
+    const updatedPoll = await updateAndFormatPoll(pollRes.rows[0]);
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name,
+      action: 'CANCEL_MENU_POLL',
+      resource_type: 'MENU_POLL',
+      resource_id: id,
+      details: `Cancelled poll "${updatedPoll.question}"`
+    });
+
+    res.json({ success: true, poll: updatedPoll, message: "Poll cancelled." });
+  } catch (err) {
+    console.error('Cancel Poll Error:', err);
+    res.status(500).json({ success: false, message: "Failed to cancel poll." });
+  }
+});
+
+// 8. Select Winner in Case of a Tie (Owner Only)
+app.post('/api/menu-voting/polls/:id/select-winner', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { food_id } = req.body;
+
+    if (!food_id) return res.status(400).json({ success: false, message: "Selected food item is required." });
+
+    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollRes.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
+
+    await db.query(
+      `UPDATE menu_polls
+       SET winner_food_id = $1, winner_selection_type = 'MANUAL_TIE', status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2;`,
+      [food_id, id]
+    );
+
+    const updatedPoll = await updateAndFormatPoll(pollRes.rows[0]);
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name,
+      action: 'SELECT_TIE_WINNER',
+      resource_type: 'MENU_POLL',
+      resource_id: id,
+      details: `Owner manually broke tie and selected winner dish ID ${food_id}`
+    });
+
+    res.json({ success: true, poll: updatedPoll, message: "Winner dish selected successfully." });
+  } catch (err) {
+    console.error('Select Winner Error:', err);
+    res.status(500).json({ success: false, message: "Failed to set poll winner." });
+  }
+});
+
+// 9. Publish Winner as Tomorrow's Special (Owner Only)
+app.post('/api/menu-voting/polls/:id/publish-special', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollRes.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
+
+    const poll = pollRes.rows[0];
+    const formatted = await updateAndFormatPoll(poll);
+
+    const winnerFoodId = formatted.winner_food_id || (formatted.winner ? formatted.winner.food_id : null);
+    if (!winnerFoodId) {
+      return res.status(400).json({ success: false, message: "Cannot publish Tomorrow's Special before a winner is selected." });
+    }
+
+    await db.query('UPDATE menu_polls SET tomorrow_special_published = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1;', [id]);
+
+    const winnerName = formatted.winner ? formatted.winner.food_name : 'Selected Special';
+
+    // Broadcast push notification to all customers
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      title: '🏆 Tomorrow’s Special Selected!',
+      message: `${winnerName} has won the customer vote and is selected as tomorrow’s special!`,
+      type: 'MENU',
+      action_url: '/#secCustomerHome'
+    });
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name,
+      action: 'PUBLISH_TOMORROW_SPECIAL',
+      resource_type: 'MENU_POLL',
+      resource_id: id,
+      details: `Published "${winnerName}" as Tomorrow's Special`
+    });
+
+    res.json({ success: true, poll: formatted, message: `"${winnerName}" set as Tomorrow's Special successfully.` });
+  } catch (err) {
+    console.error('Publish Special Error:', err);
+    res.status(500).json({ success: false, message: "Failed to publish Tomorrow's Special." });
+  }
+});
+
+// 10. Delete Poll Safely (Owner Only)
+app.delete('/api/menu-voting/polls/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query('DELETE FROM menu_polls WHERE id = $1;', [id]);
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name,
+      action: 'DELETE_MENU_POLL',
+      resource_type: 'MENU_POLL',
+      resource_id: id,
+      details: `Deleted menu voting poll ID ${id}`
+    });
+
+    res.json({ success: true, message: "Poll deleted successfully." });
+  } catch (err) {
+    console.error('Delete Poll Error:', err);
+    res.status(500).json({ success: false, message: "Failed to delete poll." });
+  }
+});
+
+// 11. Customer Vote History
+app.get('/api/menu-voting/my-votes', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const vRes = await db.query(
+      `SELECT v.id as vote_id, v.created_at as voted_at, p.id as poll_id, p.question, p.status, p.winner_food_id, t.name as my_voted_food
+       FROM menu_poll_votes v
+       JOIN menu_polls p ON v.poll_id = p.id
+       JOIN menu_poll_options o ON v.option_id = o.id
+       JOIN tiffins t ON o.food_id = t.id
+       WHERE v.customer_id = $1
+       ORDER BY v.created_at DESC;`,
+      [req.user.id]
+    );
+    res.json({ success: true, data: vRes.rows || [] });
+  } catch (err) {
+    console.error('My Votes Error:', err);
+    res.status(500).json({ success: false, message: "Failed to load voting history." });
+  }
+});
+
+
+// =========================================================================
+// SECURITY & ANTI-FRAUD CENTER API ENDPOINTS (OWNER ONLY)
+// =========================================================================
+
+// 1. Dashboard KPI Stats & Security Status Calculation
+app.get('/api/security/dashboard-stats', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const todayStartIso = new Date(new Date().setHours(0,0,0,0)).toISOString();
+
+    const unresolvedRes = await db.query("SELECT risk_level, COUNT(*) as c FROM security_events WHERE status IN ('NEW', 'UNDER_REVIEW') GROUP BY risk_level;");
+    let criticalUnresolved = 0;
+    let highUnresolved = 0;
+    let mediumUnresolved = 0;
+    let totalUnresolved = 0;
+
+    (unresolvedRes.rows || []).forEach(r => {
+      const cnt = Number(r.c || 0);
+      totalUnresolved += cnt;
+      if (r.risk_level === 'CRITICAL') criticalUnresolved += cnt;
+      if (r.risk_level === 'HIGH') highUnresolved += cnt;
+      if (r.risk_level === 'MEDIUM') mediumUnresolved += cnt;
+    });
+
+    let securityStatus = 'PROTECTED';
+    let statusLabel = '🟢 Protected';
+    if (criticalUnresolved > 0) {
+      securityStatus = 'CRITICAL';
+      statusLabel = '🔴 Critical Issues';
+    } else if (highUnresolved >= 3 || mediumUnresolved >= 5) {
+      securityStatus = 'ATTENTION';
+      statusLabel = '🟡 Attention Required';
+    }
+
+    const typeRes = await db.query("SELECT event_type, COUNT(*) as c FROM security_events WHERE status IN ('NEW', 'UNDER_REVIEW') GROUP BY event_type;");
+    let duplicateAttempts = 0;
+    let paymentIssues = 0;
+    let rewardIssues = 0;
+
+    (typeRes.rows || []).forEach(r => {
+      const cnt = Number(r.c || 0);
+      if (['DUPLICATE_ORDER', 'DUPLICATE_PAYMENT', 'REWARD_ABUSE', 'REFERRAL_ABUSE', 'PREMIUM_CARD_ABUSE'].includes(r.event_type)) {
+        duplicateAttempts += cnt;
+      }
+      if (['DUPLICATE_PAYMENT', 'PAYMENT_MISMATCH', 'PAYMENT_FAIL'].includes(r.event_type)) {
+        paymentIssues += cnt;
+      }
+      if (['REWARD_ABUSE', 'REFERRAL_ABUSE', 'PREMIUM_CARD_ABUSE'].includes(r.event_type)) {
+        rewardIssues += cnt;
+      }
+    });
+
+    const todayRes = await db.query("SELECT COUNT(*) as c FROM security_events WHERE created_at >= $1;", [todayStartIso]);
+    const eventsToday = Number(todayRes.rows[0]?.c || 0);
+
+    const blockedRes = await db.query("SELECT COUNT(*) as c FROM security_events WHERE status = 'RESOLVED' OR event_type LIKE 'DUPLICATE_%';");
+    const blockedAttempts = Number(blockedRes.rows[0]?.c || 0);
+
+    res.json({
+      success: true,
+      data: {
+        security_status: securityStatus,
+        status_label: statusLabel,
+        suspicious_activities_count: totalUnresolved,
+        blocked_attempts: blockedAttempts,
+        duplicate_attempts: duplicateAttempts,
+        payment_issues: paymentIssues,
+        reward_issues: rewardIssues,
+        events_today: eventsToday
+      }
+    });
+  } catch (err) {
+    console.error('Security Dashboard Stats Error:', err);
+    res.status(500).json({ success: false, message: "Failed to load security stats." });
+  }
+});
+
+// 2. List Security Events (Paginated + Filtered)
+app.get('/api/security/events', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
+    const offset = (page - 1) * limit;
+
+    const { status, risk_level, event_type, search } = req.query;
+
+    let sql = `SELECT s.*, u.name as customer_name, u.mobile as customer_mobile
+               FROM security_events s
+               LEFT JOIN users u ON s.customer_id = u.id`;
+    let countSql = `SELECT COUNT(*) as c FROM security_events s LEFT JOIN users u ON s.customer_id = u.id`;
+    let params = [];
+    let conditions = [];
+
+    if (status && status !== 'ALL') {
+      conditions.push(`s.status = $${params.length + 1}`);
+      params.push(status.toUpperCase());
+    }
+
+    if (risk_level && risk_level !== 'ALL') {
+      conditions.push(`s.risk_level = $${params.length + 1}`);
+      params.push(risk_level.toUpperCase());
+    }
+
+    if (event_type && event_type !== 'ALL') {
+      conditions.push(`s.event_type = $${params.length + 1}`);
+      params.push(event_type.toUpperCase());
+    }
+
+    if (search && search.trim()) {
+      const q = `%${search.trim().toLowerCase()}%`;
+      conditions.push(`(LOWER(s.id) LIKE $${params.length + 1} OR LOWER(s.details) LIKE $${params.length + 1} OR LOWER(s.order_id) LIKE $${params.length + 1} OR LOWER(s.payment_id) LIKE $${params.length + 1} OR LOWER(u.name) LIKE $${params.length + 1} OR u.mobile LIKE $${params.length + 1})`);
+      params.push(q);
+    }
+
+    if (conditions.length > 0) {
+      const whereClause = ' WHERE ' + conditions.join(' AND ');
+      sql += whereClause;
+      countSql += whereClause;
+    }
+
+    sql += ` ORDER BY s.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2};`;
+    const queryParams = [...params, limit, offset];
+
+    const [dataRes, countRes] = await Promise.all([
+      db.query(sql, queryParams),
+      db.query(countSql, params)
+    ]);
+
+    const totalRecords = Number(countRes.rows[0]?.c || 0);
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    res.json({
+      success: true,
+      data: dataRes.rows || [],
+      pagination: {
+        page,
+        limit,
+        totalRecords,
+        totalPages
+      }
+    });
+  } catch (err) {
+    console.error('List Security Events Error:', err);
+    res.status(500).json({ success: false, message: "Failed to load security events." });
+  }
+});
+
+// 3. View Single Security Event Detail
+app.get('/api/security/events/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const eRes = await db.query(
+      `SELECT s.*, u.name as customer_name, u.mobile as customer_mobile, u.email as customer_email
+       FROM security_events s
+       LEFT JOIN users u ON s.customer_id = u.id
+       WHERE s.id = $1;`,
+      [id]
+    );
+    if (!eRes.rows || eRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Security event record not found." });
+    }
+    res.json({ success: true, data: eRes.rows[0] });
+  } catch (err) {
+    console.error('Get Security Event Detail Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch security event details." });
+  }
+});
+
+// 4. Update Security Event Status / Internal Notes (Owner Action)
+app.patch('/api/security/events/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, internal_note } = req.body;
+
+    const eRes = await db.query('SELECT * FROM security_events WHERE id = $1;', [id]);
+    if (!eRes.rows || eRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Security event record not found." });
+    }
+
+    const current = eRes.rows[0];
+    const newStatus = status ? status.toUpperCase() : current.status;
+    const newNote = internal_note !== undefined ? internal_note : current.internal_note;
+
+    await db.query(
+      `UPDATE security_events
+       SET status = $1, internal_note = $2, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3;`,
+      [newStatus, newNote, id]
+    );
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name,
+      action: 'UPDATE_SECURITY_EVENT',
+      resource_type: 'SECURITY_EVENT',
+      resource_id: id,
+      details: `Updated security event ${id} status to ${newStatus}`
+    });
+
+    const updated = await db.query('SELECT * FROM security_events WHERE id = $1;', [id]);
+    res.json({ success: true, data: updated.rows[0], message: `Security event status updated to ${newStatus}.` });
+  } catch (err) {
+    console.error('Update Security Event Error:', err);
+    res.status(500).json({ success: false, message: "Failed to update security event status." });
+  }
+});
+
+// 5. List Owner Audit Logs (Paginated)
+app.get('/api/security/audit-logs', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
+    const offset = (page - 1) * limit;
+
+    const { search } = req.query;
+    let sql = 'SELECT * FROM owner_audit_logs';
+    let countSql = 'SELECT COUNT(*) as c FROM owner_audit_logs';
+    let params = [];
+
+    if (search && search.trim()) {
+      const q = `%${search.trim().toLowerCase()}%`;
+      sql += ' WHERE (LOWER(action) LIKE $1 OR LOWER(details) LIKE $1 OR LOWER(actor_name) LIKE $1 OR LOWER(resource_id) LIKE $1)';
+      countSql += ' WHERE (LOWER(action) LIKE $1 OR LOWER(details) LIKE $1 OR LOWER(actor_name) LIKE $1 OR LOWER(resource_id) LIKE $1)';
+      params.push(q);
+    }
+
+    sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2};`;
+    const queryParams = [...params, limit, offset];
+
+    const [dataRes, countRes] = await Promise.all([
+      db.query(sql, queryParams),
+      db.query(countSql, params)
+    ]);
+
+    const totalRecords = Number(countRes.rows[0]?.c || 0);
+    const totalPages = Math.ceil(totalRecords / limit);
+
+    res.json({
+      success: true,
+      data: dataRes.rows || [],
+      pagination: {
+        page,
+        limit,
+        totalRecords,
+        totalPages
+      }
+    });
+  } catch (err) {
+    console.error('List Audit Logs Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch audit logs." });
+  }
+});
+
+// =========================================================================
+// 💸 REFUND TRACKING SYSTEM BACKEND MODULE
+// =========================================================================
+
+// Helper function to atomically create a refund record & timeline event
+async function createRefundRecord({
+  order_id,
+  customer_id,
+  refund_amount,
+  reason,
+  actor_type = 'SYSTEM',
+  actor_id = null,
+  non_refundable_amount = 0.00
+}) {
+  const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [order_id]);
+  if (!oRes.rows || oRes.rows.length === 0) {
+    throw new Error('Order not found for refund creation.');
+  }
+  const order = oRes.rows[0];
+
+  const custId = customer_id || order.customer_id;
+
+  // Fetch customer details if available
+  let custName = order.customer_name || 'Customer';
+  let custMobile = order.customer_mobile || '';
+  if (custId) {
+    const uRes = await db.query('SELECT name, mobile FROM users WHERE id = $1;', [custId]);
+    if (uRes.rows && uRes.rows[0]) {
+      custName = uRes.rows[0].name || custName;
+      custMobile = uRes.rows[0].mobile || custMobile;
+    }
+  }
+
+  const originalPaid = Number(order.net_amount || order.total_amount || 0);
+
+  // Check already refunded amount for this order
+  const refRes = await db.query(
+    `SELECT SUM(refund_amount) as total_refunded FROM refunds WHERE order_id = $1 AND status NOT IN ('REFUND_REJECTED', 'REFUND_CANCELLED', 'REFUND_FAILED');`,
+    [order.id]
+  );
+  const alreadyRefunded = Number(refRes.rows[0]?.total_refunded || 0);
+  const remainingRefundable = Math.max(0, originalPaid - alreadyRefunded);
+
+  let reqAmount = Number(refund_amount || 0);
+  if (reqAmount <= 0) reqAmount = remainingRefundable;
+
+  if (reqAmount <= 0) {
+    throw new Error('No refundable amount remaining for this order.');
+  }
+
+  if (reqAmount > remainingRefundable + 0.01) {
+    throw new Error(`Requested refund amount (₹${reqAmount}) exceeds remaining refundable amount (₹${remainingRefundable}).`);
+  }
+
+  const refundType = (reqAmount >= originalPaid - 0.01) ? 'FULL' : 'PARTIAL';
+  const refundId = 'rf_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+  const refundRef = `RFN-${order.order_number}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const nowIso = new Date().toISOString();
+  const expDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Retrieve UTR or payment reference
+  const payRef = order.utr_number || order.payment_reference || order.id;
+  const payMethod = order.payment_method || 'UPI';
+
+  let createdRefund = null;
+
+  await db.executeTransaction(async (tx) => {
+    // Insert into refunds table
+    const insertRes = await tx.query(
+      `INSERT INTO refunds (
+        id, refund_reference, order_id, order_number, payment_id, customer_id, customer_name, customer_mobile,
+        original_amount, refund_amount, non_refundable_amount, refund_type, reason, status,
+        payment_method, payment_reference, expected_completion_date, last_updated_message, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      RETURNING *;`,
+      [
+        refundId, refundRef, order.id, order.order_number, order.id, custId, custName, custMobile,
+        originalPaid, reqAmount, Number(non_refundable_amount || 0), refundType, reason || 'Order cancelled',
+        'REFUND_REQUESTED', payMethod, payRef, expDate, 'Refund request submitted to system.', nowIso, nowIso
+      ]
+    );
+
+    createdRefund = insertRes.rows[0] || { id: refundId, refund_reference: refundRef };
+
+    // Insert into refund_events timeline
+    await tx.query(
+      `INSERT INTO refund_events (
+        id, refund_id, event_type, previous_status, new_status, message, amount, actor_type, actor_id, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+      [
+        'rfe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        refundId, 'REQUESTED', null, 'REFUND_REQUESTED', 'Refund request received.', reqAmount, actor_type, actor_id, nowIso
+      ]
+    );
+  });
+
+  // Log owner audit log
+  await logOwnerAuditAction({
+    actor_id: actor_id || custId,
+    actor_name: custName,
+    action: 'CREATE_REFUND_REQUEST',
+    resource_type: 'refunds',
+    resource_id: refundId,
+    details: `Refund request created for Order #${order.order_number} (Amount: ₹${reqAmount})`
+  });
+
+  // Dispatch Customer Notification
+  if (custId) {
+    await createAndDispatchNotification({
+      target_role: 'CUSTOMER',
+      customer_id: custId,
+      title: '💸 Refund Request Received',
+      message: `Refund request of ₹${reqAmount} received for Order #${order.order_number}.`,
+      type: 'PAYMENT',
+      action_url: `/#secCustomerOrders`,
+      related_order_id: order.id
+    });
+  }
+
+  // Broadcast WebSocket update
+  activeWsClients.forEach((info, ws) => {
+    if (ws.readyState === 1) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'REFUND_UPDATE',
+          data: { refund_id: refundId, order_id: order.id, status: 'REFUND_REQUESTED' }
+        }));
+      } catch (e) {}
+    }
+  });
+
+  return createdRefund;
+}
+
+// POST /api/refunds/request - Create a new refund request
+app.post('/api/refunds/request', authenticateToken, async (req, res) => {
+  try {
+    const { order_id, refund_amount, reason, non_refundable_amount } = req.body;
+    if (!order_id) {
+      return res.status(400).json({ success: false, message: 'Order ID is required.' });
+    }
+
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [order_id]);
+    if (!oRes.rows || oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+    const order = oRes.rows[0];
+
+    // Customer role ownership check
+    if (req.user.role === 'CUSTOMER' && order.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Access denied.' });
+    }
+
+    // Check existing active refund
+    const existingRef = await db.query(
+      `SELECT * FROM refunds WHERE order_id = $1 AND status NOT IN ('REFUND_REJECTED', 'REFUND_CANCELLED', 'REFUND_FAILED');`,
+      [order.id]
+    );
+    if (existingRef.rows && existingRef.rows.length > 0) {
+      return res.json({
+        success: true,
+        message: 'Active refund request already exists.',
+        data: existingRef.rows[0]
+      });
+    }
+
+    const created = await createRefundRecord({
+      order_id: order.id,
+      customer_id: order.customer_id,
+      refund_amount,
+      reason: reason || 'Refund requested by user',
+      actor_type: req.user.role,
+      actor_id: req.user.id,
+      non_refundable_amount
+    });
+
+    res.json({
+      success: true,
+      message: '💸 Refund request submitted successfully.',
+      data: created
+    });
+  } catch (err) {
+    console.error('Request Refund Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to request refund.' });
+  }
+});
+
+// GET /api/refunds/my-refunds - Customer Refunds list
+app.get('/api/refunds/my-refunds', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+  try {
+    const page = parseInt(req.query.page || '1', 10);
+    const limit = parseInt(req.query.limit || '10', 10);
+    const offset = (page - 1) * limit;
+
+    const countRes = await db.query('SELECT COUNT(*) as total FROM refunds WHERE customer_id = $1;', [req.user.id]);
+    const totalRecords = parseInt(countRes.rows[0]?.total || '0', 10);
+
+    const listRes = await db.query(
+      `SELECT * FROM refunds WHERE customer_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3;`,
+      [req.user.id, limit, offset]
+    );
+
+    res.json({
+      success: true,
+      data: listRes.rows || [],
+      pagination: { page, limit, totalRecords, totalPages: Math.ceil(totalRecords / limit) || 1 }
+    });
+  } catch (err) {
+    console.error('Get My Refunds Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch refunds.' });
+  }
+});
+
+// GET /api/refunds/:id - Fetch single refund with full event timeline history
+app.get('/api/refunds/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rRes = await db.query(
+      'SELECT * FROM refunds WHERE id = $1 OR refund_reference = $1 OR order_id = $1 OR order_number = $1 LIMIT 1;',
+      [id]
+    );
+    if (!rRes.rows || rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Refund record not found.' });
+    }
+    const refund = rRes.rows[0];
+
+    // Customer Ownership Verification
+    if (req.user.role === 'CUSTOMER' && refund.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Access denied. You can only view your own refunds." });
+    }
+
+    const eventsRes = await db.query('SELECT * FROM refund_events WHERE refund_id = $1 ORDER BY created_at ASC;', [refund.id]);
+    refund.timeline = eventsRes.rows || [];
+
+    res.json({ success: true, data: refund });
+  } catch (err) {
+    console.error('Get Refund Details Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch refund details.' });
+  }
+});
+
+// GET /api/refunds/owner/stats - Owner Refund Dashboard Summary KPI Metrics
+app.get('/api/refunds/owner/stats', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const statsRes = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= $1) as today_count,
+        COUNT(*) FILTER (WHERE status IN ('REFUND_REQUESTED', 'REFUND_UNDER_REVIEW')) as pending_count,
+        COUNT(*) FILTER (WHERE status IN ('REFUND_APPROVED', 'REFUND_INITIATED', 'REFUND_PROCESSING')) as processing_count,
+        COUNT(*) FILTER (WHERE status = 'REFUND_COMPLETED') as completed_count,
+        COUNT(*) FILTER (WHERE status = 'REFUND_FAILED') as failed_count,
+        COALESCE(SUM(refund_amount) FILTER (WHERE status = 'REFUND_COMPLETED'), 0) as total_refunded_amount
+      FROM refunds;
+    `, [todayStart.toISOString()]);
+
+    const s = statsRes.rows[0] || {};
+    res.json({
+      success: true,
+      data: {
+        refunds_today: parseInt(s.today_count || '0', 10),
+        pending_refunds: parseInt(s.pending_count || '0', 10),
+        processing_refunds: parseInt(s.processing_count || '0', 10),
+        completed_refunds: parseInt(s.completed_count || '0', 10),
+        failed_refunds: parseInt(s.failed_count || '0', 10),
+        total_refunded: parseFloat(s.total_refunded_amount || '0')
+      }
+    });
+  } catch (err) {
+    console.error('Get Refund Stats Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch refund statistics.' });
+  }
+});
+
+// GET /api/refunds/owner/all - Owner List & Search Refunds Endpoint
+app.get('/api/refunds/owner/all', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const page = parseInt(req.query.page || '1', 10);
+    const limit = parseInt(req.query.limit || '15', 10);
+    const offset = (page - 1) * limit;
+
+    const statusFilter = req.query.status || 'ALL';
+    const refundType = req.query.refund_type || 'ALL';
+    const search = (req.query.search || '').toString().trim();
+
+    let whereConditions = [];
+    let queryParams = [];
+    let paramCounter = 1;
+
+    if (statusFilter !== 'ALL') {
+      whereConditions.push(`status = $${paramCounter}`);
+      queryParams.push(statusFilter);
+      paramCounter++;
+    }
+
+    if (refundType !== 'ALL') {
+      whereConditions.push(`refund_type = $${paramCounter}`);
+      queryParams.push(refundType);
+      paramCounter++;
+    }
+
+    if (search) {
+      whereConditions.push(`(
+        order_number ILIKE $${paramCounter} OR
+        refund_reference ILIKE $${paramCounter} OR
+        customer_name ILIKE $${paramCounter} OR
+        customer_mobile ILIKE $${paramCounter} OR
+        payment_reference ILIKE $${paramCounter}
+      )`);
+      queryParams.push(`%${search}%`);
+      paramCounter++;
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    const countSql = `SELECT COUNT(*) as total FROM refunds ${whereClause};`;
+    const countRes = await db.query(countSql, queryParams);
+    const totalRecords = parseInt(countRes.rows[0]?.total || '0', 10);
+
+    const listSql = `
+      SELECT * FROM refunds ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${paramCounter} OFFSET $${paramCounter + 1};
+    `;
+    const listRes = await db.query(listSql, [...queryParams, limit, offset]);
+
+    res.json({
+      success: true,
+      data: listRes.rows || [],
+      pagination: { page, limit, totalRecords, totalPages: Math.ceil(totalRecords / limit) || 1 }
+    });
+  } catch (err) {
+    console.error('Owner List Refunds Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch refunds list.' });
+  }
+});
+
+// PATCH /api/refunds/owner/:id/status - Update Refund Status (Owner Controlled Transition)
+app.patch('/api/refunds/owner/:id/status', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, message, last_updated_message } = req.body;
+
+    const rRes = await db.query('SELECT * FROM refunds WHERE id = $1 OR refund_reference = $1;', [id]);
+    if (!rRes.rows || rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Refund record not found.' });
+    }
+    const refund = rRes.rows[0];
+
+    const prevStatus = refund.status;
+    const newStatus = (status || prevStatus).toUpperCase();
+    const nowIso = new Date().toISOString();
+
+    let completedAt = refund.completed_at;
+    if (newStatus === 'REFUND_COMPLETED' && !completedAt) {
+      completedAt = nowIso;
+    }
+
+    const updateMsg = last_updated_message || message || `Refund status changed to ${newStatus.replace(/_/g, ' ')}`;
+
+    await db.executeTransaction(async (tx) => {
+      await tx.query(
+        `UPDATE refunds SET status = $1, last_updated_message = $2, updated_at = $3, completed_at = $4 WHERE id = $5;`,
+        [newStatus, updateMsg, nowIso, completedAt, refund.id]
+      );
+
+      await tx.query(
+        `INSERT INTO refund_events (
+          id, refund_id, event_type, previous_status, new_status, message, amount, actor_type, actor_id, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+        [
+          'rfe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+          refund.id, newStatus.replace('REFUND_', ''), prevStatus, newStatus, updateMsg, refund.refund_amount, 'OWNER', req.user.id, nowIso
+        ]
+      );
+    });
+
+    // Owner Audit Log
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'UPDATE_REFUND_STATUS',
+      resource_type: 'refunds',
+      resource_id: refund.id,
+      details: `Updated refund ${refund.refund_reference} status: ${prevStatus} -> ${newStatus}`
+    });
+
+    // Notify Customer of Status Update
+    if (refund.customer_id) {
+      const statusLabels = {
+        'REFUND_UNDER_REVIEW': '🔵 Refund Under Review',
+        'REFUND_APPROVED': '🟠 Refund Approved',
+        'REFUND_INITIATED': '🔵 Refund Initiated',
+        'REFUND_PROCESSING': '🟣 Refund Processing',
+        'REFUND_COMPLETED': '🟢 Refund Completed',
+        'REFUND_FAILED': '🔴 Refund Failed',
+        'REFUND_REJECTED': '⚫ Refund Rejected'
+      };
+      const title = statusLabels[newStatus] || '💸 Refund Status Updated';
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: refund.customer_id,
+        title,
+        message: `Order #${refund.order_number}: ₹${refund.refund_amount} refund status is now "${newStatus.replace('REFUND_', '').replace(/_/g, ' ')}".`,
+        type: 'PAYMENT',
+        action_url: `/#secCustomerOrders`,
+        related_order_id: refund.order_id
+      });
+    }
+
+    // Broadcast WebSocket Update
+    activeWsClients.forEach((info, ws) => {
+      if (ws.readyState === 1) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'REFUND_UPDATE',
+            data: { refund_id: refund.id, status: newStatus }
+          }));
+        } catch (e) {}
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `Refund status updated to ${newStatus.replace(/_/g, ' ')}.`,
+      data: { id: refund.id, status: newStatus, updated_at: nowIso }
+    });
+  } catch (err) {
+    console.error('Update Refund Status Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to update refund status.' });
+  }
+});
+
+// POST /api/refunds/owner/:id/retry - Retry Failed Refund
+app.post('/api/refunds/owner/:id/retry', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rRes = await db.query('SELECT * FROM refunds WHERE id = $1 OR refund_reference = $1;', [id]);
+    if (!rRes.rows || rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Refund record not found.' });
+    }
+    const refund = rRes.rows[0];
+
+    if (refund.status !== 'REFUND_FAILED') {
+      return res.status(400).json({ success: false, message: `Only failed refunds can be retried. Current status: ${refund.status}` });
+    }
+
+    const nowIso = new Date().toISOString();
+    await db.executeTransaction(async (tx) => {
+      await tx.query(
+        `UPDATE refunds SET status = 'REFUND_INITIATED', last_updated_message = 'Refund retry initiated by owner', updated_at = $1 WHERE id = $2;`,
+        [nowIso, refund.id]
+      );
+      await tx.query(
+        `INSERT INTO refund_events (
+          id, refund_id, event_type, previous_status, new_status, message, amount, actor_type, actor_id, created_at
+        ) VALUES ($1, $2, 'RETRY', 'REFUND_FAILED', 'REFUND_INITIATED', 'Refund retry initiated by owner', $3, 'OWNER', $4, $5);`,
+        ['rfe_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6), refund.id, refund.refund_amount, req.user.id, nowIso]
+      );
+    });
+
+    res.json({
+      success: true,
+      message: 'Refund retry initiated successfully.',
+      data: { id: refund.id, status: 'REFUND_INITIATED' }
+    });
+  } catch (err) {
+    console.error('Retry Refund Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to retry refund.' });
+  }
+});
+
+// =========================================================================
+// 🥘 ADD-ONS / EXTRA ITEMS BACKEND MODULE
+// =========================================================================
+
+// GET /api/add-ons - Fetch active add-ons list (or all add-ons for Owner)
+app.get('/api/add-ons', async (req, res) => {
+  try {
+    const includeDisabled = req.query.include_disabled === 'true';
+
+    let sql = `SELECT * FROM add_ons WHERE enabled = true AND available = true ORDER BY display_order ASC, name ASC;`;
+    if (includeDisabled) {
+      sql = `SELECT * FROM add_ons ORDER BY display_order ASC, name ASC;`;
+    }
+
+    const r = await db.query(sql);
+    res.json({ success: true, data: r.rows || [] });
+  } catch (err) {
+    console.error('Get Add-ons Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch add-ons.' });
+  }
+});
+
+// POST /api/add-ons - Owner Create New Add-on
+app.post('/api/add-ons', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { name, price, description, available, category, display_order } = req.body;
+
+    const cleanName = (name || '').trim();
+    const numPrice = Number(price);
+
+    if (!cleanName) {
+      return res.status(400).json({ success: false, message: 'Add-on name is required.' });
+    }
+    if (isNaN(numPrice) || numPrice <= 0) {
+      return res.status(400).json({ success: false, message: 'Add-on price must be a valid number greater than ₹0.' });
+    }
+
+    const id = 'addon_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `INSERT INTO add_ons (id, name, price, description, available, enabled, category, display_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8, $9);`,
+      [
+        id, cleanName, numPrice, (description || '').trim(),
+        available !== false, (category || 'Extras').trim(),
+        parseInt(display_order || '0', 10), nowIso, nowIso
+      ]
+    );
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'CREATE_ADDON',
+      resource_type: 'add_ons',
+      resource_id: id,
+      details: `Created new Add-on "${cleanName}" (Price: ₹${numPrice})`
+    });
+
+    res.json({
+      success: true,
+      message: `🥘 Add-on "${cleanName}" created successfully!`,
+      data: { id, name: cleanName, price: numPrice }
+    });
+  } catch (err) {
+    console.error('Create Add-on Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to create add-on.' });
+  }
+});
+
+// PATCH /api/add-ons/:id - Owner Edit / Toggle Add-on
+app.patch('/api/add-ons/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, price, description, available, enabled, display_order } = req.body;
+
+    const existingRes = await db.query('SELECT * FROM add_ons WHERE id = $1;', [id]);
+    if (!existingRes.rows || existingRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Add-on item not found.' });
+    }
+    const current = existingRes.rows[0];
+
+    const newName = name !== undefined ? String(name).trim() : current.name;
+    const newPrice = price !== undefined ? Number(price) : Number(current.price);
+    const newDesc = description !== undefined ? String(description).trim() : current.description;
+    const newAvail = available !== undefined ? Boolean(available) : Boolean(current.available);
+    const newEnabled = enabled !== undefined ? Boolean(enabled) : Boolean(current.enabled);
+    const newOrder = display_order !== undefined ? parseInt(display_order, 10) : current.display_order;
+
+    if (!newName) {
+      return res.status(400).json({ success: false, message: 'Add-on name cannot be empty.' });
+    }
+    if (isNaN(newPrice) || newPrice <= 0) {
+      return res.status(400).json({ success: false, message: 'Add-on price must be greater than ₹0.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    await db.query(
+      `UPDATE add_ons SET name = $1, price = $2, description = $3, available = $4, enabled = $5, display_order = $6, updated_at = $7 WHERE id = $8;`,
+      [newName, newPrice, newDesc, newAvail, newEnabled, newOrder, nowIso, id]
+    );
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'UPDATE_ADDON',
+      resource_type: 'add_ons',
+      resource_id: id,
+      details: `Updated Add-on "${newName}" (Price: ₹${newPrice}, Available: ${newAvail}, Enabled: ${newEnabled})`
+    });
+
+    res.json({
+      success: true,
+      message: `🥘 Add-on "${newName}" updated successfully!`,
+      data: { id, name: newName, price: newPrice, available: newAvail, enabled: newEnabled }
+    });
+  } catch (err) {
+    console.error('Update Add-on Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to update add-on.' });
+  }
+});
+
+// DELETE /api/add-ons/:id - Owner Soft-Disable Add-on (preserves historical order data)
+app.delete('/api/add-ons/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const nowIso = new Date().toISOString();
+
+    await db.query('UPDATE add_ons SET enabled = false, available = false, updated_at = $1 WHERE id = $2;', [nowIso, id]);
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'DISABLE_ADDON',
+      resource_type: 'add_ons',
+      resource_id: id,
+      details: `Disabled add-on ${id}`
+    });
+
+    res.json({ success: true, message: 'Add-on item disabled. Historical order records remain intact.' });
+  } catch (err) {
+    console.error('Disable Add-on Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to disable add-on.' });
+  }
+});
+
+// GET /api/add-ons/analytics - Owner Add-on Sales Performance & Revenue
+app.get('/api/add-ons/analytics', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const salesRes = await db.query(`
+      SELECT
+        add_on_id,
+        add_on_name,
+        SUM(quantity) as total_sold,
+        SUM(subtotal) as total_revenue
+      FROM order_add_ons
+      GROUP BY add_on_id, add_on_name
+      ORDER BY total_sold DESC;
+    `);
+
+    res.json({ success: true, data: salesRes.rows || [] });
+  } catch (err) {
+    console.error('Add-on Analytics Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch add-on analytics.' });
+  }
+});
+
+// PATCH /api/orders/:id/preparation-time - Owner Update Order Live Preparation Time
+app.patch('/api/orders/:id/preparation-time', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const prepMinutes = parseInt(req.body.preparation_minutes, 10);
+
+    if (isNaN(prepMinutes) || prepMinutes < 1 || prepMinutes > 180) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid preparation time. Please enter a valid number of minutes between 1 and 180.'
+      });
+    }
+
+    const oRes = await db.query('SELECT * FROM orders WHERE id = $1 OR order_number = $1;', [id]);
+    if (!oRes.rows || oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+    const order = oRes.rows[0];
+
+    const estimatedReadyAt = new Date(Date.now() + prepMinutes * 60000).toISOString();
+
+    await db.query(
+      `UPDATE orders SET preparation_minutes = $1, estimated_ready_at = $2 WHERE id = $3;`,
+      [prepMinutes, estimatedReadyAt, order.id]
+    );
+
+    // Broadcast WebSocket event to all connected clients
+    activeWsClients.forEach(client => {
+      if (client.readyState === 1) {
+        client.send(JSON.stringify({
+          type: 'PREPARATION_TIME_UPDATE',
+          data: {
+            order_id: order.id,
+            order_number: order.order_number,
+            customer_id: order.customer_id,
+            preparation_minutes: prepMinutes,
+            estimated_ready_at: estimatedReadyAt
+          }
+        }));
+      }
+    });
+
+    // Notify Customer via Notification Engine
+    if (order.customer_id) {
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: order.customer_id,
+        title: `⏱️ Preparation Time Updated`,
+        message: `Estimated preparation time for Order #${order.order_number} has been updated to ${prepMinutes} minutes.`,
+        type: 'QUEUE',
+        priority: 'HIGH',
+        action_url: '/#secQueueProgress',
+        related_order_id: order.id
+      });
+    }
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'UPDATE_PREP_TIME',
+      resource_type: 'orders',
+      resource_id: order.id,
+      details: `Updated Order #${order.order_number} prep time to ${prepMinutes} mins (Estimated ready at ${estimatedReadyAt})`
+    });
+
+    res.json({
+      success: true,
+      message: `⏱️ Preparation time updated to ${prepMinutes} minutes.`,
+      data: {
+        id: order.id,
+        order_number: order.order_number,
+        preparation_minutes: prepMinutes,
+        estimated_ready_at: estimatedReadyAt
+      }
+    });
+  } catch (err) {
+    console.error('Update Preparation Time Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update preparation time.' });
+  }
+});
+
+// =========================================================================
+// 🧠 OWNER BUSINESS COPILOT READ-ONLY ANALYTICS MODULE
+// =========================================================================
+
+app.get('/api/owner/business-copilot/analytics', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const range = (req.query.range || 'today').toLowerCase().trim();
+    const now = new Date();
+
+    let currentStart, currentEnd, prevStart, prevEnd;
+
+    if (range === 'yesterday') {
+      currentStart = new Date(now);
+      currentStart.setDate(currentStart.getDate() - 1);
+      currentStart.setHours(0, 0, 0, 0);
+
+      currentEnd = new Date(now);
+      currentEnd.setDate(currentEnd.getDate() - 1);
+      currentEnd.setHours(23, 59, 59, 999);
+
+      prevStart = new Date(now);
+      prevStart.setDate(prevStart.getDate() - 2);
+      prevStart.setHours(0, 0, 0, 0);
+
+      prevEnd = new Date(now);
+      prevEnd.setDate(prevEnd.getDate() - 2);
+      prevEnd.setHours(23, 59, 59, 999);
+    } else if (range === '7days') {
+      currentEnd = new Date(now);
+      currentStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      prevEnd = new Date(currentStart.getTime() - 1);
+      prevStart = new Date(prevEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (range === '30days') {
+      currentEnd = new Date(now);
+      currentStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      prevEnd = new Date(currentStart.getTime() - 1);
+      prevStart = new Date(prevEnd.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else {
+      // Default: Today
+      currentStart = new Date(now);
+      currentStart.setHours(0, 0, 0, 0);
+      currentEnd = new Date(now);
+
+      prevStart = new Date(now);
+      prevStart.setDate(prevStart.getDate() - 1);
+      prevStart.setHours(0, 0, 0, 0);
+
+      prevEnd = new Date(now);
+      prevEnd.setDate(prevEnd.getDate() - 1);
+      prevEnd.setHours(23, 59, 59, 999);
+    }
+
+    const curStartIso = currentStart.toISOString();
+    const curEndIso = currentEnd.toISOString();
+    const prevStartIso = prevStart.toISOString();
+    const prevEndIso = prevEnd.toISOString();
+
+    // 1. Fetch Orders for Current & Previous Comparison Period
+    const curOrdersRes = await db.query(
+      `SELECT * FROM orders WHERE created_at >= $1 AND created_at <= $2;`,
+      [curStartIso, curEndIso]
+    );
+    const prevOrdersRes = await db.query(
+      `SELECT * FROM orders WHERE created_at >= $1 AND created_at <= $2;`,
+      [prevStartIso, prevEndIso]
+    );
+
+    const curOrders = curOrdersRes.rows || [];
+    const prevOrders = prevOrdersRes.rows || [];
+
+    const curValidOrders = curOrders.filter(o => !['Cancelled', 'Rejected'].includes(o.order_status));
+    const prevValidOrders = prevOrders.filter(o => !['Cancelled', 'Rejected'].includes(o.order_status));
+
+    // Sales Calculations
+    const curSales = curValidOrders.reduce((sum, o) => sum + Number(o.net_amount || o.total_amount || 0), 0);
+    const prevSales = prevValidOrders.reduce((sum, o) => sum + Number(o.net_amount || o.total_amount || 0), 0);
+
+    const salesGrowthPct = prevSales > 0
+      ? Math.round(((curSales - prevSales) / prevSales) * 100 * 10) / 10
+      : (curSales > 0 ? 100 : 0);
+
+    // Orders Count Calculations
+    const curOrderCount = curValidOrders.length;
+    const prevOrderCount = prevValidOrders.length;
+
+    const orderGrowthPct = prevOrderCount > 0
+      ? Math.round(((curOrderCount - prevOrderCount) / prevOrderCount) * 100 * 10) / 10
+      : (curOrderCount > 0 ? 100 : 0);
+
+    // Average Order Value (AOV)
+    const curAov = curOrderCount > 0 ? Math.round((curSales / curOrderCount) * 100) / 100 : 0;
+    const prevAov = prevOrderCount > 0 ? Math.round((prevSales / prevOrderCount) * 100) / 100 : 0;
+    const aovGrowthPct = prevAov > 0
+      ? Math.round(((curAov - prevAov) / prevAov) * 100 * 10) / 10
+      : (curAov > 0 ? 100 : 0);
+
+    // 2. Customer Registration & Retention Metrics
+    const curNewUsersRes = await db.query(
+      `SELECT COUNT(*) as c FROM users WHERE role = 'CUSTOMER' AND created_at >= $1 AND created_at <= $2;`,
+      [curStartIso, curEndIso]
+    );
+    const curNewCustomers = Number(curNewUsersRes.rows[0]?.c || 0);
+
+    const prevNewUsersRes = await db.query(
+      `SELECT COUNT(*) as c FROM users WHERE role = 'CUSTOMER' AND created_at >= $1 AND created_at <= $2;`,
+      [prevStartIso, prevEndIso]
+    );
+    const prevNewCustomers = Number(prevNewUsersRes.rows[0]?.c || 0);
+
+    const customerGrowthPct = prevNewCustomers > 0
+      ? Math.round(((curNewCustomers - prevNewCustomers) / prevNewCustomers) * 100 * 10) / 10
+      : (curNewCustomers > 0 ? 100 : 0);
+
+    // Customer Retention Analysis
+    const orderingCustIds = Array.from(new Set(curValidOrders.map(o => o.customer_id).filter(Boolean)));
+    let repeatCustomersCount = 0;
+
+    if (orderingCustIds.length > 0) {
+      const priorOrdersRes = await db.query(
+        `SELECT DISTINCT customer_id FROM orders WHERE customer_id = ANY($1) AND created_at < $2;`,
+        [orderingCustIds, curStartIso]
+      );
+      repeatCustomersCount = (priorOrdersRes.rows || []).length;
+    }
+
+    const repeatOrderRatePct = orderingCustIds.length > 0
+      ? Math.round((repeatCustomersCount / orderingCustIds.length) * 100)
+      : 0;
+
+    // 3. Refund Metrics
+    const curRefundsRes = await db.query(
+      `SELECT COALESCE(SUM(refund_amount), 0) as total, COUNT(*) as count FROM refunds WHERE status = 'REFUND_COMPLETED' AND created_at >= $1 AND created_at <= $2;`,
+      [curStartIso, curEndIso]
+    );
+    const curRefundTotal = Number(curRefundsRes.rows[0]?.total || 0);
+    const curRefundCount = Number(curRefundsRes.rows[0]?.count || 0);
+
+    const pendingRefundsRes = await db.query(
+      `SELECT COUNT(*) as c FROM refunds WHERE status IN ('REFUND_REQUESTED', 'REFUND_PROCESSING');`
+    );
+    const pendingRefundsCount = Number(pendingRefundsRes.rows[0]?.c || 0);
+
+    const failedRefundsRes = await db.query(
+      `SELECT COUNT(*) as c FROM refunds WHERE status = 'REFUND_FAILED';`
+    );
+    const failedRefundsCount = Number(failedRefundsRes.rows[0]?.c || 0);
+
+    // 4. Payment Overview Metrics
+    const successfulPayCount = curValidOrders.length;
+    const pendingPayCount = curValidOrders.filter(o => o.payment_status === 'Pending').length;
+    const failedPayCount = curOrders.filter(o => (o.payment_status || '').toLowerCase().includes('failed')).length;
+
+    // 5. Best-Selling Food Items Analysis
+    const foodMap = {};
+    curValidOrders.forEach(o => {
+      let itemsList = [];
+      try {
+        itemsList = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+      } catch (e) {}
+
+      if (Array.isArray(itemsList)) {
+        itemsList.forEach(item => {
+          const name = item.name || 'Unknown Item';
+          const qty = Number(item.quantity || 1);
+          const price = Number(item.price || 0);
+          if (!foodMap[name]) {
+            foodMap[name] = { name, quantity: 0, revenue: 0 };
+          }
+          foodMap[name].quantity += qty;
+          foodMap[name].revenue += (qty * price);
+        });
+      }
+    });
+
+    const bestSellers = Object.values(foodMap).sort((a, b) => b.quantity - a.quantity);
+
+    // 6. Popular Add-ons Analysis
+    const addonMap = {};
+    curValidOrders.forEach(o => {
+      let addonsList = [];
+      try {
+        addonsList = typeof o.add_ons === 'string' ? JSON.parse(o.add_ons) : (o.add_ons || []);
+      } catch (e) {}
+
+      if (Array.isArray(addonsList)) {
+        addonsList.forEach(ao => {
+          const name = ao.add_on_name || ao.name || 'Extra Add-on';
+          const qty = Number(ao.quantity || 1);
+          const subtotal = Number(ao.subtotal || (qty * Number(ao.unit_price || 0)));
+          if (!addonMap[name]) {
+            addonMap[name] = { name, quantity: 0, revenue: 0 };
+          }
+          addonMap[name].quantity += qty;
+          addonMap[name].revenue += subtotal;
+        });
+      }
+    });
+
+    const popularAddons = Object.values(addonMap).sort((a, b) => b.quantity - a.quantity);
+
+    // 7. Hourly Peak Demand Breakdown
+    const hourlyCounts = Array(24).fill(0);
+    curValidOrders.forEach(o => {
+      const dt = new Date(o.created_at);
+      const hr = dt.getHours();
+      if (hr >= 0 && hr < 24) {
+        hourlyCounts[hr]++;
+      }
+    });
+
+    let peakHourIndex = 8; // Default 8 AM
+    let maxHourlyCount = 0;
+    hourlyCounts.forEach((cnt, hr) => {
+      if (cnt > maxHourlyCount) {
+        maxHourlyCount = cnt;
+        peakHourIndex = hr;
+      }
+    });
+
+    const formatHour = (h) => {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      const nextH = (h + 1) % 12 === 0 ? 12 : (h + 1) % 12;
+      const nextAmpm = (h + 1) >= 12 ? 'PM' : 'AM';
+      return `${displayH}:00 ${ampm} – ${nextH}:00 ${nextAmpm}`;
+    };
+
+    const peakDemandWindowStr = formatHour(peakHourIndex);
+
+    // 8. Algorithmic Smart Alerts & Explainable Business Recommendations
+    const smartAlerts = [];
+    const recommendations = [];
+
+    // Alert: High Sales Growth
+    if (salesGrowthPct >= 15) {
+      smartAlerts.push({
+        type: 'SUCCESS',
+        icon: '📈',
+        message: `Today's sales volume is ${salesGrowthPct}% higher than the previous period!`
+      });
+    } else if (salesGrowthPct <= -15 && curOrderCount > 0) {
+      smartAlerts.push({
+        type: 'WARNING',
+        icon: '📉',
+        message: `Sales volume is currently ${Math.abs(salesGrowthPct)}% lower than the comparison period.`
+      });
+    }
+
+    // Alert: High Refunds
+    if (curRefundTotal > 0 && curSales > 0 && (curRefundTotal / curSales) > 0.05) {
+      smartAlerts.push({
+        type: 'DANGER',
+        icon: '⚠️',
+        message: `Refund total (₹${curRefundTotal}) exceeds 5% of gross sales for this period.`
+      });
+    }
+
+    // Recommendation 1: Prepare More Top Seller
+    if (bestSellers.length > 0) {
+      const topFood = bestSellers[0];
+      const sharePct = curOrderCount > 0 ? Math.round((topFood.quantity / curValidOrders.length) * 100) : 0;
+      recommendations.push({
+        title: `Prepare More ${topFood.name}`,
+        suggested_action: `Consider increasing tomorrow's kitchen preparation quantity for ${topFood.name}.`,
+        reason: `${topFood.name} generated ${topFood.quantity} orders (₹${topFood.revenue.toLocaleString('en-IN')}) in this period.`,
+        confidence: sharePct > 40 ? 'High' : 'Medium'
+      });
+    }
+
+    // Recommendation 2: Peak Demand Preparation
+    if (maxHourlyCount > 0) {
+      recommendations.push({
+        title: `Pre-Prepare Items Before ${peakDemandWindowStr.split('–')[0].trim()}`,
+        suggested_action: `Kitchen receives peak ordering volume during ${peakDemandWindowStr}. Pre-cook popular items before peak hours.`,
+        reason: `${maxHourlyCount} orders were placed during the ${peakDemandWindowStr} window.`,
+        confidence: maxHourlyCount >= 5 ? 'High' : 'Medium'
+      });
+    }
+
+    // Recommendation 3: Add-on Promotion
+    if (popularAddons.length > 0) {
+      const topAddon = popularAddons[0];
+      recommendations.push({
+        title: `Promote ${topAddon.name}`,
+        suggested_action: `Feature ${topAddon.name} prominently during checkout to increase average order value.`,
+        reason: `${topAddon.name} was added to ${topAddon.quantity} orders generating ₹${topAddon.revenue.toLocaleString('en-IN')}.`,
+        confidence: 'Medium'
+      });
+    }
+
+    // 9. Tomorrow's Demand Estimate (Forecast)
+    const demandForecast = bestSellers.slice(0, 4).map(item => {
+      const avgDaily = Math.ceil(item.quantity / (range === '30days' ? 30 : range === '7days' ? 7 : 1));
+      const minEst = Math.max(5, Math.floor(avgDaily * 0.9));
+      const maxEst = Math.ceil(avgDaily * 1.25);
+      return {
+        name: item.name,
+        estimated_range: `${minEst}–${maxEst} portions`,
+        daily_average: avgDaily
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        range,
+        period_label: range === 'yesterday' ? 'Yesterday' : range === '7days' ? 'Last 7 Days' : range === '30days' ? 'Last 30 Days' : 'Today',
+        last_updated: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+        kpis: {
+          sales: { current: curSales, previous: prevSales, growth_pct: salesGrowthPct },
+          orders: { current: curOrderCount, previous: prevOrderCount, growth_pct: orderGrowthPct },
+          new_customers: { current: curNewCustomers, previous: prevNewCustomers, growth_pct: customerGrowthPct },
+          refunds: { current: curRefundTotal, count: curRefundCount, pending: pendingRefundsCount, failed: failedRefundsCount },
+          aov: { current: curAov, previous: prevAov, growth_pct: aovGrowthPct },
+          peak_demand: { window: peakDemandWindowStr, count: maxHourlyCount }
+        },
+        best_sellers: bestSellers,
+        popular_addons: popularAddons,
+        hourly_demand: hourlyCounts.map((cnt, hr) => ({ hour: hr, label: `${hr}:00`, count: cnt })),
+        customer_retention: {
+          new_customers: curNewCustomers,
+          active_customers: orderingCustIds.length,
+          repeat_customers: repeatCustomersCount,
+          repeat_order_rate_pct: repeatOrderRatePct
+        },
+        payment_overview: {
+          successful: successfulPayCount,
+          pending: pendingPayCount,
+          failed: failedPayCount
+        },
+        smart_alerts: smartAlerts,
+        recommendations: recommendations,
+        demand_forecast: demandForecast
+      }
+    });
+  } catch (err) {
+    console.error('Business Copilot Analytics Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to generate Business Copilot analytics.' });
+  }
+});
+
+// =========================================================================
+// 🛒 SMART CART OPTIMIZER MODULE
+// =========================================================================
+
+// GET /api/smart-cart-offers - Fetch active smart cart offers for customer cart evaluation
+app.get('/api/smart-cart-offers', async (req, res) => {
+  try {
+    const oRes = await db.query(
+      `SELECT * FROM smart_cart_offers WHERE status = 'Active' ORDER BY discount_amount DESC, min_quantity ASC;`
+    );
+    res.json({ success: true, data: oRes.rows || [] });
+  } catch (err) {
+    console.error('Fetch Smart Cart Offers Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch smart cart offers.' });
+  }
+});
+
+// GET /api/owner/smart-cart-offers - Fetch all smart cart offers for owner management
+app.get('/api/owner/smart-cart-offers', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const oRes = await db.query(`SELECT * FROM smart_cart_offers ORDER BY created_at DESC;`);
+    res.json({ success: true, data: oRes.rows || [] });
+  } catch (err) {
+    console.error('Fetch Owner Smart Cart Offers Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch smart cart offers.' });
+  }
+});
+
+// POST /api/owner/smart-cart-offers - Owner Create New Smart Cart Offer
+app.post('/api/owner/smart-cart-offers', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { offer_name, min_quantity, eligible_item_name, discount_amount, status } = req.body;
+
+    if (!offer_name || !eligible_item_name || !min_quantity || !discount_amount) {
+      return res.status(400).json({ success: false, message: 'Please provide Offer Name, Eligible Item, Min Quantity, and Discount Amount.' });
+    }
+
+    const minQty = Math.max(1, parseInt(min_quantity, 10));
+    const discAmount = Math.max(0.5, parseFloat(discount_amount));
+    const offerId = 'sco_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `INSERT INTO smart_cart_offers (id, offer_name, min_quantity, eligible_item_name, discount_amount, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7);`,
+      [offerId, offer_name.trim(), minQty, eligible_item_name.trim(), discAmount, status || 'Active', nowIso]
+    );
+
+    res.json({ success: true, message: 'Smart Cart Offer created successfully!', data: { id: offerId } });
+  } catch (err) {
+    console.error('Create Smart Cart Offer Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to create smart cart offer.' });
+  }
+});
+
+// PATCH /api/owner/smart-cart-offers/:id - Owner Update / Toggle Smart Cart Offer
+app.patch('/api/owner/smart-cart-offers/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { offer_name, min_quantity, eligible_item_name, discount_amount, status } = req.body;
+
+    const oRes = await db.query(`SELECT * FROM smart_cart_offers WHERE id = $1;`, [id]);
+    if (!oRes.rows || oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Smart Cart Offer not found.' });
+    }
+    const offer = oRes.rows[0];
+
+    const newName = offer_name !== undefined ? offer_name.trim() : offer.offer_name;
+    const newMinQty = min_quantity !== undefined ? Math.max(1, parseInt(min_quantity, 10)) : offer.min_quantity;
+    const newItemName = eligible_item_name !== undefined ? eligible_item_name.trim() : offer.eligible_item_name;
+    const newDiscount = discount_amount !== undefined ? Math.max(0.5, parseFloat(discount_amount)) : offer.discount_amount;
+    const newStatus = status !== undefined ? status : offer.status;
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `UPDATE smart_cart_offers SET offer_name = $1, min_quantity = $2, eligible_item_name = $3, discount_amount = $4, status = $5, updated_at = $6 WHERE id = $7;`,
+      [newName, newMinQty, newItemName, newDiscount, newStatus, nowIso, id]
+    );
+
+    res.json({ success: true, message: 'Smart Cart Offer updated successfully.' });
+  } catch (err) {
+    console.error('Update Smart Cart Offer Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update smart cart offer.' });
+  }
+});
+
+// DELETE /api/owner/smart-cart-offers/:id - Owner Delete Smart Cart Offer
+app.delete('/api/owner/smart-cart-offers/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query(`DELETE FROM smart_cart_offers WHERE id = $1;`, [id]);
+    res.json({ success: true, message: 'Smart Cart Offer deleted.' });
+  } catch (err) {
+    console.error('Delete Smart Cart Offer Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete smart cart offer.' });
+  }
+});
+
+// POST /api/smart-cart-analytics/track - Track Impression or Recommendation Acceptance
+app.post('/api/smart-cart-analytics/track', async (req, res) => {
+  try {
+    const { event_type, offer_id } = req.body;
+    if (!['IMPRESSION', 'ACCEPTED'].includes(event_type)) {
+      return res.status(400).json({ success: false, message: 'Invalid event_type.' });
+    }
+
+    const eventId = 'sca_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    const custId = req.user ? req.user.id : null;
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `INSERT INTO smart_cart_analytics (id, event_type, offer_id, customer_id, created_at)
+       VALUES ($1, $2, $3, $4, $5);`,
+      [eventId, event_type, offer_id || null, custId, nowIso]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Track Smart Cart Analytics Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to track analytics.' });
+  }
+});
+
+// GET /api/owner/smart-cart-offers/analytics - Owner Read-Only Performance Analytics
+app.get('/api/owner/smart-cart-offers/analytics', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const impRes = await db.query(`SELECT COUNT(*) as c FROM smart_cart_analytics WHERE event_type = 'IMPRESSION';`);
+    const accRes = await db.query(`SELECT COUNT(*) as c FROM smart_cart_analytics WHERE event_type = 'ACCEPTED';`);
+
+    const impressions = Number(impRes.rows[0]?.c || 0);
+    const accepted = Number(accRes.rows[0]?.c || 0);
+    const conversionRatePct = impressions > 0 ? Math.round((accepted / impressions) * 100 * 10) / 10 : 0;
+
+    const acceptedOffersRes = await db.query(`
+      SELECT o.discount_amount, o.min_quantity
+      FROM smart_cart_analytics a
+      JOIN smart_cart_offers o ON a.offer_id = o.id
+      WHERE a.event_type = 'ACCEPTED';
+    `);
+
+    let totalSavings = 0;
+    let itemsSold = 0;
+    (acceptedOffersRes.rows || []).forEach(row => {
+      totalSavings += Number(row.discount_amount || 0);
+      itemsSold += Number(row.min_quantity || 1);
+    });
+
+    res.json({
+      success: true,
+      data: {
+        impressions,
+        accepted,
+        conversion_rate_pct: conversionRatePct,
+        items_sold: itemsSold,
+        total_savings: totalSavings
+      }
+    });
+  } catch (err) {
+    console.error('Smart Cart Analytics Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch analytics.' });
+  }
+});
+
+// =========================================================================
+// 🤖 AI ORDER ASSISTANT MODULE
+// =========================================================================
+
+// POST /api/customer/ai-order-assistant - Natural Language Recommendation Engine
+app.post('/api/customer/ai-order-assistant', async (req, res) => {
+  try {
+    let rawPrompt = (req.body.prompt || '').toString().trim();
+    if (!rawPrompt) {
+      return res.status(400).json({ success: false, message: 'Please type your request (e.g. Breakfast for 3 people under ₹200).' });
+    }
+
+    // Security & Prompt Injection Guardrails
+    rawPrompt = rawPrompt.substring(0, 300); // Limit length
+    const injectionPatterns = [/ignore previous/i, /system prompt/i, /drop table/i, /database/i, /admin/i, /secret/i];
+    for (let p of injectionPatterns) {
+      if (p.test(rawPrompt)) {
+        return res.json({
+          success: true,
+          message: "🤖 I am focused strictly on recommending food from our delicious tiffin menu. How can I help you order today?",
+          options: []
+        });
+      }
+    }
+
+    // 1. Extract Budget
+    let budget = null;
+    const budgetMatch = rawPrompt.match(/(?:under|within|for|budget|\u20b9|rs\.?|in)?\s*(\d{2,4})/i);
+    if (budgetMatch) {
+      const parsedB = parseInt(budgetMatch[1], 10);
+      if (parsedB >= 30 && parsedB <= 2000) budget = parsedB;
+    }
+
+    // 2. Extract People Count
+    let people = 2; // default 2 people
+    const peopleMatch = rawPrompt.match(/(\d+)\s*(?:people|persons|pax|members|friends)/i);
+    if (peopleMatch) {
+      people = Math.min(15, Math.max(1, parseInt(peopleMatch[1], 10)));
+    }
+
+    // 3. Retrieve Live Available Menu & Add-ons from DB
+    const tiffinsRes = await db.query(`SELECT * FROM tiffins WHERE is_available = true ORDER BY price ASC;`);
+    const addonsRes = await db.query(`SELECT * FROM add_ons WHERE available = true AND enabled = true ORDER BY price ASC;`);
+
+    const availableTiffins = tiffinsRes.rows || [];
+    const availableAddons = addonsRes.rows || [];
+
+    if (availableTiffins.length === 0) {
+      return res.json({
+        success: false,
+        message: "🏪 The restaurant menu is currently undergoing updates. Please try again shortly."
+      });
+    }
+
+    // Check if requested budget is too low for the requested headcount
+    const minPrice = availableTiffins[0]?.price || 30;
+    const minRequiredBudget = minPrice * Math.ceil(people * 0.75);
+
+    if (budget !== null && budget < minRequiredBudget) {
+      return res.json({
+        success: true,
+        message: `🤖 I couldn't find a suitable combination for ${people} people under ₹${budget}.`,
+        suggested_budget: Math.ceil(minRequiredBudget / 10) * 10,
+        options: []
+      });
+    }
+
+    // 4. Deterministic Combination Generator
+    const options = [];
+    const effectiveBudget = budget || 500;
+
+    // Option 1: Idly + Vada Combo
+    const idly = availableTiffins.find(t => t.name.toLowerCase().includes('idly')) || availableTiffins[0];
+    const vada = availableTiffins.find(t => t.name.toLowerCase().includes('vada')) || availableTiffins[1] || availableTiffins[0];
+
+    if (idly && vada) {
+      const idlyQty = Math.max(2, people * 2);
+      const vadaQty = Math.max(1, people);
+      const subtotal = (idly.price * idlyQty) + (vada.price * vadaQty);
+
+      if (subtotal <= effectiveBudget) {
+        options.push({
+          id: 'ai_opt_1',
+          title: '🥇 Best Value Combination',
+          total: subtotal,
+          items: [
+            { id: idly.id, name: idly.name, quantity: idlyQty, price: Number(idly.price), image: idly.image_url },
+            { id: vada.id, name: vada.name, quantity: vadaQty, price: Number(vada.price), image: vada.image_url }
+          ],
+          explanation: `Generous breakfast for ${people} people (${idlyQty} ${idly.name} & ${vadaQty} ${vada.name}).`
+        });
+      }
+    }
+
+    // Option 2: Dosa & Tiffin Variety
+    const dosa = availableTiffins.find(t => t.name.toLowerCase().includes('dosa')) || availableTiffins[availableTiffins.length - 1];
+    if (dosa && idly) {
+      const dosaQty = Math.max(1, Math.floor(people * 0.8));
+      const idlyQty2 = Math.max(2, Math.floor(people * 1.2));
+      const subtotal = (dosa.price * dosaQty) + (idly.price * idlyQty2);
+
+      if (subtotal <= effectiveBudget) {
+        options.push({
+          id: 'ai_opt_2',
+          title: '🥈 Balanced Variety Combo',
+          total: subtotal,
+          items: [
+            { id: dosa.id, name: dosa.name, quantity: dosaQty, price: Number(dosa.price), image: dosa.image_url },
+            { id: idly.id, name: idly.name, quantity: idlyQty2, price: Number(idly.price), image: idly.image_url }
+          ],
+          explanation: `Delicious mix of crispy ${dosa.name} (${dosaQty}) and soft ${idly.name} (${idlyQty2}).`
+        });
+      }
+    }
+
+    // Option 3: Budget Meal
+    const cheapestItem = availableTiffins[0];
+    if (cheapestItem) {
+      const cheapQty = Math.max(2, Math.ceil(people * 1.5));
+      let subtotal = cheapestItem.price * cheapQty;
+      const opt3Items = [{ id: cheapestItem.id, name: cheapestItem.name, quantity: cheapQty, price: Number(cheapestItem.price), image: cheapestItem.image_url }];
+
+      if (availableAddons.length > 0 && subtotal + availableAddons[0].price <= effectiveBudget) {
+        const extra = availableAddons[0];
+        opt3Items.push({ id: extra.id, name: extra.name, quantity: 1, price: Number(extra.price), image: '/images/idly_sambar.png' });
+        subtotal += Number(extra.price);
+      }
+
+      if (subtotal <= effectiveBudget) {
+        options.push({
+          id: 'ai_opt_3',
+          title: '🥉 Budget Saver Meal',
+          total: subtotal,
+          items: opt3Items,
+          explanation: `Economical meal for ${people} people under ₹${effectiveBudget}.`
+        });
+      }
+    }
+
+    // Log Query into Analytics
+    const eventId = 'aia_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    const custId = req.user ? req.user.id : null;
+    const nowIso = new Date().toISOString();
+    await db.query(
+      `INSERT INTO ai_assistant_analytics (id, query_text, budget, people_count, customer_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6);`,
+      [eventId, rawPrompt, budget, people, custId, nowIso]
+    ).catch(() => {});
+
+    res.json({
+      success: true,
+      message: `🤖 I found ${options.length} great meal option${options.length !== 1 ? 's' : ''} for ${people} people${budget ? ` under ₹${budget}` : ''}:`,
+      options
+    });
+  } catch (err) {
+    console.error('AI Order Assistant Error:', err);
+    res.status(500).json({ success: false, message: 'AI Order Assistant is currently unavailable. You can continue ordering from our menu.' });
+  }
+});
+
+// GET /api/owner/ai-assistant/analytics - Owner Read-Only Analytics
+app.get('/api/owner/ai-assistant/analytics', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const totalQueriesRes = await db.query(`SELECT COUNT(*) as c FROM ai_assistant_analytics;`);
+    const acceptedRes = await db.query(`SELECT COUNT(*) as c FROM ai_assistant_analytics WHERE selected_option_id IS NOT NULL;`);
+    const avgBudgetRes = await db.query(`SELECT AVG(budget) as b FROM ai_assistant_analytics WHERE budget IS NOT NULL;`);
+
+    const totalQueries = Number(totalQueriesRes.rows[0]?.c || 0);
+    const acceptedCount = Number(acceptedRes.rows[0]?.c || 0);
+    const conversionRatePct = totalQueries > 0 ? Math.round((acceptedCount / totalQueries) * 100 * 10) / 10 : 0;
+    const avgBudget = Math.round(Number(avgBudgetRes.rows[0]?.b || 180));
+
+    res.json({
+      success: true,
+      data: {
+        total_queries: totalQueries,
+        accepted_count: acceptedCount,
+        conversion_rate_pct: conversionRatePct,
+        avg_requested_budget: avgBudget
+      }
+    });
+  } catch (err) {
+    console.error('AI Assistant Analytics Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch AI assistant analytics.' });
   }
 });
 

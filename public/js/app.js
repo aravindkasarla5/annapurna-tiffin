@@ -197,6 +197,7 @@ class TiffinApp {
   async init() {
     console.log('Initializing Annapurna Tiffin Center App...');
     this.bindGlobalQuickActionListeners();
+    this.startLivePrepTicker();
 
     // Restore session and token from localStorage if available
     const savedToken = localStorage.getItem('tiffin_token') || sessionStorage.getItem('tiffin_token');
@@ -306,6 +307,22 @@ class TiffinApp {
           const msg = JSON.parse(event.data);
           if (msg && msg.type === 'NOTIFICATION' && msg.data) {
             this.handleRealTimeNotificationReceived(msg.data);
+          } else if (msg && (msg.type === 'VOTE_UPDATE' || msg.type === 'POLL_CREATED' || msg.type === 'POLL_CLOSED')) {
+            if (this.activeView === 'secCustomerHome') this.loadActivePoll();
+            if (this.activeView === 'secOwnerVoting') this.loadOwnerPolls();
+          } else if (msg && msg.type === 'SECURITY_ALERT') {
+            this.showToast(`🚨 Security Alert (${msg.data.risk_level || 'HIGH'}): ${msg.data.event_type || 'Suspicious Activity'}`, 'warning');
+            if (this.activeView === 'secOwnerSecurity') this.loadSecurityDashboard();
+          } else if (msg && msg.type === 'REFUND_UPDATE') {
+            if (this.activeView === 'secOwnerRefunds') this.loadOwnerRefundsDashboard();
+            if (this.activeView === 'secCustomerOrders') this.renderOrders();
+            if (this.currentActiveCustomerRefundId && msg.data && msg.data.refund_id === this.currentActiveCustomerRefundId) {
+              this.openCustomerRefundModal(this.currentActiveCustomerRefundId);
+            }
+          } else if (msg && msg.type === 'PREPARATION_TIME_UPDATE') {
+            if (this.activeView === 'secQueueProgress') this.fetchQueueProgress();
+            if (this.activeView === 'secCustomerOrders') this.fetchOrders();
+            if (this.activeView === 'secOwnerOrders') this.renderOrders();
           }
         } catch (err) {
           console.error('[Real-Time WS] Message parse error:', err);
@@ -1820,12 +1837,15 @@ class TiffinApp {
       // 1. Bell Icon (Visible ONLY when logged in)
       if (btnNotif) btnNotif.classList.remove('hidden');
 
-      // 2. Cart Icon (Visible ONLY for customer)
+      // 2. Cart Icon & AI Assistant (Visible ONLY for customer)
+      const btnAiHeader = document.getElementById('btnAiAssistantHeader');
       if (btnCart) {
         if (this.currentUser.role === 'CUSTOMER') {
           btnCart.classList.remove('hidden');
+          if (btnAiHeader) btnAiHeader.classList.remove('hidden');
         } else {
           btnCart.classList.add('hidden');
+          if (btnAiHeader) btnAiHeader.classList.add('hidden');
         }
       }
 
@@ -2204,15 +2224,21 @@ class TiffinApp {
           const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read && n.target_role === 'OWNER').length;
           desktopNav.innerHTML = `
             <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
-            <a class="nav-item ${this.activeView === 'secOwnerMemberCardApprovals' ? 'active' : ''}" onclick="app.switchView('secOwnerMemberCardApprovals')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 🍽️ Member Card Approvals</a>
+            <a class="nav-item ${this.activeView === 'secOwnerVoting' ? 'active' : ''}" onclick="app.switchView('secOwnerVoting')">🗳️ Menu Voting</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSecurity' ? 'active' : ''}" onclick="app.switchView('secOwnerSecurity')"><i class="fa-solid fa-shield-halved" style="color: #40C4FF;"></i> 🛡️ Security Center</a>
+            <a class="nav-item ${this.activeView === 'secOwnerRefunds' ? 'active' : ''}" onclick="app.switchView('secOwnerRefunds')">💸 Refunds</a>
+            <a class="nav-item ${this.activeView === 'secOwnerAddons' ? 'active' : ''}" onclick="app.switchView('secOwnerAddons')">🥘 Add-ons</a>
+            <a class="nav-item ${this.activeView === 'secOwnerBusinessCopilot' ? 'active' : ''}" onclick="app.switchView('secOwnerBusinessCopilot')"><i class="fa-solid fa-brain" style="color: #40C4FF;"></i> 🧠 Copilot</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSmartOffers' ? 'active' : ''}" onclick="app.switchView('secOwnerSmartOffers')"><i class="fa-solid fa-tags" style="color: #4CAF50;"></i> 🛒 Combo Offers</a>
+            <a class="nav-item ${this.activeView === 'secOwnerMemberCardApprovals' ? 'active' : ''}" onclick="app.switchView('secOwnerMemberCardApprovals')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 🍽️ Member Cards</a>
             <a class="nav-item ${this.activeView === 'secOwnerTiffins' ? 'active' : ''}" onclick="app.switchView('secOwnerTiffins')"><i class="fa-solid fa-utensils"></i> Manage Tiffins</a>
-            <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders Management</a>
-            <a class="nav-item ${this.activeView === 'secOwnerCustomers' ? 'active' : ''}" onclick="app.switchView('secOwnerCustomers')"><i class="fa-solid fa-users-gear" style="color: var(--accent-gold);"></i> Customer Accounts</a>
-            <a class="nav-item" onclick="app.toggleNotificationsTray()"><i class="fa-solid fa-bell" style="color: var(--accent-gold);"></i> Notifications ${unreadNotifCount > 0 ? `<span class="sidebar-badge-count" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px;">${unreadNotifCount}</span>` : ''}</a>
-            <a class="nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Customer Reviews</a>
-            <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')"><i class="fa-solid fa-wallet"></i> Payment History</a>
-            <a class="nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')"><i class="fa-solid fa-headset"></i> Support Inbox</a>
-            <a class="nav-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.switchView('secOwnerSettings')">${u && u.profile_photo ? `<img src="${u.profile_photo}" alt="Settings" style="width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px;">` : `<i class="fa-solid fa-sliders"></i>`} Business Settings</a>
+            <a class="nav-item ${this.activeView === 'secOwnerOrders' ? 'active' : ''}" onclick="app.switchView('secOwnerOrders')"><i class="fa-solid fa-list-check"></i> Orders</a>
+            <a class="nav-item ${this.activeView === 'secOwnerCustomers' ? 'active' : ''}" onclick="app.switchView('secOwnerCustomers')"><i class="fa-solid fa-users-gear" style="color: var(--accent-gold);"></i> Customers</a>
+            <a class="nav-item" onclick="app.toggleNotificationsTray()"><i class="fa-solid fa-bell" style="color: var(--accent-gold);"></i> Alerts ${unreadNotifCount > 0 ? `<span class="sidebar-badge-count" style="background: var(--primary); color: #FFF; font-size: 0.72rem; padding: 2px 7px; border-radius: 10px; margin-left: 6px;">${unreadNotifCount}</span>` : ''}</a>
+            <a class="nav-item ${this.activeView === 'secOwnerReviews' ? 'active' : ''}" onclick="app.switchView('secOwnerReviews')"><i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Reviews</a>
+            <a class="nav-item ${this.activeView === 'secOwnerPayments' ? 'active' : ''}" onclick="app.switchView('secOwnerPayments')"><i class="fa-solid fa-wallet"></i> Payments</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSupport' ? 'active' : ''}" onclick="app.switchView('secOwnerSupport')"><i class="fa-solid fa-headset"></i> Support</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSettings' ? 'active' : ''}" onclick="app.switchView('secOwnerSettings')">${u && u.profile_photo ? `<img src="${u.profile_photo}" alt="Settings" style="width: 18px; height: 18px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px;">` : `<i class="fa-solid fa-sliders"></i>`} Settings</a>
           `;
         }
     }
@@ -2603,6 +2629,51 @@ class TiffinApp {
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Dashboard & Analytics</strong>
               <span class="drawer-item-sub">Real-time sales & order stats</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerVoting' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerVoting');">
+            <div class="drawer-icon-box gold" style="background: rgba(234, 162, 33, 0.2); color: var(--accent-gold);"><i class="fa-solid fa-check-to-slot"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Menu Voting 🗳️</strong>
+              <span class="drawer-item-sub">Tomorrow's Special Polls</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerSecurity' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerSecurity');">
+            <div class="drawer-icon-box blue" style="background: rgba(64, 196, 255, 0.2); color: #40C4FF;"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Security Center 🛡️</strong>
+              <span class="drawer-item-sub">Anti-Fraud & Audit Logs</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerRefunds' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerRefunds');">
+            <div class="drawer-icon-box orange" style="background: rgba(234, 162, 33, 0.2); color: var(--accent-gold);"><i class="fa-solid fa-money-bill-transfer"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Refund Management 💸</strong>
+              <span class="drawer-item-sub">Track & Process Refunds</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerAddons' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerAddons');">
+            <div class="drawer-icon-box orange" style="background: rgba(234, 162, 33, 0.2); color: var(--accent-gold);"><i class="fa-solid fa-bowl-food"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Add-ons Management 🥘</strong>
+              <span class="drawer-item-sub">Manage Extra Food Items & Prices</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerBusinessCopilot' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerBusinessCopilot');">
+            <div class="drawer-icon-box blue" style="background: rgba(33, 150, 243, 0.2); color: #2196F3;"><i class="fa-solid fa-brain"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Business Copilot 🧠</strong>
+              <span class="drawer-item-sub">AI Insights & Best Sellers</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
@@ -3046,7 +3117,10 @@ class TiffinApp {
     }
 
     // Trigger render logic per view
-    if (this.activeView === 'secCustomerHome') this.renderMenu();
+    if (this.activeView === 'secCustomerHome') {
+      this.renderMenu();
+      this.loadActivePoll();
+    }
     if (this.activeView === 'secCustomerOrders') this.renderOrders();
     if (this.activeView === 'secQueueProgress') this.fetchQueueProgress();
     if (this.activeView === 'secCustomerFavorites') {
@@ -3078,6 +3152,12 @@ class TiffinApp {
       this.fetchStats();
       this.renderOrders();
     }
+    if (this.activeView === 'secOwnerVoting') this.loadOwnerPolls();
+    if (this.activeView === 'secOwnerSecurity') this.loadSecurityDashboard();
+    if (this.activeView === 'secOwnerRefunds') this.loadOwnerRefundsDashboard();
+    if (this.activeView === 'secOwnerAddons') this.loadOwnerAddonsDashboard();
+    if (this.activeView === 'secOwnerBusinessCopilot') this.loadBusinessCopilotDashboard();
+    if (this.activeView === 'secOwnerSmartOffers') this.loadOwnerSmartOffers();
     if (this.activeView === 'secOwnerMemberCardApprovals') {
       this.loadOwnerMemberApprovals();
     }
@@ -4081,6 +4161,7 @@ class TiffinApp {
     if (elCheckoutGrand) elCheckoutGrand.innerText = `₹${grandTotal}`;
 
     this.updatePhonePeAmountDisplay();
+    this.evaluateSmartCartOptimizer();
   }
 
   updateCartItemQty(itemId, delta) {
@@ -5994,6 +6075,24 @@ class TiffinApp {
           </div>
         </div>
 
+        <!-- 4. Live Preparation Time -->
+        ${(() => {
+          const prepInfo = this.getPrepTimerDetails(data.estimated_ready_at, data.order_status);
+          return `
+            <div style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.15), rgba(217, 83, 30, 0.08)); border: 1.5px solid var(--accent-gold); border-radius: 16px; padding: 1.25rem; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
+              <div style="font-size: 0.8rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">
+                ⏱️ Estimated Ready
+              </div>
+              <div class="live-prep-timer-val" data-ready-at="${data.estimated_ready_at || ''}" data-status="${data.order_status}" data-order-id="${data.order_id || ''}" style="font-size: 1.9rem; font-weight: 900; color: #FFF; letter-spacing: 0.5px; margin-bottom: 4px;">
+                ${prepInfo.text}
+              </div>
+              <div id="prepExpectedTime_${data.order_id || ''}" style="font-size: 0.78rem; color: var(--accent-gold); font-weight: 700;">
+                🕘 Expected by ${prepInfo.expectedStr}
+              </div>
+            </div>
+          `;
+        })()}
+
       </div>
 
       ${timelineDotsHtml}
@@ -6217,6 +6316,27 @@ class TiffinApp {
                 <button class="co-row-btn-action ready" onclick="app.updateOrderStatus('${order.id}', 'Ready', this)">
                   <i class="fa-solid fa-bell-concierge"></i> Mark Ready for Serving
                 </button>
+              ` : ''}
+
+              ${(isReceived || isPreparing) ? `
+                <!-- ⏱️ KITCHEN LIVE PREPARATION TIME CONTROL -->
+                <div style="margin-bottom: 8px; padding: 10px; background: rgba(0,0,0,0.3); border: 1.5px dashed var(--accent-gold); border-radius: 10px;">
+                  <div style="font-size: 0.78rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                    <span><i class="fa-solid fa-stopwatch"></i> Prep Time: <strong>${order.preparation_minutes || 15}m</strong></span>
+                    <span style="font-size: 0.7rem; color: #FFF;">Expected ~ ${order.estimated_ready_at ? new Date(order.estimated_ready_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'Soon'}</span>
+                  </div>
+                  <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px;">
+                    ${[5, 10, 15, 20, 30].map(m => `
+                      <button type="button" class="prep-preset-btn" onclick="app.updateOrderPreparationTime('${order.id}', ${m})">${m}m</button>
+                    `).join('')}
+                  </div>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <input type="number" min="1" max="180" value="${order.preparation_minutes || 15}" id="txtPrepTime_${order.id}" class="form-control" style="padding: 4px 8px; font-size: 0.8rem; text-align: center; height: 30px; width: 70px;">
+                    <button type="button" class="btn-secondary-outline" onclick="app.updateOrderPreparationTime('${order.id}')" style="padding: 4px 10px; font-size: 0.78rem; height: 30px; white-space: nowrap; flex: 1;">
+                      Set Time
+                    </button>
+                  </div>
+                </div>
               ` : ''}
 
               ${isReady ? `
@@ -13371,6 +13491,2530 @@ class TiffinApp {
     } finally {
       this.isReapprovingMemberApp = false;
     }
+  }
+
+  // =========================================================================
+  // CUSTOMER MENU VOTING CLIENT MODULE ("Choose Tomorrow's Special")
+  // =========================================================================
+
+  ownerPollFilter = 'ALL';
+  selectedPollOptionId = null;
+
+  async loadActivePoll() {
+    try {
+      const container = document.getElementById('customerVotingContainer');
+      if (!container) return;
+
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/active`, { isBackgroundPoll: true });
+      const json = await res.json();
+
+      if (!json.success || !json.poll) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'block';
+      this.renderCustomerVotingCard(json.poll, json.has_voted, json.voted_option_id);
+    } catch (err) {
+      console.error('Error loading active poll:', err);
+    }
+  }
+
+  renderCustomerVotingCard(poll, hasVoted = false, votedOptionId = null) {
+    const container = document.getElementById('customerVotingContainer');
+    if (!container || !poll) return;
+
+    const optionsHtml = poll.options.map((opt) => {
+      const isSelected = votedOptionId === opt.id || this.selectedPollOptionId === opt.id;
+      const isWinner = poll.winner_food_id === opt.food_id;
+
+      return `
+        <div class="poll-option-card ${isSelected ? 'selected' : ''} ${hasVoted ? 'voted-mode' : ''}"
+             onclick="${!hasVoted && poll.status === 'ACTIVE' ? `app.selectVotingOption('${opt.id}')` : ''}"
+             style="background: ${isSelected ? 'rgba(234, 162, 33, 0.15)' : 'rgba(255,255,255,0.04)'};
+                    border: 2px solid ${isSelected ? 'var(--accent-gold)' : 'var(--border-color)'};
+                    border-radius: var(--radius-md); padding: 12px 16px; transition: all 0.2s ease; cursor: ${!hasVoted && poll.status === 'ACTIVE' ? 'pointer' : 'default'}; margin-bottom: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+              ${!hasVoted && poll.status === 'ACTIVE' ? `
+                <input type="radio" name="pollOptionRadio" id="optRadio_${opt.id}" value="${opt.id}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: var(--accent-gold);">
+              ` : ''}
+              ${opt.image ? `<img src="${opt.image}" alt="${opt.food_name}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : ''}
+              <div>
+                <h4 style="margin: 0 0 2px 0; font-size: 1rem; color: #FFF; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                  ${opt.food_name} ${isWinner ? '🏆' : ''}
+                </h4>
+                <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">${opt.description || 'Delicious South Indian special.'}</p>
+                <span style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">₹${opt.price}</span>
+              </div>
+            </div>
+
+            ${hasVoted || poll.status === 'CLOSED' || poll.status === 'COMPLETED' ? `
+              <div style="text-align: right; min-width: 70px;">
+                <span style="font-size: 1.1rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">${opt.percentage}%</span>
+                <div style="font-size: 0.72rem; color: var(--text-muted);">${opt.votes} vote${opt.votes === 1 ? '' : 's'}</div>
+              </div>
+            ` : ''}
+          </div>
+
+          ${hasVoted || poll.status === 'CLOSED' || poll.status === 'COMPLETED' ? `
+            <div style="width: 100%; background: rgba(255,255,255,0.1); height: 8px; border-radius: 4px; margin-top: 10px; overflow: hidden;">
+              <div style="width: ${opt.percentage}%; background: linear-gradient(90deg, var(--primary), var(--accent-gold)); height: 100%; transition: width 0.4s ease;"></div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    let actionBtnHtml = '';
+    if (!hasVoted && poll.status === 'ACTIVE') {
+      actionBtnHtml = `
+        <button type="button" class="btn-primary-block" id="btnSubmitCustomerVote" onclick="app.submitCustomerVote('${poll.id}')" style="width: 100%; margin-top: 1rem; padding: 12px;">
+          🗳️ Vote Now
+        </button>
+      `;
+    } else if (hasVoted) {
+      const votedOpt = poll.options.find(o => o.id === votedOptionId);
+      actionBtnHtml = `
+        <div style="margin-top: 1rem; padding: 10px 14px; background: rgba(76, 175, 80, 0.15); border: 1px solid #4CAF50; border-radius: 10px; text-align: center; color: #4CAF50; font-size: 0.88rem; font-weight: 700;">
+          ✅ Your vote has been recorded.${votedOpt ? ` You voted for <span style="color: #FFF;">${votedOpt.food_name}</span>.` : ''}
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      <div class="card" style="background: linear-gradient(135deg, rgba(234, 162, 33, 0.12), rgba(217, 83, 30, 0.08)); border: 1px solid var(--accent-gold); border-radius: var(--radius-lg); padding: 1.25rem; box-shadow: 0 8px 24px rgba(0,0,0,0.3);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 1rem; flex-wrap: wrap;">
+          <div>
+            <h3 style="margin: 0 0 4px 0; font-size: 1.15rem; font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 6px;">
+              🗳️ ${poll.question} 🍽️
+            </h3>
+            <p style="margin: 0; font-size: 0.82rem; color: var(--text-muted);">Which dish would you like to see as tomorrow's special?</p>
+          </div>
+          <span class="status-badge" style="background: ${poll.status === 'ACTIVE' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(239, 83, 80, 0.15)'}; color: ${poll.status === 'ACTIVE' ? '#4CAF50' : '#EF5350'}; border: 1px solid ${poll.status === 'ACTIVE' ? '#4CAF50' : '#EF5350'}; font-size: 0.75rem; padding: 4px 10px;">
+            ${poll.status === 'ACTIVE' ? '🟢 Voting Active' : '🔴 Voting Closed'}
+          </span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          ${optionsHtml}
+        </div>
+
+        ${actionBtnHtml}
+      </div>
+    `;
+  }
+
+  selectVotingOption(optionId) {
+    this.selectedPollOptionId = optionId;
+    const radios = document.getElementsByName('pollOptionRadio');
+    radios.forEach(r => {
+      r.checked = r.value === optionId;
+    });
+
+    const cards = document.querySelectorAll('.poll-option-card');
+    cards.forEach(c => {
+      c.style.borderColor = 'var(--border-color)';
+      c.style.background = 'rgba(255,255,255,0.04)';
+    });
+    const selectedRadio = document.getElementById(`optRadio_${optionId}`);
+    if (selectedRadio) {
+      selectedRadio.checked = true;
+      const card = selectedRadio.closest('.poll-option-card');
+      if (card) {
+        card.style.borderColor = 'var(--accent-gold)';
+        card.style.background = 'rgba(234, 162, 33, 0.15)';
+      }
+    }
+  }
+
+  async submitCustomerVote(pollId) {
+    if (!this.currentUser) {
+      this.openAuthModal('LOGIN');
+      return;
+    }
+
+    if (!this.selectedPollOptionId) {
+      const selectedRadio = document.querySelector('input[name="pollOptionRadio"]:checked');
+      if (selectedRadio) this.selectedPollOptionId = selectedRadio.value;
+    }
+
+    if (!this.selectedPollOptionId) {
+      this.showToast('Please select a food option before voting.', 'warning');
+      return;
+    }
+
+    try {
+      const btn = document.getElementById('btnSubmitCustomerVote');
+      if (btn) { btn.disabled = true; btn.innerText = 'Submitting Vote...'; }
+
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ option_id: this.selectedPollOptionId })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || '✅ Your vote has been recorded!', 'success');
+        this.renderCustomerVotingCard(json.poll, true, json.voted_option_id);
+      } else {
+        this.showToast(json.message || 'Failed to submit vote.', 'error');
+        if (btn) { btn.disabled = false; btn.innerText = '🗳️ Vote Now'; }
+      }
+    } catch (err) {
+      console.error('Submit vote error:', err);
+      this.showToast('Network error submitting vote.', 'error');
+    }
+  }
+
+
+  // =========================================================================
+  // OWNER MENU VOTING MANAGEMENT MODULE
+  // =========================================================================
+
+  async loadOwnerPolls() {
+    try {
+      const search = (document.getElementById('txtOwnerPollSearch')?.value || '').trim();
+      let url = `${API_BASE}/menu-voting/polls?status=${this.ownerPollFilter}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+
+      const res = await this.fetchWithAuth(url);
+      const json = await res.json();
+
+      const container = document.getElementById('ownerPollsContainer');
+      if (!container) return;
+
+      if (!json.success || !json.data || json.data.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-square-poll-vertical" style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 12px; display: block;"></i>
+            <h4 style="color: #FFF; margin-bottom: 4px;">No Menu Voting Polls Found</h4>
+            <p style="font-size: 0.85rem; margin-bottom: 1rem;">Create a poll to let customers choose tomorrow's special dish.</p>
+            <button class="btn-primary-block" onclick="app.openCreatePollModal()" style="width: auto; padding: 8px 20px; display: inline-flex; gap: 6px; align-items: center;">
+              <i class="fa-solid fa-plus"></i> Create Menu Vote
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = json.data.map(poll => this.renderOwnerPollCard(poll)).join('');
+    } catch (err) {
+      console.error('Error loading owner polls:', err);
+    }
+  }
+
+  filterOwnerPolls(status) {
+    this.ownerPollFilter = status;
+    const chips = ['chipPollAll', 'chipPollActive', 'chipPollScheduled', 'chipPollCompleted', 'chipPollCancelled'];
+    chips.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('active');
+    });
+
+    const activeMap = {
+      'ALL': 'chipPollAll',
+      'ACTIVE': 'chipPollActive',
+      'SCHEDULED': 'chipPollScheduled',
+      'COMPLETED': 'chipPollCompleted',
+      'CANCELLED': 'chipPollCancelled'
+    };
+    if (activeMap[status]) {
+      const target = document.getElementById(activeMap[status]);
+      if (target) target.classList.add('active');
+    }
+
+    this.loadOwnerPolls();
+  }
+
+  renderOwnerPollCard(poll) {
+    const statusBadges = {
+      'ACTIVE': '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid #4CAF50;">🟢 Active</span>',
+      'SCHEDULED': '<span class="status-badge" style="background: rgba(255, 193, 7, 0.15); color: #FFC107; border: 1px solid #FFC107;">🟡 Scheduled</span>',
+      'CLOSED': '<span class="status-badge" style="background: rgba(244, 67, 54, 0.15); color: #F44336; border: 1px solid #F44336;">🔴 Closed</span>',
+      'COMPLETED': '<span class="status-badge" style="background: rgba(255, 215, 0, 0.15); color: #FFD700; border: 1px solid #FFD700;">🏆 Completed</span>',
+      'CANCELLED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E; border: 1px solid #9E9E9E;">⚪ Cancelled</span>'
+    };
+
+    const optionsHtml = poll.options.map(opt => `
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <span style="font-weight: 700; color: #FFF; font-size: 0.92rem;">${opt.food_name}</span>
+          <span style="font-size: 0.85rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">${opt.votes} votes (${opt.percentage}%)</span>
+        </div>
+        <div style="width: 100%; background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
+          <div style="width: ${opt.percentage}%; background: linear-gradient(90deg, var(--primary), var(--accent-gold)); height: 100%;"></div>
+        </div>
+      </div>
+    `).join('');
+
+    let tieBoxHtml = '';
+    if (poll.is_tie && poll.leading_options && poll.leading_options.length > 1) {
+      tieBoxHtml = `
+        <div style="background: rgba(255, 152, 0, 0.15); border: 1px dashed #FF9800; border-radius: 10px; padding: 12px; margin-top: 1rem;">
+          <h4 style="margin: 0 0 6px 0; color: #FF9800; font-size: 0.95rem;">🤝 Tie Detected</h4>
+          <p style="margin: 0 0 8px 0; font-size: 0.82rem; color: #FFF;">
+            Equal highest votes between: <strong>${poll.leading_options.map(o => o.food_name).join(', ')}</strong> (${poll.leading_options[0].votes} votes each).
+          </p>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            ${poll.leading_options.map(o => `
+              <button type="button" class="btn-sm-status" onclick="app.selectTieWinner('${poll.id}', '${o.food_id}')" style="background: var(--accent-gold); color: #000; font-weight: 800;">
+                Select "${o.food_name}" as Winner
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    let winnerBoxHtml = '';
+    if (poll.winner) {
+      winnerBoxHtml = `
+        <div style="background: rgba(255, 215, 0, 0.12); border: 1px solid var(--accent-gold); border-radius: 10px; padding: 12px; margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <span style="font-size: 0.75rem; font-weight: 800; color: var(--accent-gold); text-transform: uppercase;">🏆 Winner Dish</span>
+            <h4 style="margin: 2px 0 0 0; color: #FFF; font-size: 1.05rem; font-weight: 800;">${poll.winner.food_name} (${poll.winner.votes} votes - ${poll.winner.percentage}%)</h4>
+          </div>
+          ${!poll.tomorrow_special_published ? `
+            <button type="button" class="btn-primary-block" onclick="app.publishTomorrowSpecial('${poll.id}')" style="width: auto; padding: 6px 16px; font-size: 0.82rem; background: var(--accent-gold); color: #000;">
+              ✨ Set as Tomorrow's Special
+            </button>
+          ` : `
+            <span style="color: #4CAF50; font-size: 0.82rem; font-weight: 700;">✓ Published as Tomorrow's Special</span>
+          `}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="card" style="padding: 1.25rem; border-radius: var(--radius-lg); background: var(--card-bg, #1E1E2E); border: 1px solid var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 1rem; flex-wrap: wrap;">
+          <div>
+            <h3 style="margin: 0 0 4px 0; font-size: 1.1rem; color: #FFF; font-weight: 800;">🗳️ ${poll.question}</h3>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">
+              Total Votes: <strong style="color: var(--accent-gold);">${poll.total_votes}</strong> | Window: ${new Date(poll.start_at).toLocaleDateString('en-IN')} - ${new Date(poll.end_at).toLocaleDateString('en-IN')}
+            </span>
+          </div>
+          ${statusBadges[poll.status] || ''}
+        </div>
+
+        <div>
+          ${optionsHtml}
+        </div>
+
+        ${tieBoxHtml}
+        ${winnerBoxHtml}
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+          ${poll.status === 'ACTIVE' ? `
+            <button type="button" class="btn-secondary-outline" onclick="app.closePoll('${poll.id}')" style="font-size: 0.8rem; padding: 6px 14px;">
+              Close Voting
+            </button>
+          ` : ''}
+          ${poll.status === 'ACTIVE' || poll.status === 'SCHEDULED' ? `
+            <button type="button" class="btn-secondary-outline" onclick="app.cancelPoll('${poll.id}')" style="font-size: 0.8rem; padding: 6px 14px; color: #FF9800; border-color: #FF9800;">
+              Cancel Poll
+            </button>
+          ` : ''}
+          <button type="button" class="btn-secondary-outline" onclick="app.deletePoll('${poll.id}')" style="font-size: 0.8rem; padding: 6px 14px; color: #EF5350; border-color: #EF5350;">
+            <i class="fa-solid fa-trash-can"></i> Delete
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  openCreatePollModal() {
+    const modal = document.getElementById('modalCreatePoll');
+    if (!modal) return;
+
+    modal.classList.remove('hidden');
+
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    const startIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const endIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+    const txtStart = document.getElementById('txtPollStartAt');
+    const txtEnd = document.getElementById('txtPollEndAt');
+    if (txtStart) txtStart.value = startIso;
+    if (txtEnd) txtEnd.value = endIso;
+
+    const container = document.getElementById('pollOptionRowsContainer');
+    if (container) {
+      container.innerHTML = '';
+      this.addPollOptionRow();
+      this.addPollOptionRow();
+    }
+  }
+
+  closeCreatePollModal() {
+    const modal = document.getElementById('modalCreatePoll');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  addPollOptionRow() {
+    const container = document.getElementById('pollOptionRowsContainer');
+    if (!container) return;
+
+    const currentRows = container.querySelectorAll('.poll-option-select-row');
+    if (currentRows.length >= 3) {
+      const msg = document.getElementById('lblPollOptionValidationMsg');
+      if (msg) {
+        msg.innerText = 'Maximum 3 food options are allowed.';
+        msg.style.display = 'block';
+        setTimeout(() => { msg.style.display = 'none'; }, 3000);
+      }
+      return;
+    }
+
+    const rowIndex = currentRows.length + 1;
+    const rowId = `pollOptRow_${Date.now()}_${rowIndex}`;
+
+    const tiffinsOptionsHtml = (this.menuItems || []).map(t => `<option value="${t.id}">${t.name} (₹${t.price})</option>`).join('');
+
+    const div = document.createElement('div');
+    div.className = 'poll-option-select-row';
+    div.id = rowId;
+    div.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+    div.innerHTML = `
+      <select class="form-control sel-poll-food-id" required style="flex: 1;">
+        <option value="">-- Select Food Option ${rowIndex} --</option>
+        ${tiffinsOptionsHtml}
+      </select>
+      ${rowIndex > 2 ? `
+        <button type="button" class="btn-sm-status" onclick="document.getElementById('${rowId}').remove()" style="background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336; padding: 6px 12px;">
+          ✕
+        </button>
+      ` : ''}
+    `;
+
+    container.appendChild(div);
+  }
+
+  async submitCreatePoll(e) {
+    if (e) e.preventDefault();
+
+    const question = (document.getElementById('txtPollQuestion')?.value || '').trim();
+    const start_at = document.getElementById('txtPollStartAt')?.value;
+    const end_at = document.getElementById('txtPollEndAt')?.value;
+
+    const selects = document.querySelectorAll('.sel-poll-food-id');
+    const food_ids = [];
+    selects.forEach(s => {
+      if (s.value) food_ids.push(s.value);
+    });
+
+    if (food_ids.length < 2) {
+      this.showToast('Please select at least 2 food options.', 'warning');
+      return;
+    }
+
+    if (food_ids.length > 3) {
+      this.showToast('Maximum 3 food options are allowed.', 'warning');
+      return;
+    }
+
+    const uniqueIds = new Set(food_ids);
+    if (uniqueIds.size !== food_ids.length) {
+      this.showToast('Please select different food options.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, start_at, end_at, food_ids })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Poll created successfully!', 'success');
+        this.closeCreatePollModal();
+        this.loadOwnerPolls();
+      } else {
+        this.showToast(json.message || 'Failed to create poll.', 'error');
+      }
+    } catch (err) {
+      console.error('Submit create poll error:', err);
+      this.showToast('Network error creating poll.', 'error');
+    }
+  }
+
+  async closePoll(pollId) {
+    if (!confirm('Are you sure you want to close voting for this poll?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/close`, { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || 'Poll closed.', 'success');
+        this.loadOwnerPolls();
+      }
+    } catch (e) {}
+  }
+
+  async cancelPoll(pollId) {
+    if (!confirm('Are you sure you want to cancel this poll?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/cancel`, { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || 'Poll cancelled.', 'success');
+        this.loadOwnerPolls();
+      }
+    } catch (e) {}
+  }
+
+  async selectTieWinner(pollId, foodId) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/select-winner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ food_id: foodId })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || 'Winner dish set.', 'success');
+        this.loadOwnerPolls();
+      }
+    } catch (e) {}
+  }
+
+  async publishTomorrowSpecial(pollId) {
+    if (!confirm("Publish this dish as Tomorrow's Special and notify all customers?")) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/publish-special`, { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || "Tomorrow's Special published successfully!", 'success');
+        this.loadOwnerPolls();
+      }
+    } catch (e) {}
+  }
+
+  async deletePoll(pollId) {
+    if (!confirm('Are you sure you want to delete this menu poll record?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || 'Poll deleted.', 'success');
+        this.loadOwnerPolls();
+      }
+    } catch (e) {}
+  }
+
+
+  // =========================================================================
+  // OWNER SECURITY & ANTI-FRAUD CENTER CLIENT MODULE
+  // =========================================================================
+
+  securitySubTab = 'EVENTS';
+  securityEventsPage = 1;
+  auditLogsPage = 1;
+  currentActiveSecurityEvent = null;
+
+  switchSecuritySubTab(tab) {
+    this.securitySubTab = tab;
+    const btnEvt = document.getElementById('btnTabSecurityEvents');
+    const btnAud = document.getElementById('btnTabAuditLogs');
+    const subEvt = document.getElementById('subviewSecurityEvents');
+    const subAud = document.getElementById('subviewAuditLogs');
+
+    if (tab === 'EVENTS') {
+      if (btnEvt) btnEvt.classList.add('active');
+      if (btnAud) btnAud.classList.remove('active');
+      if (subEvt) subEvt.classList.remove('hidden');
+      if (subAud) subAud.classList.add('hidden');
+      this.loadSecurityEvents();
+    } else {
+      if (btnEvt) btnEvt.classList.remove('active');
+      if (btnAud) btnAud.classList.add('active');
+      if (subEvt) subEvt.classList.add('hidden');
+      if (subAud) subAud.classList.remove('hidden');
+      this.loadAuditLogs();
+    }
+  }
+
+  async loadSecurityDashboard() {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/security/dashboard-stats`);
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        const d = json.data;
+        const lblBadge = document.getElementById('lblSecurityStatusBadge');
+        if (lblBadge) {
+          lblBadge.innerText = d.status_label || '🟢 Protected';
+          if (d.security_status === 'CRITICAL') {
+            lblBadge.style.background = 'rgba(244, 67, 54, 0.15)';
+            lblBadge.style.color = '#F44336';
+            lblBadge.style.borderColor = '#F44336';
+          } else if (d.security_status === 'ATTENTION') {
+            lblBadge.style.background = 'rgba(255, 152, 0, 0.15)';
+            lblBadge.style.color = '#FF9800';
+            lblBadge.style.borderColor = '#FF9800';
+          } else {
+            lblBadge.style.background = 'rgba(76, 175, 80, 0.15)';
+            lblBadge.style.color = '#4CAF50';
+            lblBadge.style.borderColor = '#4CAF50';
+          }
+        }
+
+        const elSusp = document.getElementById('statSecSuspiciousCount');
+        const elBlock = document.getElementById('statSecBlockedAttempts');
+        const elDup = document.getElementById('statSecDuplicateAttempts');
+        const elPay = document.getElementById('statSecPaymentIssues');
+        const elRew = document.getElementById('statSecRewardIssues');
+        const elToday = document.getElementById('statSecEventsToday');
+
+        if (elSusp) elSusp.innerText = d.suspicious_activities_count || 0;
+        if (elBlock) elBlock.innerText = d.blocked_attempts || 0;
+        if (elDup) elDup.innerText = d.duplicate_attempts || 0;
+        if (elPay) elPay.innerText = d.payment_issues || 0;
+        if (elRew) elRew.innerText = d.reward_issues || 0;
+        if (elToday) elToday.innerText = d.events_today || 0;
+      }
+
+      this.loadSecurityEvents();
+    } catch (err) {
+      console.error('Error loading security dashboard:', err);
+    }
+  }
+
+  async loadSecurityEvents(page = 1) {
+    this.securityEventsPage = page;
+    try {
+      const risk = document.getElementById('selSecRiskFilter')?.value || 'ALL';
+      const status = document.getElementById('selSecStatusFilter')?.value || 'ALL';
+      const type = document.getElementById('selSecEventTypeFilter')?.value || 'ALL';
+      const search = (document.getElementById('txtSecEventSearch')?.value || '').trim();
+
+      let url = `${API_BASE}/security/events?page=${page}&limit=15&risk_level=${risk}&status=${status}&event_type=${type}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+
+      const res = await this.fetchWithAuth(url);
+      const json = await res.json();
+
+      const container = document.getElementById('securityEventsCardsContainer');
+      if (!container) return;
+
+      if (!json.success || !json.data || json.data.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-shield-check" style="font-size: 2.5rem; color: #4CAF50; margin-bottom: 12px; display: block;"></i>
+            <h4 style="color: #FFF; margin-bottom: 4px;">No Security Events Found</h4>
+            <p style="font-size: 0.85rem;">All systems are operating securely with active server-side duplicate protection.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = json.data.map(evt => this.renderSecurityEventCard(evt)).join('');
+      this.renderSecurityEventsPagination(json.pagination);
+    } catch (err) {
+      console.error('Error loading security events:', err);
+    }
+  }
+
+  renderSecurityEventCard(evt) {
+    const riskBadges = {
+      'CRITICAL': '<span class="status-badge" style="background: rgba(244, 67, 54, 0.2); color: #F44336; border: 1px solid #F44336; font-weight: 800;">🔴 CRITICAL</span>',
+      'HIGH': '<span class="status-badge" style="background: rgba(255, 152, 0, 0.2); color: #FF9800; border: 1px solid #FF9800; font-weight: 800;">🟠 HIGH</span>',
+      'MEDIUM': '<span class="status-badge" style="background: rgba(255, 193, 7, 0.2); color: #FFC107; border: 1px solid #FFC107;">🟡 MEDIUM</span>',
+      'LOW': '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid #4CAF50;">🟢 LOW</span>'
+    };
+
+    const statusPills = {
+      'NEW': '<span class="status-badge" style="background: rgba(255, 82, 82, 0.15); color: #FF5252;">New</span>',
+      'UNDER_REVIEW': '<span class="status-badge" style="background: rgba(255, 152, 0, 0.15); color: #FF9800;">Under Review</span>',
+      'RESOLVED': '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50;">Resolved</span>',
+      'DISMISSED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E;">Dismissed</span>'
+    };
+
+    return `
+      <div class="card" style="padding: 1rem 1.25rem; border-radius: 12px; background: var(--card-bg, #1E1E2E); border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div style="flex: 1; min-width: 250px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+            ${riskBadges[evt.risk_level] || ''}
+            <strong style="color: #FFF; font-size: 0.95rem;">${evt.event_type.replace(/_/g, ' ')}</strong>
+            ${statusPills[evt.status] || ''}
+          </div>
+          <p style="margin: 4px 0; font-size: 0.85rem; color: var(--text-muted);">${evt.details || 'Suspicious request logged.'}</p>
+          <div style="font-size: 0.78rem; color: #AAA; display: flex; gap: 12px; flex-wrap: wrap;">
+            ${evt.customer_name ? `<span><i class="fa-solid fa-user"></i> ${evt.customer_name} (${evt.customer_mobile || ''})</span>` : ''}
+            ${evt.order_id ? `<span><i class="fa-solid fa-receipt"></i> Order: ${evt.order_id}</span>` : ''}
+            <span><i class="fa-solid fa-clock"></i> ${new Date(evt.created_at).toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+
+        <button type="button" class="btn-secondary-outline" onclick="app.openSecurityEventDetailsModal('${evt.id}')" style="font-size: 0.8rem; padding: 6px 14px;">
+          View Details
+        </button>
+      </div>
+    `;
+  }
+
+  renderSecurityEventsPagination(p) {
+    const container = document.getElementById('securityEventsPagination');
+    if (!container || !p || p.totalPages <= 1) {
+      if (container) container.innerHTML = '';
+      return;
+    }
+
+    let btns = '';
+    for (let i = 1; i <= p.totalPages; i++) {
+      btns += `
+        <button type="button" class="member-filter-btn ${i === p.page ? 'active' : ''}" onclick="app.loadSecurityEvents(${i})" style="padding: 4px 10px; font-size: 0.78rem;">
+          ${i}
+        </button>
+      `;
+    }
+    container.innerHTML = btns;
+  }
+
+  async openSecurityEventDetailsModal(eventId) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/security/events/${eventId}`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) {
+        this.showToast('Event not found.', 'error');
+        return;
+      }
+
+      this.currentActiveSecurityEvent = json.data;
+      const evt = json.data;
+
+      const body = document.getElementById('securityEventDetailsBody');
+      const txtNote = document.getElementById('txtSecEventInternalNote');
+      if (txtNote) txtNote.value = evt.internal_note || '';
+
+      if (body) {
+        body.innerHTML = `
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 8px;">
+              <span style="font-size: 0.78rem; font-weight: 800; color: var(--accent-gold); font-family: monospace;">EVENT #${evt.id}</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: #FFF;">Status: ${evt.status}</span>
+            </div>
+            <h4 style="margin: 0 0 6px 0; color: #FFF; font-size: 1.05rem;">${evt.event_type.replace(/_/g, ' ')}</h4>
+            <p style="margin: 0; font-size: 0.88rem; color: #DDD;">${evt.details}</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; font-size: 0.85rem; color: var(--text-muted);">
+            <div><strong>Risk Level:</strong> <span style="color: #FFF;">${evt.risk_level}</span></div>
+            <div><strong>Customer:</strong> <span style="color: #FFF;">${evt.customer_name || 'N/A'} ${evt.customer_mobile ? `(${evt.customer_mobile})` : ''}</span></div>
+            <div><strong>Related Order:</strong> <span style="color: #FFF;">${evt.order_id || 'N/A'}</span></div>
+            <div><strong>Related Payment:</strong> <span style="color: #FFF;">${evt.payment_id || 'N/A'}</span></div>
+            <div><strong>Logged At:</strong> <span style="color: #FFF;">${new Date(evt.created_at).toLocaleString('en-IN')}</span></div>
+          </div>
+        `;
+      }
+
+      const modal = document.getElementById('modalSecurityEventDetails');
+      if (modal) modal.classList.remove('hidden');
+    } catch (err) {
+      console.error('Error opening event modal:', err);
+    }
+  }
+
+  closeSecurityEventDetailsModal() {
+    const modal = document.getElementById('modalSecurityEventDetails');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  async updateSecurityEventStatus(status) {
+    if (!this.currentActiveSecurityEvent) return;
+
+    const note = document.getElementById('txtSecEventInternalNote')?.value || '';
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/security/events/${this.currentActiveSecurityEvent.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, internal_note: note })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || `Security event marked as ${status}`, 'success');
+        this.closeSecurityEventDetailsModal();
+        this.loadSecurityDashboard();
+      } else {
+        this.showToast(json.message || 'Failed to update event.', 'error');
+      }
+    } catch (err) {
+      console.error('Update event error:', err);
+    }
+  }
+
+  async loadAuditLogs(page = 1) {
+    this.auditLogsPage = page;
+    try {
+      const search = (document.getElementById('txtAuditLogSearch')?.value || '').trim();
+      let url = `${API_BASE}/security/audit-logs?page=${page}&limit=20`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+
+      const res = await this.fetchWithAuth(url);
+      const json = await res.json();
+
+      const container = document.getElementById('auditLogsTableContainer');
+      if (!container) return;
+
+      if (!json.success || !json.data || json.data.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+            <p>No owner audit logs recorded yet.</p>
+          </div>
+        `;
+        return;
+      }
+
+      const rowsHtml = json.data.map(log => `
+        <tr style="border-bottom: 1px solid var(--border-color);">
+          <td style="padding: 10px; font-size: 0.82rem; color: #FFF; font-weight: 700;">${log.action}</td>
+          <td style="padding: 10px; font-size: 0.82rem; color: var(--text-muted);">${log.actor_name || 'Owner'}</td>
+          <td style="padding: 10px; font-size: 0.82rem; color: #DDD;">${log.details || ''}</td>
+          <td style="padding: 10px; font-size: 0.78rem; color: #AAA;">${new Date(log.created_at).toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+
+      container.innerHTML = `
+        <div class="table-responsive" style="overflow-x: auto;">
+          <table class="data-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: rgba(255,255,255,0.05); text-align: left; font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase;">
+                <th style="padding: 10px;">Action</th>
+                <th style="padding: 10px;">Actor</th>
+                <th style="padding: 10px;">Details</th>
+                <th style="padding: 10px;">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } catch (err) {
+      console.error('Error loading audit logs:', err);
+    }
+  }
+
+  // =========================================================================
+  // REFUND TRACKING SYSTEM CLIENT MODULE (Customer & Owner)
+  // =========================================================================
+
+  currentActiveCustomerRefundId = null;
+  currentActiveOwnerRefundId = null;
+  ownerRefundsPage = 1;
+
+  // --- Customer Refund Functions ---
+
+  async openCustomerRefundModal(refundIdOrOrderNumber) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/refunds/${refundIdOrOrderNumber}`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) {
+        this.showToast(json.message || 'Refund record not found.', 'error');
+        return;
+      }
+
+      const r = json.data;
+      this.currentActiveCustomerRefundId = r.id;
+
+      const body = document.getElementById('customerRefundDetailsBody');
+      if (!body) return;
+
+      const statusBadges = {
+        'REFUND_REQUESTED': '<span class="status-badge" style="background: rgba(255, 193, 7, 0.15); color: #FFC107; border: 1px solid #FFC107;">🟡 Refund Requested</span>',
+        'REFUND_UNDER_REVIEW': '<span class="status-badge" style="background: rgba(33, 150, 243, 0.15); color: #2196F3; border: 1px solid #2196F3;">🔵 Under Review</span>',
+        'REFUND_APPROVED': '<span class="status-badge" style="background: rgba(255, 152, 0, 0.15); color: #FF9800; border: 1px solid #FF9800;">🟠 Refund Approved</span>',
+        'REFUND_INITIATED': '<span class="status-badge" style="background: rgba(33, 150, 243, 0.15); color: #2196F3; border: 1px solid #2196F3;">🔵 Refund Initiated</span>',
+        'REFUND_PROCESSING': '<span class="status-badge" style="background: rgba(171, 71, 188, 0.15); color: #AB47BC; border: 1px solid #AB47BC;">🟣 Refund Processing</span>',
+        'REFUND_COMPLETED': '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid #4CAF50; font-weight: 800;">🟢 Refund Completed</span>',
+        'REFUND_FAILED': '<span class="status-badge" style="background: rgba(244, 67, 54, 0.15); color: #F44336; border: 1px solid #F44336;">🔴 Refund Failed</span>',
+        'REFUND_REJECTED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E; border: 1px solid #9E9E9E;">⚫ Refund Rejected</span>',
+        'REFUND_CANCELLED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E; border: 1px solid #9E9E9E;">⚪ Refund Cancelled</span>'
+      };
+
+      const timelineHtml = this.renderRefundTimeline(r.timeline || [], r.status);
+
+      body.innerHTML = `
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 0.75rem; flex-wrap: wrap;">
+            <div>
+              <span style="font-size: 0.78rem; font-weight: 800; color: var(--accent-gold); font-family: monospace;">REFUND REF: ${r.refund_reference}</span>
+              <h4 style="margin: 2px 0 0 0; color: #FFF; font-size: 1.1rem; font-weight: 800;">Order #${r.order_number}</h4>
+            </div>
+            ${statusBadges[r.status] || ''}
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 1rem;">
+            <div>
+              <span style="font-size: 0.72rem; color: var(--text-muted); display: block;">Original Payment</span>
+              <strong style="font-size: 1rem; color: #FFF; font-family: var(--font-number);">₹${r.original_amount}</strong>
+            </div>
+            <div>
+              <span style="font-size: 0.72rem; color: var(--accent-gold); display: block;">Refund Amount</span>
+              <strong style="font-size: 1.15rem; color: var(--accent-gold); font-family: var(--font-number);">₹${r.refund_amount}</strong>
+            </div>
+            ${Number(r.non_refundable_amount) > 0 ? `
+              <div>
+                <span style="font-size: 0.72rem; color: #FF5252; display: block;">Deduction</span>
+                <strong style="font-size: 0.95rem; color: #FF5252; font-family: var(--font-number);">₹${r.non_refundable_amount}</strong>
+              </div>
+            ` : ''}
+          </div>
+
+          <div style="font-size: 0.84rem; color: var(--text-muted); display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div><strong>Refund Type:</strong> <span style="color: #FFF;">${r.refund_type}</span></div>
+            <div><strong>Payment Method:</strong> <span style="color: #FFF;">${r.payment_method}</span></div>
+            <div><strong>Payment Ref / UTR:</strong> <span style="color: #FFF;">${r.payment_reference || 'N/A'}</span></div>
+            <div><strong>Requested On:</strong> <span style="color: #FFF;">${new Date(r.created_at).toLocaleString('en-IN')}</span></div>
+          </div>
+
+          <div style="margin-top: 10px; font-size: 0.84rem;">
+            <strong style="color: var(--text-muted);">Refund Reason:</strong>
+            <p style="margin: 2px 0 0 0; color: #FFF; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px;">${r.reason}</p>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <h4 style="margin: 0 0 0.5rem 0; color: #FFF; font-size: 0.98rem; display: flex; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-list-check" style="color: var(--accent-gold);"></i> Refund Timeline Progress
+          </h4>
+          ${timelineHtml}
+        </div>
+
+        ${r.status === 'REFUND_COMPLETED' ? `
+          <div style="text-align: center; margin-top: 1rem;">
+            <button type="button" class="btn-primary-block" onclick="app.openRefundReceiptModal('${r.id}')" style="width: auto; padding: 8px 20px; display: inline-flex; gap: 8px; align-items: center;">
+              <i class="fa-solid fa-receipt"></i> View Official Refund Receipt
+            </button>
+          </div>
+        ` : ''}
+      `;
+
+      const modal = document.getElementById('modalCustomerRefundDetails');
+      if (modal) modal.classList.remove('hidden');
+    } catch (err) {
+      console.error('Error opening refund modal:', err);
+    }
+  }
+
+  closeCustomerRefundDetailsModal() {
+    const modal = document.getElementById('modalCustomerRefundDetails');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  renderRefundTimeline(events = [], currentStatus = '') {
+    const steps = [
+      { key: 'REQUESTED', label: 'Refund Requested', status: 'REFUND_REQUESTED' },
+      { key: 'APPROVED', label: 'Refund Approved', status: 'REFUND_APPROVED' },
+      { key: 'INITIATED', label: 'Refund Initiated', status: 'REFUND_INITIATED' },
+      { key: 'PROCESSING', label: 'Payment Provider Processing', status: 'REFUND_PROCESSING' },
+      { key: 'COMPLETED', label: 'Refund Completed', status: 'REFUND_COMPLETED' }
+    ];
+
+    const eventMap = {};
+    events.forEach(e => {
+      eventMap[e.new_status] = e;
+    });
+
+    const statusOrder = ['REFUND_REQUESTED', 'REFUND_UNDER_REVIEW', 'REFUND_APPROVED', 'REFUND_INITIATED', 'REFUND_PROCESSING', 'REFUND_COMPLETED'];
+    const currentIndex = statusOrder.indexOf(currentStatus);
+
+    if (currentStatus === 'REFUND_FAILED' || currentStatus === 'REFUND_REJECTED') {
+      return `
+        <div style="padding: 12px; background: rgba(244,67,54,0.15); border: 1px solid #F44336; border-radius: 10px; color: #F44336; font-size: 0.88rem;">
+          <strong>🔴 ${currentStatus === 'REFUND_FAILED' ? 'Refund Failed' : 'Refund Rejected'}</strong>
+          <p style="margin: 4px 0 0 0; color: #FFF; font-size: 0.82rem;">${events[events.length - 1]?.message || 'Please check refund details or contact support.'}</p>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="refund-timeline">
+        ${steps.map((step, idx) => {
+          const stepIndex = statusOrder.indexOf(step.status);
+          const isDone = currentIndex >= stepIndex && currentIndex !== -1;
+          const isActive = currentStatus === step.status;
+          const evt = eventMap[step.status];
+
+          let stateClass = 'pending';
+          if (isDone) stateClass = 'completed';
+          if (isActive) stateClass = 'active';
+
+          return `
+            <div class="refund-step ${stateClass}">
+              <div class="refund-step-icon">
+                ${isDone ? '✓' : (idx + 1)}
+              </div>
+              <div class="refund-step-line"></div>
+              <div class="refund-step-content">
+                <h5 class="refund-step-title">${step.label}</h5>
+                <span class="refund-step-time">
+                  ${evt ? new Date(evt.created_at).toLocaleString('en-IN') : (isDone ? 'Completed' : 'Pending')}
+                </span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  async openRefundReceiptModal(refundId) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/refunds/${refundId}`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) return;
+      const r = json.data;
+
+      const body = document.getElementById('refundReceiptModalBody');
+      if (body) {
+        body.innerHTML = `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.85rem; color: #333; margin-bottom: 1.25rem;">
+            <div>
+              <span style="color: #777; font-size: 0.75rem; text-transform: uppercase;">Refund ID</span>
+              <div style="font-weight: 800; font-family: monospace;">${r.id}</div>
+            </div>
+            <div>
+              <span style="color: #777; font-size: 0.75rem; text-transform: uppercase;">Refund Reference</span>
+              <div style="font-weight: 800; font-family: monospace; color: #D9531E;">${r.refund_reference}</div>
+            </div>
+            <div>
+              <span style="color: #777; font-size: 0.75rem; text-transform: uppercase;">Order Number</span>
+              <div style="font-weight: 700;">#${r.order_number}</div>
+            </div>
+            <div>
+              <span style="color: #777; font-size: 0.75rem; text-transform: uppercase;">Customer Name</span>
+              <div style="font-weight: 700;">${r.customer_name || 'Customer'}</div>
+            </div>
+          </div>
+
+          <div style="background: #F9F9F9; border: 1px solid #EEE; border-radius: 8px; padding: 12px; margin-bottom: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem;">
+              <span>Original Order Payment:</span>
+              <strong>₹${r.original_amount}</strong>
+            </div>
+            ${Number(r.non_refundable_amount) > 0 ? `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; color: #D32F2F;">
+                <span>Non-Refundable Deduction:</span>
+                <strong>- ₹${r.non_refundable_amount}</strong>
+              </div>
+            ` : ''}
+            <div style="display: flex; justify-content: space-between; border-top: 1px solid #DDD; padding-top: 6px; font-size: 1rem; font-weight: 800; color: #2E7D32;">
+              <span>Total Refunded Amount:</span>
+              <span>₹${r.refund_amount}</span>
+            </div>
+          </div>
+
+          <div style="font-size: 0.82rem; color: #555; display: flex; flex-direction: column; gap: 4px;">
+            <div><strong>Payment Method:</strong> ${r.payment_method}</div>
+            <div><strong>Payment Reference / UTR:</strong> ${r.payment_reference || 'N/A'}</div>
+            <div><strong>Refund Status:</strong> <span style="color: #2E7D32; font-weight: 800;">🟢 Completed</span></div>
+            <div><strong>Completion Date:</strong> ${r.completed_at ? new Date(r.completed_at).toLocaleString('en-IN') : new Date(r.updated_at).toLocaleString('en-IN')}</div>
+          </div>
+
+          <p style="margin: 1.25rem 0 0 0; text-align: center; font-size: 0.78rem; color: #888; font-style: italic;">
+            Thank you for choosing Annapurna Tiffin Center.
+          </p>
+        `;
+      }
+
+      const modal = document.getElementById('modalRefundReceipt');
+      if (modal) modal.classList.remove('hidden');
+    } catch (e) {}
+  }
+
+  closeRefundReceiptModal() {
+    const modal = document.getElementById('modalRefundReceipt');
+    if (modal) modal.classList.add('hidden');
+  }
+
+
+  // --- Owner Refund Management Functions ---
+
+  async loadOwnerRefundsDashboard() {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/refunds/owner/stats`);
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        const d = json.data;
+        const elT = document.getElementById('statOwnerRefundsToday');
+        const elP = document.getElementById('statOwnerPendingRefunds');
+        const elPr = document.getElementById('statOwnerProcessingRefunds');
+        const elC = document.getElementById('statOwnerCompletedRefunds');
+        const elF = document.getElementById('statOwnerFailedRefunds');
+        const elTot = document.getElementById('statOwnerTotalRefunded');
+
+        if (elT) elT.innerText = d.refunds_today || 0;
+        if (elP) elP.innerText = d.pending_refunds || 0;
+        if (elPr) elPr.innerText = d.processing_refunds || 0;
+        if (elC) elC.innerText = d.completed_refunds || 0;
+        if (elF) elF.innerText = d.failed_refunds || 0;
+        if (elTot) elTot.innerText = `₹${(d.total_refunded || 0).toLocaleString('en-IN')}`;
+      }
+
+      this.loadOwnerRefundsList();
+    } catch (err) {
+      console.error('Error loading owner refund dashboard:', err);
+    }
+  }
+
+  async loadOwnerRefundsList(page = 1) {
+    this.ownerRefundsPage = page;
+    try {
+      const status = document.getElementById('selOwnerRefundStatusFilter')?.value || 'ALL';
+      const type = document.getElementById('selOwnerRefundTypeFilter')?.value || 'ALL';
+      const search = (document.getElementById('txtOwnerRefundSearch')?.value || '').trim();
+
+      let url = `${API_BASE}/refunds/owner/all?page=${page}&limit=15&status=${status}&refund_type=${type}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+
+      const res = await this.fetchWithAuth(url);
+      const json = await res.json();
+
+      const container = document.getElementById('ownerRefundsListContainer');
+      if (!container) return;
+
+      if (!json.success || !json.data || json.data.length === 0) {
+        container.innerHTML = `
+          <div class="card" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-money-bill-transfer" style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 12px; display: block;"></i>
+            <h4 style="color: #FFF; margin-bottom: 4px;">No Refund Records Found</h4>
+            <p style="font-size: 0.85rem;">All customer refunds are up to date.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = json.data.map(r => this.renderOwnerRefundCard(r)).join('');
+      this.renderOwnerRefundsPagination(json.pagination);
+    } catch (err) {
+      console.error('Error loading owner refunds list:', err);
+    }
+  }
+
+  renderOwnerRefundCard(r) {
+    const statusBadges = {
+      'REFUND_REQUESTED': '<span class="status-badge" style="background: rgba(255, 193, 7, 0.15); color: #FFC107; border: 1px solid #FFC107;">🟡 Requested</span>',
+      'REFUND_UNDER_REVIEW': '<span class="status-badge" style="background: rgba(33, 150, 243, 0.15); color: #2196F3; border: 1px solid #2196F3;">🔵 Under Review</span>',
+      'REFUND_APPROVED': '<span class="status-badge" style="background: rgba(255, 152, 0, 0.15); color: #FF9800; border: 1px solid #FF9800;">🟠 Approved</span>',
+      'REFUND_INITIATED': '<span class="status-badge" style="background: rgba(33, 150, 243, 0.15); color: #2196F3; border: 1px solid #2196F3;">🔵 Initiated</span>',
+      'REFUND_PROCESSING': '<span class="status-badge" style="background: rgba(171, 71, 188, 0.15); color: #AB47BC; border: 1px solid #AB47BC;">🟣 Processing</span>',
+      'REFUND_COMPLETED': '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid #4CAF50;">🟢 Completed</span>',
+      'REFUND_FAILED': '<span class="status-badge" style="background: rgba(244, 67, 54, 0.15); color: #F44336; border: 1px solid #F44336;">🔴 Failed</span>',
+      'REFUND_REJECTED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E; border: 1px solid #9E9E9E;">⚫ Rejected</span>',
+      'REFUND_CANCELLED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E; border: 1px solid #9E9E9E;">⚪ Cancelled</span>'
+    };
+
+    return `
+      <div class="card" style="padding: 1.15rem; border-radius: 12px; background: var(--card-bg, #1E1E2E); border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <div style="flex: 1; min-width: 250px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;">
+            <strong style="color: var(--accent-gold); font-family: monospace; font-size: 0.85rem;">${r.refund_reference}</strong>
+            <span style="color: #FFF; font-weight: 800;">Order #${r.order_number}</span>
+            ${statusBadges[r.status] || ''}
+          </div>
+
+          <p style="margin: 4px 0; font-size: 0.85rem; color: #DDD;">
+            Customer: <strong>${r.customer_name || 'Customer'}</strong> (${r.customer_mobile || ''}) | Amount: <strong style="color: var(--accent-gold); font-family: var(--font-number);">₹${r.refund_amount}</strong> (${r.refund_type})
+          </p>
+
+          <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap;">
+            <span><i class="fa-solid fa-clock"></i> Requested: ${new Date(r.created_at).toLocaleString('en-IN')}</span>
+            <span><i class="fa-solid fa-credit-card"></i> Pay Ref: ${r.payment_reference || 'N/A'}</span>
+          </div>
+        </div>
+
+        <button type="button" class="btn-secondary-outline" onclick="app.openOwnerRefundModal('${r.id}')" style="font-size: 0.8rem; padding: 6px 16px;">
+          Manage Refund
+        </button>
+      </div>
+    `;
+  }
+
+  renderOwnerRefundsPagination(p) {
+    const container = document.getElementById('ownerRefundsPagination');
+    if (!container || !p || p.totalPages <= 1) {
+      if (container) container.innerHTML = '';
+      return;
+    }
+
+    let btns = '';
+    for (let i = 1; i <= p.totalPages; i++) {
+      btns += `
+        <button type="button" class="member-filter-btn ${i === p.page ? 'active' : ''}" onclick="app.loadOwnerRefundsList(${i})" style="padding: 4px 10px; font-size: 0.78rem;">
+          ${i}
+        </button>
+      `;
+    }
+    container.innerHTML = btns;
+  }
+
+  async openOwnerRefundModal(refundId) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/refunds/${refundId}`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) {
+        this.showToast('Refund record not found.', 'error');
+        return;
+      }
+
+      this.currentActiveOwnerRefundId = json.data.id;
+      const r = json.data;
+
+      const body = document.getElementById('ownerRefundDetailsBody');
+      const selStatus = document.getElementById('selOwnerActionRefundStatus');
+      const btnRetry = document.getElementById('btnOwnerRetryRefund');
+
+      if (selStatus) selStatus.value = r.status;
+      if (btnRetry) btnRetry.classList.toggle('hidden', r.status !== 'REFUND_FAILED');
+
+      if (body) {
+        body.innerHTML = `
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 8px;">
+              <span style="font-size: 0.78rem; font-weight: 800; color: var(--accent-gold); font-family: monospace;">REFUND ID: ${r.id}</span>
+              <span style="font-size: 0.8rem; font-weight: 700; color: #FFF;">Status: ${r.status}</span>
+            </div>
+            <h4 style="margin: 0 0 6px 0; color: #FFF; font-size: 1.05rem;">Order #${r.order_number} - ${r.customer_name} (${r.customer_mobile})</h4>
+            <p style="margin: 0; font-size: 0.88rem; color: #DDD;">Reason: ${r.reason}</p>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+            <div><strong>Original Paid:</strong> <span style="color: #FFF;">₹${r.original_amount}</span></div>
+            <div><strong>Refund Amount:</strong> <span style="color: var(--accent-gold); font-weight: 800;">₹${r.refund_amount}</span></div>
+            <div><strong>Refund Type:</strong> <span style="color: #FFF;">${r.refund_type}</span></div>
+            <div><strong>Payment Method:</strong> <span style="color: #FFF;">${r.payment_method}</span></div>
+            <div><strong>Payment UTR:</strong> <span style="color: #FFF;">${r.payment_reference || 'N/A'}</span></div>
+            <div><strong>Requested At:</strong> <span style="color: #FFF;">${new Date(r.created_at).toLocaleString('en-IN')}</span></div>
+          </div>
+        `;
+      }
+
+      const modal = document.getElementById('modalOwnerRefundDetails');
+      if (modal) modal.classList.remove('hidden');
+    } catch (err) {
+      console.error('Error opening owner refund modal:', err);
+    }
+  }
+
+  closeOwnerRefundDetailsModal() {
+    const modal = document.getElementById('modalOwnerRefundDetails');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  async submitOwnerRefundStatusUpdate() {
+    if (!this.currentActiveOwnerRefundId) return;
+
+    const status = document.getElementById('selOwnerActionRefundStatus')?.value;
+    const note = document.getElementById('txtOwnerRefundStatusNote')?.value || '';
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/refunds/owner/${this.currentActiveOwnerRefundId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, message: note })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Refund status updated.', 'success');
+        this.closeOwnerRefundDetailsModal();
+        this.loadOwnerRefundsDashboard();
+      } else {
+        this.showToast(json.message || 'Failed to update refund status.', 'error');
+      }
+    } catch (err) {
+      console.error('Update refund status error:', err);
+    }
+  }
+
+  async retryFailedRefund() {
+    if (!this.currentActiveOwnerRefundId) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/refunds/owner/${this.currentActiveOwnerRefundId}/retry`, {
+        method: 'POST'
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Refund retry initiated.', 'success');
+        this.closeOwnerRefundDetailsModal();
+        this.loadOwnerRefundsDashboard();
+      } else {
+        this.showToast(json.message || 'Failed to retry refund.', 'error');
+      }
+    } catch (err) {
+      console.error('Retry refund error:', err);
+    }
+  }
+
+  // =========================================================================
+  // 🥘 ADD-ONS / EXTRA ITEMS CLIENT MODULE (Customer & Owner)
+  // =========================================================================
+
+  availableAddonsList = [];
+  selectedCartAddons = {}; // { addon_id: { id, name, price, quantity } }
+  currentEditAddonId = null;
+
+  // --- Customer Add-ons Selection Functions ---
+
+  async fetchAvailableAddons() {
+    try {
+      const res = await fetch(`${API_BASE}/add-ons`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        this.availableAddonsList = json.data;
+        this.renderCustomerAddonsWidget();
+      }
+    } catch (err) {
+      console.error('Error fetching available add-ons:', err);
+    }
+  }
+
+  renderCustomerAddonsWidget() {
+    const container = document.getElementById('customerAddonsWidgetContainer');
+    if (!container) return;
+
+    if (!this.availableAddonsList || this.availableAddonsList.length === 0) {
+      container.innerHTML = '';
+      container.classList.add('hidden');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.15rem; margin: 1.25rem 0;">
+        <h4 style="margin: 0 0 0.75rem 0; color: #FFF; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+          <span>🥘</span> Want Extra Add-ons? (Optional)
+        </h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+          ${this.availableAddonsList.map(ao => {
+            const sel = this.selectedCartAddons[ao.id];
+            const qty = sel ? sel.quantity : 0;
+
+            return `
+              <div style="background: rgba(0,0,0,0.25); border: 1px solid ${qty > 0 ? 'var(--accent-gold)' : 'var(--border-color)'}; border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                <div>
+                  <strong style="color: #FFF; font-size: 0.88rem; display: block;">${ao.name}</strong>
+                  <span style="color: var(--accent-gold); font-size: 0.82rem; font-weight: 700; font-family: var(--font-number);">+₹${ao.price}</span>
+                </div>
+                <div class="addon-qty-picker">
+                  <button type="button" class="addon-qty-btn" onclick="app.updateCartAddonQty('${ao.id}', -1)">-</button>
+                  <span class="addon-qty-val">${qty}</span>
+                  <button type="button" class="addon-qty-btn" onclick="app.updateCartAddonQty('${ao.id}', 1)">+</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  updateCartAddonQty(addonId, delta) {
+    const addon = this.availableAddonsList.find(a => a.id === addonId);
+    if (!addon) return;
+
+    if (!this.selectedCartAddons[addonId]) {
+      if (delta > 0) {
+        this.selectedCartAddons[addonId] = {
+          add_on_id: addon.id,
+          name: addon.name,
+          price: Number(addon.price),
+          quantity: 1
+        };
+      }
+    } else {
+      let newQty = this.selectedCartAddons[addonId].quantity + delta;
+      if (newQty <= 0) {
+        delete this.selectedCartAddons[addonId];
+      } else {
+        this.selectedCartAddons[addonId].quantity = Math.min(10, newQty);
+      }
+    }
+
+    this.renderCustomerAddonsWidget();
+    if (typeof this.updateCartSummary === 'function') this.updateCartSummary();
+  }
+
+  getSelectedAddonsPayload() {
+    return Object.values(this.selectedCartAddons).map(item => ({
+      add_on_id: item.add_on_id,
+      quantity: item.quantity
+    }));
+  }
+
+  calculateSelectedAddonsTotal() {
+    let total = 0;
+    Object.values(this.selectedCartAddons).forEach(item => {
+      total += (item.price * item.quantity);
+    });
+    return total;
+  }
+
+  // --- Owner Add-ons Management Functions ---
+
+  async loadOwnerAddonsDashboard() {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/add-ons?include_disabled=true`);
+      const json = await res.json();
+
+      if (json.success && Array.isArray(json.data)) {
+        this.ownerAddonsList = json.data;
+
+        // Calculate Stats
+        const totalCount = json.data.length;
+        const availCount = json.data.filter(a => a.enabled && a.available).length;
+
+        const elT = document.getElementById('statTotalAddons');
+        const elA = document.getElementById('statAvailableAddons');
+        if (elT) elT.innerText = totalCount;
+        if (elA) elA.innerText = availCount;
+      }
+
+      this.loadAddonAnalytics();
+      this.loadOwnerAddonsList();
+    } catch (err) {
+      console.error('Error loading owner add-ons dashboard:', err);
+    }
+  }
+
+  async loadAddonAnalytics() {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/add-ons/analytics`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const totalRevenue = json.data.reduce((sum, item) => sum + Number(item.total_revenue || 0), 0);
+        const elRev = document.getElementById('statAddonSalesRevenue');
+        if (elRev) elRev.innerText = `₹${totalRevenue.toLocaleString('en-IN')}`;
+      }
+    } catch (err) {
+      console.error('Error loading add-on analytics:', err);
+    }
+  }
+
+  loadOwnerAddonsList() {
+    const container = document.getElementById('ownerAddonsListContainer');
+    if (!container) return;
+
+    const filterStatus = document.getElementById('selOwnerAddonStatusFilter')?.value || 'ALL';
+    const search = (document.getElementById('txtOwnerAddonSearch')?.value || '').toLowerCase().trim();
+
+    let list = this.ownerAddonsList || [];
+
+    if (filterStatus === 'AVAILABLE') list = list.filter(a => a.enabled && a.available);
+    if (filterStatus === 'UNAVAILABLE') list = list.filter(a => a.enabled && !a.available);
+    if (filterStatus === 'DISABLED') list = list.filter(a => !a.enabled);
+
+    if (search) {
+      list = list.filter(a => (a.name || '').toLowerCase().includes(search) || (a.description || '').toLowerCase().includes(search));
+    }
+
+    if (list.length === 0) {
+      container.innerHTML = `
+        <div class="card" style="grid-column: 1 / -1; text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+          <i class="fa-solid fa-bowl-food" style="font-size: 2.5rem; color: var(--accent-gold); margin-bottom: 12px; display: block;"></i>
+          <h4 style="color: #FFF; margin-bottom: 4px;">No Add-on Items Found</h4>
+          <p style="font-size: 0.85rem;">Click "+ Add New Add-on" to add your first extra item.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = list.map(ao => `
+      <div class="addon-card">
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
+            <h4 style="margin: 0; color: #FFF; font-size: 1.05rem; font-weight: 800;">${ao.name}</h4>
+            <span class="status-badge" style="${
+              !ao.enabled
+                ? 'background: rgba(158,158,158,0.15); color: #9E9E9E; border: 1px solid #9E9E9E;'
+                : (ao.available
+                  ? 'background: rgba(76,175,80,0.15); color: #4CAF50; border: 1px solid #4CAF50;'
+                  : 'background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336;')
+            }">
+              ${!ao.enabled ? '⚫ Disabled' : (ao.available ? '🟢 Available' : '🔴 Unavailable')}
+            </span>
+          </div>
+
+          <div style="font-size: 1.2rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number); margin-bottom: 6px;">
+            ₹${ao.price}
+          </div>
+
+          ${ao.description ? `<p style="font-size: 0.82rem; color: var(--text-muted); margin: 0 0 1rem 0;">${ao.description}</p>` : ''}
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+          <button type="button" class="btn-secondary-outline" onclick="app.openEditAddonModal('${ao.id}')" style="flex: 1; font-size: 0.78rem; padding: 6px 10px;">
+            ✏️ Edit
+          </button>
+
+          ${ao.enabled ? `
+            <button type="button" class="btn-sm-status" onclick="app.toggleAddonAvailability('${ao.id}', ${!ao.available})" style="flex: 1; font-size: 0.78rem; padding: 6px 10px; background: ${ao.available ? 'rgba(255,152,0,0.15); color: #FF9800; border: 1px solid #FF9800;' : 'rgba(76,175,80,0.15); color: #4CAF50; border: 1px solid #4CAF50;'}">
+              ${ao.available ? '🔴 Mark Unavailable' : '🟢 Mark Available'}
+            </button>
+            <button type="button" class="btn-sm-status" onclick="app.disableAddon('${ao.id}')" style="font-size: 0.78rem; padding: 6px 10px; background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336;">
+              Disable
+            </button>
+          ` : `
+            <button type="button" class="btn-sm-status" onclick="app.toggleAddonAvailability('${ao.id}', true)" style="flex: 1; font-size: 0.78rem; padding: 6px 10px; background: rgba(76,175,80,0.15); color: #4CAF50; border: 1px solid #4CAF50;">
+              Enable Item
+            </button>
+          `}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  openCreateAddonModal() {
+    this.currentEditAddonId = null;
+    const title = document.getElementById('lblAddonModalTitle');
+    const txtId = document.getElementById('txtAddonId');
+    const txtName = document.getElementById('txtAddonName');
+    const txtPrice = document.getElementById('txtAddonPrice');
+    const selAvail = document.getElementById('selAddonAvailability');
+    const txtDesc = document.getElementById('txtAddonDescription');
+
+    if (title) title.innerHTML = '<span>🥘</span> Add New Add-on';
+    if (txtId) txtId.value = '';
+    if (txtName) txtName.value = '';
+    if (txtPrice) txtPrice.value = '';
+    if (selAvail) selAvail.value = 'true';
+    if (txtDesc) txtDesc.value = '';
+
+    const modal = document.getElementById('modalCreateEditAddon');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  openEditAddonModal(addonId) {
+    const addon = (this.ownerAddonsList || []).find(a => a.id === addonId);
+    if (!addon) return;
+
+    this.currentEditAddonId = addonId;
+    const title = document.getElementById('lblAddonModalTitle');
+    const txtId = document.getElementById('txtAddonId');
+    const txtName = document.getElementById('txtAddonName');
+    const txtPrice = document.getElementById('txtAddonPrice');
+    const selAvail = document.getElementById('selAddonAvailability');
+    const txtDesc = document.getElementById('txtAddonDescription');
+
+    if (title) title.innerHTML = `<span>🥘</span> Edit Add-on "${addon.name}"`;
+    if (txtId) txtId.value = addon.id;
+    if (txtName) txtName.value = addon.name;
+    if (txtPrice) txtPrice.value = addon.price;
+    if (selAvail) selAvail.value = addon.available ? 'true' : 'false';
+    if (txtDesc) txtDesc.value = addon.description || '';
+
+    const modal = document.getElementById('modalCreateEditAddon');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  closeCreateEditAddonModal() {
+    const modal = document.getElementById('modalCreateEditAddon');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  async submitAddonForm(e) {
+    e.preventDefault();
+    const id = document.getElementById('txtAddonId')?.value;
+    const name = document.getElementById('txtAddonName')?.value;
+    const price = document.getElementById('txtAddonPrice')?.value;
+    const available = document.getElementById('selAddonAvailability')?.value === 'true';
+    const description = document.getElementById('txtAddonDescription')?.value;
+
+    try {
+      const url = id ? `${API_BASE}/add-ons/${id}` : `${API_BASE}/add-ons`;
+      const method = id ? 'PATCH' : 'POST';
+
+      const res = await this.fetchWithAuth(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, price, available, description })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Add-on saved successfully!', 'success');
+        this.closeCreateEditAddonModal();
+        this.loadOwnerAddonsDashboard();
+      } else {
+        this.showToast(json.message || 'Failed to save add-on.', 'error');
+      }
+    } catch (err) {
+      console.error('Submit Add-on Error:', err);
+    }
+  }
+
+  async toggleAddonAvailability(addonId, available) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/add-ons/${addonId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ available, enabled: true })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Add-on status updated.', 'success');
+        this.loadOwnerAddonsDashboard();
+      } else {
+        this.showToast(json.message || 'Failed to update status.', 'error');
+      }
+    } catch (err) {
+      console.error('Toggle availability error:', err);
+    }
+  }
+
+  async disableAddon(addonId) {
+    if (!confirm('Are you sure you want to disable this add-on? Disabled add-ons will no longer be available for new orders, but existing order records remain intact.')) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/add-ons/${addonId}`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Add-on disabled.', 'success');
+        this.loadOwnerAddonsDashboard();
+      } else {
+        this.showToast(json.message || 'Failed to disable add-on.', 'error');
+      }
+    } catch (err) {
+      console.error('Disable add-on error:', err);
+    }
+  }
+
+  // =========================================================================
+  // ⏱️ LIVE PREPARATION TIME CLIENT MODULE
+  // =========================================================================
+
+  livePrepTickerInterval = null;
+
+  getPrepTimerDetails(estimatedReadyAt, orderStatus) {
+    if (!['Received', 'Preparing'].includes(orderStatus)) {
+      if (orderStatus === 'Ready') return { text: '🟢 Ready!', sub: 'Collect at Counter', expectedStr: 'Now' };
+      if (orderStatus === 'Completed' || orderStatus === 'Served') return { text: '✓ Completed', sub: 'Order Served', expectedStr: 'Served' };
+      if (orderStatus === 'Cancelled') return { text: 'Cancelled', sub: 'Order Cancelled', expectedStr: 'N/A' };
+      if (orderStatus === 'Rejected') return { text: 'Rejected', sub: 'Order Rejected', expectedStr: 'N/A' };
+      return { text: orderStatus || 'Active', sub: 'Order Status', expectedStr: 'N/A' };
+    }
+
+    if (!estimatedReadyAt) return { text: '15 min', sub: 'Estimated Prep Time', expectedStr: 'Soon' };
+
+    const readyMs = new Date(estimatedReadyAt).getTime();
+    const nowMs = Date.now();
+    const diffMs = readyMs - nowMs;
+    const remainingMins = Math.max(0, Math.ceil(diffMs / 60000));
+
+    const expectedTimeStr = new Date(readyMs).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (remainingMins <= 0) {
+      return { text: 'Ready Soon', sub: 'Wrapping Up in Kitchen', expectedStr: expectedTimeStr };
+    }
+
+    return {
+      text: `${remainingMins} min`,
+      sub: `Live Preparation Countdown`,
+      expectedStr: expectedTimeStr
+    };
+  }
+
+  startLivePrepTicker() {
+    if (this.livePrepTickerInterval) clearInterval(this.livePrepTickerInterval);
+    this.livePrepTickerInterval = setInterval(() => {
+      const timerEls = document.querySelectorAll('.live-prep-timer-val');
+      timerEls.forEach(el => {
+        const readyAt = el.getAttribute('data-ready-at');
+        const status = el.getAttribute('data-status');
+        if (readyAt && ['Received', 'Preparing'].includes(status)) {
+          const info = this.getPrepTimerDetails(readyAt, status);
+          el.innerText = info.text;
+          const orderId = el.getAttribute('data-order-id');
+          const subEl = document.getElementById(`prepExpectedTime_${orderId}`);
+          if (subEl) subEl.innerText = `🕘 Expected by ${info.expectedStr}`;
+        }
+      });
+    }, 10000);
+  }
+
+  async updateOrderPreparationTime(orderId, minsInput) {
+    let prepMins = minsInput;
+    if (prepMins === undefined || prepMins === null) {
+      const inputEl = document.getElementById(`txtPrepTime_${orderId}`);
+      if (inputEl) prepMins = parseInt(inputEl.value, 10);
+    }
+
+    if (!prepMins || isNaN(prepMins) || prepMins < 1 || prepMins > 180) {
+      this.showToast('Please enter a valid preparation time between 1 and 180 minutes.', 'warning');
+      return;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/orders/${orderId}/preparation-time`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preparation_minutes: prepMins })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(`⏱️ Preparation time updated to ${prepMins} minutes!`, 'success');
+        this.renderOrders();
+      } else {
+        this.showToast(json.message || 'Failed to update preparation time.', 'error');
+      }
+    } catch (err) {
+      console.error('Update prep time error:', err);
+    }
+  }
+
+  // =========================================================================
+  // 🧠 OWNER BUSINESS COPILOT CLIENT MODULE
+  // =========================================================================
+
+  copilotDateRange = 'today';
+
+  async loadBusinessCopilotDashboard() {
+    if (this.currentRole !== 'OWNER') return;
+    const container = document.getElementById('copilotContentContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+        <i class="fa-solid fa-brain fa-spin" style="font-size: 2.5rem; color: #2196F3; margin-bottom: 1rem;"></i>
+        <h3 style="color: #FFF; font-size: 1.15rem; margin-bottom: 0.5rem;">Analyzing Business Data...</h3>
+        <p style="font-size: 0.88rem;">Calculating sales, best sellers, peak demand, and recommendations...</p>
+      </div>
+    `;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/business-copilot/analytics?range=${this.copilotDateRange}`);
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        this.renderBusinessCopilotUI(json.data);
+      } else {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 3rem 1rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 14px; border: 1px solid #F44336;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+            <p>${json.message || 'Failed to load Business Copilot analytics.'}</p>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('Error loading Business Copilot dashboard:', err);
+      container.innerHTML = `
+        <div style="text-align: center; padding: 3rem 1rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 14px; border: 1px solid #F44336;">
+          <p>Server communication error loading Business Copilot.</p>
+        </div>
+      `;
+    }
+  }
+
+  changeCopilotDateRange(range) {
+    this.copilotDateRange = range;
+    this.loadBusinessCopilotDashboard();
+  }
+
+  renderBusinessCopilotUI(data) {
+    const container = document.getElementById('copilotContentContainer');
+    if (!container) return;
+
+    const lblUpdated = document.getElementById('lblCopilotLastUpdated');
+    if (lblUpdated) lblUpdated.innerText = data.last_updated || 'Just now';
+
+    const kpis = data.kpis || {};
+    const sales = kpis.sales || { current: 0, growth_pct: 0 };
+    const orders = kpis.orders || { current: 0, growth_pct: 0 };
+    const newCust = kpis.new_customers || { current: 0, growth_pct: 0 };
+    const refunds = kpis.refunds || { current: 0, count: 0, pending: 0, failed: 0 };
+    const aov = kpis.aov || { current: 0, growth_pct: 0 };
+    const peak = kpis.peak_demand || { window: 'N/A', count: 0 };
+
+    const formatGrowthPill = (pct) => {
+      if (pct > 0) return `<span class="copilot-trend-badge copilot-trend-up"><i class="fa-solid fa-arrow-trend-up"></i> +${pct}%</span>`;
+      if (pct < 0) return `<span class="copilot-trend-badge copilot-trend-down"><i class="fa-solid fa-arrow-trend-down"></i> ${pct}%</span>`;
+      return `<span class="copilot-trend-badge copilot-trend-neutral"><i class="fa-solid fa-minus"></i> 0%</span>`;
+    };
+
+    // 1. KPI Cards HTML
+    const kpiCardsHtml = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.15rem; margin-bottom: 1.75rem;">
+        <!-- Card 1: Today's Sales -->
+        <div class="copilot-kpi-card">
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">📈 Net Sales</span>
+              ${formatGrowthPill(sales.growth_pct)}
+            </div>
+            <div style="font-size: 2.1rem; font-weight: 900; color: #FFF; font-family: var(--font-number); letter-spacing: 0.5px;">
+              ₹${Number(sales.current || 0).toLocaleString('en-IN')}
+            </div>
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 8px;">
+            vs prev period (₹${Number(sales.previous || 0).toLocaleString('en-IN')})
+          </div>
+        </div>
+
+        <!-- Card 2: Orders Count -->
+        <div class="copilot-kpi-card">
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">📦 Total Orders</span>
+              ${formatGrowthPill(orders.growth_pct)}
+            </div>
+            <div style="font-size: 2.1rem; font-weight: 900; color: var(--accent-gold); font-family: var(--font-number); letter-spacing: 0.5px;">
+              ${orders.current || 0}
+            </div>
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 8px;">
+            vs prev period (${orders.previous || 0} orders)
+          </div>
+        </div>
+
+        <!-- Card 3: New Customers -->
+        <div class="copilot-kpi-card">
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">👥 New Customers</span>
+              ${formatGrowthPill(newCust.growth_pct)}
+            </div>
+            <div style="font-size: 2.1rem; font-weight: 900; color: #40C4FF; font-family: var(--font-number); letter-spacing: 0.5px;">
+              ${newCust.current || 0}
+            </div>
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 8px;">
+            Registered in selected period
+          </div>
+        </div>
+
+        <!-- Card 4: Refunds Overview -->
+        <div class="copilot-kpi-card">
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">💸 Total Refunds</span>
+              <span style="font-size: 0.75rem; font-weight: 800; color: ${refunds.current > 0 ? '#FF9800' : '#4CAF50'};">${refunds.count} refunded</span>
+            </div>
+            <div style="font-size: 2.1rem; font-weight: 900; color: ${refunds.current > 0 ? '#FF9800' : '#FFF'}; font-family: var(--font-number); letter-spacing: 0.5px;">
+              ₹${Number(refunds.current || 0).toLocaleString('en-IN')}
+            </div>
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 8px;">
+            ${refunds.pending > 0 ? `⚠️ ${refunds.pending} pending approval` : 'No pending refunds'}
+          </div>
+        </div>
+
+        <!-- Card 5: Average Order Value -->
+        <div class="copilot-kpi-card">
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">💰 Avg Order Value</span>
+              ${formatGrowthPill(aov.growth_pct)}
+            </div>
+            <div style="font-size: 2.1rem; font-weight: 900; color: #4CAF50; font-family: var(--font-number); letter-spacing: 0.5px;">
+              ₹${Number(aov.current || 0).toFixed(2)}
+            </div>
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 8px;">
+            Per completed transaction
+          </div>
+        </div>
+
+        <!-- Card 6: Peak Demand Window -->
+        <div class="copilot-kpi-card">
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">🕘 Peak Demand</span>
+              <span style="font-size: 0.75rem; font-weight: 800; color: var(--accent-gold);">${peak.count} orders</span>
+            </div>
+            <div style="font-size: 1.35rem; font-weight: 900; color: #FFF; margin-top: 6px;">
+              ${peak.window}
+            </div>
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 8px;">
+            Highest ordering volume window
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 2. Smart Alerts & Business Recommendations Panel
+    const alertsList = data.smart_alerts || [];
+    const recommendationsList = data.recommendations || [];
+
+    const alertsHtml = alertsList.length > 0 ? `
+      <div style="margin-bottom: 1.75rem; display: flex; flex-direction: column; gap: 8px;">
+        ${alertsList.map(a => `
+          <div style="background: ${a.type === 'SUCCESS' ? 'rgba(76, 175, 80, 0.14)' : a.type === 'DANGER' ? 'rgba(244, 67, 54, 0.14)' : 'rgba(255, 152, 0, 0.14)'}; border: 1.5px solid ${a.type === 'SUCCESS' ? '#4CAF50' : a.type === 'DANGER' ? '#F44336' : '#FF9800'}; border-radius: 12px; padding: 10px 16px; color: #FFF; font-size: 0.88rem; font-weight: 700; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.2rem;">${a.icon || '⚠️'}</span>
+            <span>${a.message}</span>
+          </div>
+        `).join('')}
+      </div>
+    ` : '';
+
+    const recsHtml = `
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.75rem;">
+        <h3 style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin: 0 0 1rem 0; display: flex; align-items: center; gap: 8px;">
+          <span>💡</span> AI Business Recommendations & Insights
+        </h3>
+        
+        ${recommendationsList.length > 0 ? `
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            ${recommendationsList.map(r => {
+              const confClass = r.confidence === 'High' ? 'confidence-high' : r.confidence === 'Medium' ? 'confidence-medium' : 'confidence-low';
+              return `
+                <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.15rem; display: flex; flex-direction: column; justify-content: space-between;">
+                  <div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                      <h4 style="margin: 0; font-size: 1rem; font-weight: 800; color: var(--accent-gold);">${r.title}</h4>
+                      <span class="confidence-badge ${confClass}">Confidence: ${r.confidence}</span>
+                    </div>
+                    <p style="font-size: 0.88rem; color: #FFF; margin: 0 0 8px 0; font-weight: 700;">
+                      💡 ${r.suggested_action}
+                    </p>
+                  </div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.25); padding: 6px 10px; border-radius: 6px; margin-top: 8px; border-left: 3px solid #2196F3;">
+                    <strong>Why:</strong> ${r.reason}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : `
+          <div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface); border-radius: 12px; border: 1.5px dashed var(--border-color);">
+            📊 Not enough data yet to generate high-confidence recommendations. Continue receiving orders to unlock deeper AI insights.
+          </div>
+        `}
+      </div>
+    `;
+
+    // 3. Best Sellers & Add-ons Grid
+    const bestSellersList = data.best_sellers || [];
+    const popularAddonsList = data.popular_addons || [];
+
+    const bestSellersHtml = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 1.75rem;">
+        
+        <!-- Top Food Dishes -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: #FFF; margin: 0 0 1rem 0; display: flex; align-items: center; justify-content: space-between;">
+            <span>🔥 Today's Best-Selling Dishes</span>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">Units Sold</span>
+          </h3>
+
+          ${bestSellersList.length > 0 ? `
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              ${bestSellersList.slice(0, 5).map((item, idx) => {
+                const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                return `
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <span style="font-size: 1.2rem; min-width: 28px;">${medal}</span>
+                      <div>
+                        <strong style="color: #FFF; font-size: 0.95rem;">${item.name}</strong>
+                        <div style="font-size: 0.78rem; color: var(--text-muted);">Revenue: ₹${item.revenue.toLocaleString('en-IN')}</div>
+                      </div>
+                    </div>
+                    <span style="font-size: 1.1rem; font-weight: 900; color: var(--accent-gold); font-family: var(--font-number);">
+                      ${item.quantity} <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">orders</span>
+                    </span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : `<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No sales data available for this period.</div>`}
+        </div>
+
+        <!-- Top Extra Add-ons -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: #FFF; margin: 0 0 1rem 0; display: flex; align-items: center; justify-content: space-between;">
+            <span>🥘 Popular Extra Add-ons</span>
+            <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">Extras Sold</span>
+          </h3>
+
+          ${popularAddonsList.length > 0 ? `
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              ${popularAddonsList.slice(0, 5).map((ao, idx) => `
+                <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px;">
+                  <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 1.1rem; color: var(--accent-gold); min-width: 24px;">🥘</span>
+                    <div>
+                      <strong style="color: #FFF; font-size: 0.95rem;">${ao.name}</strong>
+                      <div style="font-size: 0.78rem; color: var(--text-muted);">Revenue: ₹${ao.revenue.toLocaleString('en-IN')}</div>
+                    </div>
+                  </div>
+                  <span style="font-size: 1.1rem; font-weight: 900; color: #40C4FF; font-family: var(--font-number);">
+                    ${ao.quantity} <span style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">sold</span>
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          ` : `<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No add-on sales data available for this period.</div>`}
+        </div>
+
+      </div>
+    `;
+
+    // 4. Hourly Demand Visual Chart
+    const hourlyData = data.hourly_demand || [];
+    const maxVal = Math.max(1, ...hourlyData.map(h => h.count));
+
+    const chartHtml = `
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 1.75rem;">
+        <h3 style="font-size: 1.1rem; font-weight: 800; color: #FFF; margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 8px;">
+          <span>🕘</span> Hourly Order Distribution & Peak Hours
+        </h3>
+        <p style="font-size: 0.82rem; color: var(--text-muted); margin: 0 0 1rem 0;">
+          Order frequency grouped by hour of the day (Peak: <strong style="color: var(--accent-gold);">${peak.window}</strong>).
+        </p>
+
+        <div class="bar-chart-container">
+          ${hourlyData.map(h => {
+            const pct = Math.round((h.count / maxVal) * 100);
+            const isPeak = h.count === maxVal && maxVal > 0;
+            return `
+              <div class="bar-chart-col">
+                <span style="font-size: 0.68rem; font-weight: 800; color: ${isPeak ? 'var(--accent-gold)' : 'var(--text-muted)'}; margin-bottom: 4px;">${h.count > 0 ? h.count : ''}</span>
+                <div class="bar-chart-bar ${isPeak ? 'peak' : ''}" style="height: ${Math.max(4, pct)}%;"></div>
+                <span style="font-size: 0.65rem; color: var(--text-muted); margin-top: 6px;">${h.hour}h</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+
+    // 5. Demand Forecast & Retention Metrics
+    const forecastList = data.demand_forecast || [];
+    const retention = data.customer_retention || {};
+
+    const forecastHtml = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem;">
+        
+        <!-- Tomorrow's Demand Forecast -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: #FFF; margin: 0 0 0.4rem 0; display: flex; align-items: center; gap: 8px;">
+            <span>🔮</span> Tomorrow's Kitchen Demand Estimate
+          </h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 1rem 0;">
+            Estimated portion requirements based on historical ordering velocity.
+          </p>
+
+          ${forecastList.length > 0 ? `
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              ${forecastList.map(f => `
+                <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 14px;">
+                  <div>
+                    <strong style="color: #FFF; font-size: 0.92rem;">${f.name}</strong>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">Daily average: ~${f.daily_average} portions</div>
+                  </div>
+                  <span style="font-size: 0.95rem; font-weight: 800; color: #4CAF50; background: rgba(76, 175, 80, 0.15); border: 1px solid #4CAF50; padding: 4px 10px; border-radius: 8px;">
+                    ≈ ${f.estimated_range}
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          ` : `<div style="text-align: center; padding: 1.5rem; color: var(--text-muted);">Forecast unavailable. Insufficient historical data.</div>`}
+        </div>
+
+        <!-- Customer Retention Insights -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.5rem;">
+          <h3 style="font-size: 1.1rem; font-weight: 800; color: #FFF; margin: 0 0 0.4rem 0; display: flex; align-items: center; gap: 8px;">
+            <span>🏆</span> Customer Retention & Loyalty
+          </h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 1rem 0;">
+            Breakdown of new vs returning customer ordering behavior.
+          </p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.78rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Repeat Order Rate</div>
+              <div style="font-size: 1.8rem; font-weight: 900; color: var(--accent-gold); margin: 4px 0;">${retention.repeat_order_rate_pct || 0}%</div>
+              <div style="font-size: 0.74rem; color: #FFF;">${retention.repeat_customers || 0} returning customers</div>
+            </div>
+
+            <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; text-align: center;">
+              <div style="font-size: 0.78rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase;">Active Customers</div>
+              <div style="font-size: 1.8rem; font-weight: 900; color: #40C4FF; margin: 4px 0;">${retention.active_customers || 0}</div>
+              <div style="font-size: 0.74rem; color: #FFF;">Placed orders in period</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    container.innerHTML = kpiCardsHtml + alertsHtml + recsHtml + bestSellersHtml + chartHtml + forecastHtml;
+  }
+
+  // =========================================================================
+  // 🛒 SMART CART OPTIMIZER CLIENT MODULE
+  // =========================================================================
+
+  activeSmartOffers = null;
+
+  async fetchActiveSmartOffers() {
+    if (this.activeSmartOffers) return this.activeSmartOffers;
+    try {
+      const res = await fetch(`${API_BASE}/smart-cart-offers`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        this.activeSmartOffers = json.data;
+        return this.activeSmartOffers;
+      }
+    } catch (err) {
+      console.error('Fetch active smart offers error:', err);
+    }
+    return [];
+  }
+
+  async evaluateSmartCartOptimizer() {
+    const container = document.getElementById('smartCartOptimizerContainer');
+    if (!container) return;
+
+    if (!this.cart || this.cart.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    const offers = await this.fetchActiveSmartOffers();
+    if (!offers || offers.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    // Evaluate each active offer against current cart
+    const unlockedOffers = [];
+    const pendingRecommendations = [];
+
+    offers.forEach(offer => {
+      const matchingItems = this.cart.filter(item => 
+        item.name.toLowerCase().includes(offer.eligible_item_name.toLowerCase()) ||
+        offer.eligible_item_name.toLowerCase().includes(item.name.toLowerCase())
+      );
+
+      const currentQty = matchingItems.reduce((sum, i) => sum + i.quantity, 0);
+      const minQty = Number(offer.min_quantity || 2);
+      const discAmount = Number(offer.discount_amount || 0);
+
+      if (currentQty >= minQty) {
+        unlockedOffers.push({ offer, currentQty, discAmount });
+      } else {
+        const neededQty = minQty - currentQty;
+        let unitPrice = 20;
+        if (matchingItems.length > 0) {
+          unitPrice = matchingItems[0].price;
+        } else {
+          const menuItem = (this.menuItems || []).find(m => m.name.toLowerCase().includes(offer.eligible_item_name.toLowerCase()));
+          if (menuItem) unitPrice = menuItem.price;
+        }
+
+        const neededSpend = neededQty * unitPrice;
+        pendingRecommendations.push({
+          offer,
+          neededQty,
+          neededSpend,
+          discAmount,
+          eligibleItemName: offer.eligible_item_name
+        });
+      }
+    });
+
+    let html = '';
+
+    // Render unlocked offer banners
+    if (unlockedOffers.length > 0) {
+      html += unlockedOffers.map(u => `
+        <div class="smart-success-banner">
+          <span><i class="fa-solid fa-gift" style="color: var(--accent-gold);"></i> 🎉 <strong>${u.offer.offer_name} Unlocked!</strong> Saved ₹${u.discAmount}</span>
+          <span style="font-size: 0.75rem; background: var(--accent-gold); color: #000; padding: 2px 8px; border-radius: 8px; font-weight: 800;">APPLIED</span>
+        </div>
+      `).join('');
+    }
+
+    // Render top 2 pending recommendations ranked by potential saving vs needed spend
+    if (pendingRecommendations.length > 0) {
+      pendingRecommendations.sort((a, b) => (b.discAmount / Math.max(1, b.neededSpend)) - (a.discAmount / Math.max(1, a.neededSpend)));
+      
+      const topRecs = pendingRecommendations.slice(0, 2);
+      html += topRecs.map(rec => `
+        <div class="smart-cart-card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-size: 0.8rem; font-weight: 800; color: #4CAF50; text-transform: uppercase;">💡 Smart Saving</span>
+            <span style="font-size: 0.75rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">Save ₹${rec.discAmount}</span>
+          </div>
+          <div style="font-size: 0.9rem; font-weight: 800; color: #FFF; margin-bottom: 4px;">
+            Add ${rec.neededQty} more ${rec.eligibleItemName} to unlock ₹${rec.discAmount} off!
+          </div>
+          <div style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 8px;">
+            Spend ₹${rec.neededSpend} more → Get ₹${rec.discAmount} combo discount
+          </div>
+          <button type="button" class="smart-btn-one-tap" onclick="app.acceptSmartCartOffer('${rec.offer.id}', ${rec.neededQty}, '${rec.eligibleItemName}')">
+            <i class="fa-solid fa-cart-plus"></i> + Add ${rec.neededQty} ${rec.eligibleItemName}
+          </button>
+        </div>
+      `).join('');
+
+      // Track Impression
+      topRecs.forEach(rec => {
+        fetch(`${API_BASE}/smart-cart-analytics/track`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_type: 'IMPRESSION', offer_id: rec.offer.id })
+        }).catch(() => {});
+      });
+    }
+
+    container.innerHTML = html;
+  }
+
+  async acceptSmartCartOffer(offerId, neededQty, itemName) {
+    const menuItem = (this.menuItems || []).find(m => m.name.toLowerCase().includes(itemName.toLowerCase()));
+
+    if (menuItem) {
+      this.addToCart(menuItem, neededQty);
+    } else {
+      const cartItem = this.cart.find(c => c.name.toLowerCase().includes(itemName.toLowerCase()));
+      if (cartItem) {
+        cartItem.quantity += neededQty;
+      } else {
+        this.cart.push({
+          id: 'item_' + Date.now(),
+          name: itemName,
+          price: 20,
+          quantity: neededQty,
+          image: '/images/idly_sambar.png'
+        });
+      }
+      this.updateCartUI();
+    }
+
+    this.showToast(`🎉 Great choice! Unlocked combo saving!`, 'success');
+
+    try {
+      await fetch(`${API_BASE}/smart-cart-analytics/track`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_type: 'ACCEPTED', offer_id: offerId })
+      });
+    } catch (e) {}
+  }
+
+  // Owner Smart Offers Methods
+  async loadOwnerSmartOffers() {
+    if (this.currentRole !== 'OWNER') return;
+    const container = document.getElementById('ownerSmartOffersContainer');
+    if (!container) return;
+
+    container.innerHTML = `<div style="text-align: center; padding: 2rem; color: var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Loading Smart Offers...</div>`;
+
+    try {
+      const analyticsRes = await this.fetchWithAuth(`${API_BASE}/owner/smart-cart-offers/analytics`);
+      const analyticsJson = await analyticsRes.json();
+      if (analyticsJson.success && analyticsJson.data) {
+        const d = analyticsJson.data;
+        if (document.getElementById('lblSmartImpCount')) document.getElementById('lblSmartImpCount').innerText = d.impressions;
+        if (document.getElementById('lblSmartAcceptedCount')) document.getElementById('lblSmartAcceptedCount').innerText = d.accepted;
+        if (document.getElementById('lblSmartConversionRate')) document.getElementById('lblSmartConversionRate').innerText = `${d.conversion_rate_pct}%`;
+        if (document.getElementById('lblSmartTotalSavings')) document.getElementById('lblSmartTotalSavings').innerText = `₹${d.total_savings}`;
+      }
+
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/smart-cart-offers`);
+      const json = await res.json();
+
+      if (json.success && Array.isArray(json.data)) {
+        if (json.data.length === 0) {
+          container.innerHTML = `<div style="text-align: center; padding: 3rem; color: var(--text-muted); grid-column: 1/-1;">No Smart Cart Offers configured. Click "Add New Combo Offer" to create one.</div>`;
+        } else {
+          container.innerHTML = json.data.map(o => `
+            <div style="background: var(--bg-surface-elevated); border: 1.5px solid ${o.status === 'Active' ? '#4CAF50' : 'var(--border-color)'}; border-radius: 14px; padding: 1.15rem; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                  <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: #FFF;">${o.offer_name}</h4>
+                  <span style="font-size: 0.72rem; font-weight: 800; padding: 2px 8px; border-radius: 10px; ${o.status === 'Active' ? 'background: rgba(76, 175, 80, 0.2); color: #4CAF50; border: 1px solid #4CAF50;' : 'background: rgba(158, 158, 158, 0.2); color: #9E9E9E; border: 1px solid #9E9E9E;'}">
+                    ${o.status}
+                  </span>
+                </div>
+                <div style="font-size: 0.88rem; color: var(--accent-gold); font-weight: 700; margin-bottom: 4px;">
+                  Buy ${o.min_quantity} ${o.eligible_item_name} → Save ₹${o.discount_amount}
+                </div>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">
+                  Triggered in cart when customer orders ${o.min_quantity}+ ${o.eligible_item_name}
+                </div>
+              </div>
+              <div style="display: flex; gap: 6px; margin-top: 1rem;">
+                <button type="button" class="co-row-btn-action toggle" onclick="app.toggleOwnerSmartOffer('${o.id}', '${o.status}')" style="flex: 1; padding: 6px 10px; font-size: 0.78rem;">
+                  <i class="fa-solid ${o.status === 'Active' ? 'fa-pause' : 'fa-play'}"></i> ${o.status === 'Active' ? 'Disable' : 'Enable'}
+                </button>
+                <button type="button" class="co-row-btn-action reject" onclick="app.deleteOwnerSmartOffer('${o.id}')" style="padding: 6px 10px; font-size: 0.78rem;">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+    } catch (err) {
+      console.error('Error loading owner smart offers:', err);
+    }
+  }
+
+  toggleSmartOfferModal(open = true) {
+    const modal = document.getElementById('modalSmartOfferBackdrop');
+    if (modal) {
+      if (open) modal.classList.add('active');
+      else modal.classList.remove('active');
+    }
+  }
+
+  openCreateSmartOfferModal() {
+    if (document.getElementById('txtSmartOfferId')) document.getElementById('txtSmartOfferId').value = '';
+    if (document.getElementById('txtSmartOfferName')) document.getElementById('txtSmartOfferName').value = '';
+    if (document.getElementById('txtSmartOfferItem')) document.getElementById('txtSmartOfferItem').value = '';
+    if (document.getElementById('numSmartOfferMinQty')) document.getElementById('numSmartOfferMinQty').value = '2';
+    if (document.getElementById('numSmartOfferDiscount')) document.getElementById('numSmartOfferDiscount').value = '10.00';
+    if (document.getElementById('selSmartOfferStatus')) document.getElementById('selSmartOfferStatus').value = 'Active';
+
+    this.toggleSmartOfferModal(true);
+  }
+
+  async saveOwnerSmartOffer(event) {
+    if (event) event.preventDefault();
+
+    const offerName = document.getElementById('txtSmartOfferName').value;
+    const itemName = document.getElementById('txtSmartOfferItem').value;
+    const minQty = document.getElementById('numSmartOfferMinQty').value;
+    const discount = document.getElementById('numSmartOfferDiscount').value;
+    const status = document.getElementById('selSmartOfferStatus').value;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/smart-cart-offers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          offer_name: offerName,
+          eligible_item_name: itemName,
+          min_quantity: minQty,
+          discount_amount: discount,
+          status: status
+        })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('Smart Cart Offer saved successfully!', 'success');
+        this.toggleSmartOfferModal(false);
+        this.activeSmartOffers = null;
+        this.loadOwnerSmartOffers();
+      } else {
+        this.showToast(json.message || 'Failed to save offer.', 'error');
+      }
+    } catch (err) {
+      console.error('Save offer error:', err);
+    }
+  }
+
+  async toggleOwnerSmartOffer(id, currentStatus) {
+    const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/smart-cart-offers/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(`Offer set to ${newStatus}`, 'success');
+        this.activeSmartOffers = null;
+        this.loadOwnerSmartOffers();
+      }
+    } catch (err) {
+      console.error('Toggle offer error:', err);
+    }
+  }
+
+  async deleteOwnerSmartOffer(id) {
+    if (!confirm('Are you sure you want to delete this Smart Cart Offer?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/smart-cart-offers/${id}`, {
+        method: 'DELETE'
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('Offer deleted', 'success');
+        this.activeSmartOffers = null;
+        this.loadOwnerSmartOffers();
+      }
+    } catch (err) {
+      console.error('Delete offer error:', err);
+    }
+  }
+
+  // =========================================================================
+  // 🤖 AI ORDER ASSISTANT CLIENT MODULE
+  // =========================================================================
+
+  currentAiOptions = [];
+
+  openAiAssistantModal() {
+    this.toggleAiAssistantModal(true);
+  }
+
+  toggleAiAssistantModal(open = true) {
+    const modal = document.getElementById('modalAiAssistant');
+    if (modal) {
+      if (open) modal.classList.add('active');
+      else modal.classList.remove('active');
+    }
+  }
+
+  setAiPrompt(text) {
+    const input = document.getElementById('txtAiAssistantPrompt');
+    if (input) {
+      input.value = text;
+      this.sendAiAssistantPrompt();
+    }
+  }
+
+  async sendAiAssistantPrompt(event) {
+    if (event) event.preventDefault();
+
+    const input = document.getElementById('txtAiAssistantPrompt');
+    if (!input || !input.value.trim()) return;
+
+    const promptText = input.value.trim();
+    const container = document.getElementById('aiAssistantResultsContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+        <i class="fa-solid fa-robot fa-spin" style="font-size: 2.5rem; color: #2196F3; margin-bottom: 1rem;"></i>
+        <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.5rem;">Finding the best options...</h3>
+        <p style="font-size: 0.85rem;">Analyzing live menu items, prices, and quantities for your budget...</p>
+      </div>
+    `;
+
+    try {
+      const res = await fetch(`${API_BASE}/customer/ai-order-assistant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText })
+      });
+
+      const json = await res.json();
+
+      if (json.success) {
+        this.currentAiOptions = json.options || [];
+
+        let html = `
+          <div style="margin-bottom: 1rem; font-size: 0.92rem; font-weight: 800; color: #FFF;">
+            ${json.message}
+          </div>
+        `;
+
+        if (this.currentAiOptions.length === 0) {
+          html += `
+            <div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface); border-radius: 12px; border: 1.5px dashed var(--border-color);">
+              ${json.suggested_budget ? `💡 <strong>Budget Suggestion:</strong> Try increasing your budget to ₹${json.suggested_budget} for ${promptText}.` : 'No combinations match this request. Try adjusting your headcount or budget!'}
+            </div>
+          `;
+        } else {
+          html += this.currentAiOptions.map((opt, idx) => `
+            <div class="ai-option-card">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent-gold);">${opt.title}</h4>
+                <span style="font-size: 1.15rem; font-weight: 900; color: #4CAF50; font-family: var(--font-number);">₹${opt.total}</span>
+              </div>
+              <p style="font-size: 0.84rem; color: var(--text-muted); margin: 0 0 10px 0;">${opt.explanation}</p>
+              
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 10px;">
+                ${opt.items.map(item => `
+                  <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.86rem; color: #FFF;">
+                    <span>• ${item.name} × ${item.quantity}</span>
+                    <span style="color: var(--text-muted); font-size: 0.78rem;">₹${item.price} each</span>
+                  </div>
+                `).join('')}
+              </div>
+
+              <button type="button" class="btn-primary-block" onclick="app.addAiOptionToCart(${idx})" style="background: linear-gradient(135deg, #2196F3, #1565C0); border: none; color: #FFF; font-weight: 800; padding: 8px 16px; font-size: 0.85rem;">
+                <i class="fa-solid fa-cart-plus"></i> Add Option ${idx + 1} to Cart (₹${opt.total})
+              </button>
+            </div>
+          `).join('');
+        }
+
+        container.innerHTML = html;
+      } else {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 2rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
+            ${json.message || 'AI Assistant is currently unavailable.'}
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('AI prompt error:', err);
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
+          Server communication error. Please try again.
+        </div>
+      `;
+    }
+  }
+
+  addAiOptionToCart(optionIdx, replaceCart = false) {
+    const opt = this.currentAiOptions[optionIdx];
+    if (!opt || !Array.isArray(opt.items)) return;
+
+    if (this.cart.length > 0 && !replaceCart && !confirm('Your cart currently contains items. Would you like to add these AI recommended items to your existing cart? (Click Cancel to replace cart)')) {
+      replaceCart = true;
+    }
+
+    if (replaceCart) {
+      this.cart = [];
+    }
+
+    opt.items.forEach(i => {
+      const menuItem = (this.menuItems || []).find(m => m.id === i.id || m.name.toLowerCase().includes(i.name.toLowerCase()));
+      if (menuItem) {
+        this.addToCart(menuItem, i.quantity);
+      } else {
+        const existing = this.cart.find(c => c.name.toLowerCase().includes(i.name.toLowerCase()));
+        if (existing) {
+          existing.quantity += i.quantity;
+        } else {
+          this.cart.push({
+            id: i.id || ('item_' + Date.now()),
+            name: i.name,
+            price: i.price,
+            quantity: i.quantity,
+            image: i.image || '/images/idly_sambar.png'
+          });
+        }
+      }
+    });
+
+    this.updateCartUI();
+    this.toggleAiAssistantModal(false);
+    this.showToast(`🎉 Added ${opt.title} (₹${opt.total}) to your cart!`, 'success');
+    this.toggleCartDrawer(true);
   }
 }
 

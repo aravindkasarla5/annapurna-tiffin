@@ -408,6 +408,151 @@ async function initDatabase() {
       actor_id VARCHAR(100),
       details TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS menu_polls (
+      id VARCHAR(100) PRIMARY KEY,
+      question VARCHAR(255) NOT NULL DEFAULT 'Choose Tomorrow''s Special',
+      start_at TIMESTAMPTZ NOT NULL,
+      end_at TIMESTAMPTZ NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'SCHEDULED',
+      winner_food_id VARCHAR(100),
+      winner_selection_type VARCHAR(50) DEFAULT 'AUTOMATIC',
+      tomorrow_special_published BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS menu_poll_options (
+      id VARCHAR(100) PRIMARY KEY,
+      poll_id VARCHAR(100) NOT NULL REFERENCES menu_polls(id) ON DELETE CASCADE,
+      food_id VARCHAR(100) NOT NULL REFERENCES tiffins(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS menu_poll_votes (
+      id VARCHAR(100) PRIMARY KEY,
+      poll_id VARCHAR(100) NOT NULL REFERENCES menu_polls(id) ON DELETE CASCADE,
+      option_id VARCHAR(100) NOT NULL REFERENCES menu_poll_options(id) ON DELETE CASCADE,
+      customer_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT unique_customer_poll_vote UNIQUE (poll_id, customer_id)
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS security_events (
+      id VARCHAR(100) PRIMARY KEY,
+      event_type VARCHAR(100) NOT NULL,
+      risk_level VARCHAR(20) NOT NULL DEFAULT 'LOW',
+      customer_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+      order_id VARCHAR(100),
+      payment_id VARCHAR(100),
+      details TEXT,
+      status VARCHAR(50) NOT NULL DEFAULT 'NEW',
+      internal_note TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS owner_audit_logs (
+      id VARCHAR(100) PRIMARY KEY,
+      actor_id VARCHAR(100),
+      actor_name VARCHAR(255),
+      action VARCHAR(100) NOT NULL,
+      resource_type VARCHAR(100),
+      resource_id VARCHAR(100),
+      details TEXT,
+      ip_address VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS refunds (
+      id VARCHAR(100) PRIMARY KEY,
+      refund_reference VARCHAR(100) NOT NULL UNIQUE,
+      order_id VARCHAR(100) NOT NULL,
+      order_number VARCHAR(100) NOT NULL,
+      payment_id VARCHAR(100),
+      customer_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      customer_name VARCHAR(255),
+      customer_mobile VARCHAR(50),
+      original_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      refund_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      non_refundable_amount NUMERIC(10, 2) DEFAULT 0.00,
+      refund_type VARCHAR(50) DEFAULT 'FULL',
+      reason TEXT NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'REFUND_REQUESTED',
+      payment_method VARCHAR(100) DEFAULT 'UPI',
+      payment_reference VARCHAR(100),
+      expected_completion_date TIMESTAMPTZ,
+      last_updated_message TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      completed_at TIMESTAMPTZ
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS refund_events (
+      id VARCHAR(100) PRIMARY KEY,
+      refund_id VARCHAR(100) NOT NULL REFERENCES refunds(id) ON DELETE CASCADE,
+      event_type VARCHAR(100) NOT NULL,
+      previous_status VARCHAR(50),
+      new_status VARCHAR(50) NOT NULL,
+      message TEXT,
+      amount NUMERIC(10, 2),
+      actor_type VARCHAR(50) NOT NULL DEFAULT 'SYSTEM',
+      actor_id VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS add_ons (
+      id VARCHAR(100) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      description TEXT,
+      available BOOLEAN DEFAULT true,
+      enabled BOOLEAN DEFAULT true,
+      category VARCHAR(100) DEFAULT 'Extras',
+      display_order INT DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS order_add_ons (
+      id VARCHAR(100) PRIMARY KEY,
+      order_id VARCHAR(100) NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      add_on_id VARCHAR(100),
+      add_on_name VARCHAR(255) NOT NULL,
+      quantity INT NOT NULL DEFAULT 1,
+      unit_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      subtotal NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS smart_cart_offers (
+      id VARCHAR(100) PRIMARY KEY,
+      offer_name VARCHAR(255) NOT NULL,
+      min_quantity INT NOT NULL DEFAULT 2,
+      eligible_item_name VARCHAR(255) NOT NULL,
+      discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 10.00,
+      status VARCHAR(50) DEFAULT 'Active',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS smart_cart_analytics (
+      id VARCHAR(100) PRIMARY KEY,
+      event_type VARCHAR(50) NOT NULL,
+      offer_id VARCHAR(100),
+      customer_id VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS ai_assistant_analytics (
+      id VARCHAR(100) PRIMARY KEY,
+      query_text TEXT,
+      budget NUMERIC(10, 2),
+      people_count INT,
+      selected_option_id VARCHAR(100),
+      customer_id VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`
   ];
 
@@ -417,6 +562,55 @@ async function initDatabase() {
     } catch (err) {
       console.error('Error creating database table:', err);
     }
+  }
+
+  // Initialize unique index for customer menu poll votes & add-on indexes
+  try {
+    await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_customer_poll_vote ON menu_poll_votes(poll_id, customer_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sec_events_type_status ON security_events(event_type, status);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_sec_events_risk ON security_events(risk_level);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_owner_audit_created ON owner_audit_logs(created_at);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_refunds_order_id ON refunds(order_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_refunds_customer_id ON refunds(customer_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_refunds_status ON refunds(status);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_refund_events_refund_id ON refund_events(refund_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_add_ons_enabled ON add_ons(enabled, available);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_order_add_ons_order ON order_add_ons(order_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_smart_cart_analytics_offer_id ON smart_cart_analytics(offer_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_ai_assistant_analytics_created ON ai_assistant_analytics(created_at);`);
+  } catch (idxErr) {
+    console.warn('Index creation notice:', idxErr.message);
+  }
+
+  // Seed default Add-ons if empty
+  try {
+    const checkAddons = await query(`SELECT COUNT(*) as c FROM add_ons;`);
+    if (Number(checkAddons.rows[0]?.c || 0) === 0) {
+      const nowIso = new Date().toISOString();
+      await query(`INSERT INTO add_ons (id, name, price, description, available, enabled, category, display_order, created_at, updated_at) VALUES
+        ('addon_1', 'Extra Chutney', 5.00, 'Fresh Coconut & Peanut Chutney', true, true, 'Extras', 1, '${nowIso}', '${nowIso}'),
+        ('addon_2', 'Extra Sambar', 10.00, 'Hot Traditional South Indian Sambar', true, true, 'Extras', 2, '${nowIso}', '${nowIso}'),
+        ('addon_3', 'Extra Idly', 15.00, 'Steamed Rice Idly (1 pc)', true, true, 'Extras', 3, '${nowIso}', '${nowIso}')
+        ON CONFLICT DO NOTHING;`);
+      console.log('✓ Default Add-ons seeded successfully!');
+    }
+  } catch (seedErr) {
+    console.warn('Add-ons seeding notice:', seedErr.message);
+  }
+
+  // Seed default Smart Cart Offers if empty
+  try {
+    const checkSmartOffers = await query(`SELECT COUNT(*) as c FROM smart_cart_offers;`);
+    if (Number(checkSmartOffers.rows[0]?.c || 0) === 0) {
+      const nowIso = new Date().toISOString();
+      await query(`INSERT INTO smart_cart_offers (id, offer_name, min_quantity, eligible_item_name, discount_amount, status, created_at, updated_at) VALUES
+        ('sco_vada_seed', 'Vada Combo Discount', 2, 'Vada', 10.00, 'Active', '${nowIso}', '${nowIso}'),
+        ('sco_idly_seed', 'Idly Savings Combo', 3, 'Idly', 5.00, 'Active', '${nowIso}', '${nowIso}')
+        ON CONFLICT DO NOTHING;`);
+      console.log('✓ Default Smart Cart Offers seeded successfully!');
+    }
+  } catch (scoErr) {
+    console.warn('Smart Cart Offers seeding notice:', scoErr.message);
   }
 
   // Initialize order_counter, ticket_counter, and member_counter if missing
@@ -453,6 +647,9 @@ async function initDatabase() {
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS food_member_discount NUMERIC(10, 2) DEFAULT 0.00;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_express_delivery BOOLEAN DEFAULT false;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_premium_member BOOLEAN DEFAULT false;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS add_ons JSONB DEFAULT '[]'::jsonb;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS preparation_minutes INT DEFAULT 15;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_ready_at TIMESTAMPTZ;`);
         await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_card_per_customer ON food_member_cards(customer_id) WHERE status = 'ACTIVE';`);
         await query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_app_per_customer ON food_member_applications(customer_id) WHERE status = 'PENDING_APPROVAL';`);
         await query(`CREATE INDEX IF NOT EXISTS idx_member_app_pay_ref ON food_member_applications(payment_reference);`);
@@ -494,6 +691,9 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE orders ADD COLUMN food_member_discount NUMERIC(10, 2) DEFAULT 0.00;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN is_express_delivery INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN is_premium_member INTEGER DEFAULT 0;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN add_ons TEXT DEFAULT '[]';`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN preparation_minutes INTEGER DEFAULT 15;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN estimated_ready_at TEXT;`);
       await safeAlter(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_card_per_customer ON food_member_cards(customer_id) WHERE status = 'ACTIVE';`);
       await safeAlter(`CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_pending_app_per_customer ON food_member_applications(customer_id) WHERE status = 'PENDING_APPROVAL';`);
       await safeAlter(`CREATE INDEX IF NOT EXISTS idx_member_app_pay_ref ON food_member_applications(payment_reference);`);
