@@ -13862,7 +13862,7 @@ class TiffinApp {
     modal.classList.add('open', 'active', 'visible');
 
     try {
-      if (!this.menuItems || this.menuItems.length === 0) {
+      if (!this.menu || this.menu.length === 0) {
         await this.fetchMenu();
       }
     } catch (err) {
@@ -13915,7 +13915,8 @@ class TiffinApp {
     const rowIndex = currentRows.length + 1;
     const rowId = `pollOptRow_${Date.now()}_${rowIndex}`;
 
-    const tiffinsOptionsHtml = (this.menuItems || []).map(t => `<option value="${t.id}">${t.name} (₹${t.price})</option>`).join('');
+    const menuList = (this.menu && this.menu.length > 0) ? this.menu : (this.menuItems || []);
+    const tiffinsOptionsHtml = menuList.map(t => `<option value="${t.id}">${t.name} (₹${t.price})</option>`).join('');
 
     const div = document.createElement('div');
     div.className = 'poll-option-select-row';
