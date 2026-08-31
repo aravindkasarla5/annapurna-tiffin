@@ -6817,8 +6817,8 @@ app.post('/api/menu-voting/polls', authenticateToken, requireRole('OWNER'), asyn
       return res.status(400).json({ success: false, message: "A minimum of 2 food options is required." });
     }
 
-    if (food_ids.length > 3) {
-      return res.status(400).json({ success: false, message: "Maximum 3 food options are allowed." });
+    if (food_ids.length > 5) {
+      return res.status(400).json({ success: false, message: "Maximum 5 food options are allowed." });
     }
 
     const startDate = new Date(start_at);

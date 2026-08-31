@@ -13765,14 +13765,17 @@ class TiffinApp {
       'CANCELLED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E; border: 1px solid #9E9E9E;">⚪ Cancelled</span>'
     };
 
-    const optionsHtml = poll.options.map(opt => `
-      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-          <span style="font-weight: 700; color: #FFF; font-size: 0.92rem;">${opt.food_name}</span>
-          <span style="font-size: 0.85rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">${opt.votes} votes (${opt.percentage}%)</span>
-        </div>
-        <div style="width: 100%; background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
-          <div style="width: ${opt.percentage}%; background: linear-gradient(90deg, var(--primary), var(--accent-gold)); height: 100%;"></div>
+    const optionsHtml = (poll.options || []).map(opt => `
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px;">
+        <img src="${opt.food_image || opt.image || '/images/idly_sambar.png'}" style="width: 42px; height: 42px; border-radius: 8px; object-fit: cover;">
+        <div style="flex: 1;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: 700; color: #FFF; font-size: 0.92rem;">${opt.food_name || 'Special Dish'} <strong style="color: var(--accent-gold); font-size: 0.84rem;">(₹${opt.price || opt.food_price || 0})</strong></span>
+            <span style="font-size: 0.85rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">${opt.votes || opt.votes_count || 0} votes (${opt.percentage || opt.vote_percentage || 0}%)</span>
+          </div>
+          <div style="width: 100%; background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
+            <div style="width: ${opt.percentage || opt.vote_percentage || 0}%; background: linear-gradient(90deg, #9C27B0, var(--accent-gold)); height: 100%;"></div>
+          </div>
         </div>
       </div>
     `).join('');
@@ -13816,7 +13819,7 @@ class TiffinApp {
     }
 
     return `
-      <div class="card" style="padding: 1.25rem; border-radius: var(--radius-lg); background: var(--card-bg, #1E1E2E); border: 1px solid var(--border-color);">
+      <div class="card" style="padding: 1.25rem; border-radius: var(--radius-lg); background: var(--card-bg, #1E1E2E); border: 1px solid var(--border-color); margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 1rem; flex-wrap: wrap;">
           <div>
             <h3 style="margin: 0 0 4px 0; font-size: 1.1rem; color: #FFF; font-weight: 800;">🗳️ ${poll.question}</h3>
@@ -13834,9 +13837,9 @@ class TiffinApp {
         ${tieBoxHtml}
         ${winnerBoxHtml}
 
-        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
           ${poll.status === 'ACTIVE' ? `
-            <button type="button" class="btn-secondary-outline" onclick="app.closePoll('${poll.id}')" style="font-size: 0.8rem; padding: 6px 14px;">
+            <button type="button" class="btn-secondary-outline" onclick="app.closePoll('${poll.id}')" style="font-size: 0.8rem; padding: 6px 14px; color: #FFC107; border-color: #FFC107;">
               Close Voting
             </button>
           ` : ''}
@@ -13869,6 +13872,8 @@ class TiffinApp {
       console.warn('fetchMenu warning in openCreatePollModal:', err);
     }
 
+    this.selectedPollFoodIds = [];
+
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -13880,12 +13885,7 @@ class TiffinApp {
     if (txtStart) txtStart.value = startIso;
     if (txtEnd) txtEnd.value = endIso;
 
-    const container = document.getElementById('pollOptionRowsContainer');
-    if (container) {
-      container.innerHTML = '';
-      this.addPollOptionRow();
-      this.addPollOptionRow();
-    }
+    this.renderFoodPillGrid();
   }
 
   closeCreatePollModal() {
@@ -13897,44 +13897,65 @@ class TiffinApp {
     }
   }
 
-  addPollOptionRow() {
+  renderFoodPillGrid() {
     const container = document.getElementById('pollOptionRowsContainer');
     if (!container) return;
 
-    const currentRows = container.querySelectorAll('.poll-option-select-row');
-    if (currentRows.length >= 5) {
-      const msg = document.getElementById('lblPollOptionValidationMsg');
-      if (msg) {
-        msg.innerText = 'Maximum 5 food options are allowed.';
-        msg.style.display = 'block';
-        setTimeout(() => { msg.style.display = 'none'; }, 3000);
-      }
-      return;
-    }
+    const list = (this.menu && this.menu.length > 0) ? this.menu : (this.menuItems || []);
 
-    const rowIndex = currentRows.length + 1;
-    const rowId = `pollOptRow_${Date.now()}_${rowIndex}`;
+    let html = `
+      <div style="margin-bottom: 0.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold);">
+            👇 Tap 2 to 5 dishes below to include in this poll:
+          </span>
+          <span style="font-size: 0.78rem; font-weight: 800; padding: 3px 10px; border-radius: 12px; background: rgba(156,39,176,0.25); color: #E040FB;" id="lblSelectedPollCount">
+            Selected: ${this.selectedPollFoodIds ? this.selectedPollFoodIds.length : 0} / 5
+          </span>
+        </div>
 
-    const menuList = (this.menu && this.menu.length > 0) ? this.menu : (this.menuItems || []);
-    const tiffinsOptionsHtml = menuList.map(t => `<option value="${t.id}">${t.name} (₹${t.price})</option>`).join('');
-
-    const div = document.createElement('div');
-    div.className = 'poll-option-select-row';
-    div.id = rowId;
-    div.style.cssText = 'display: flex; gap: 8px; align-items: center;';
-    div.innerHTML = `
-      <select class="form-control sel-poll-food-id" required style="flex: 1;">
-        <option value="">-- Select Food Option ${rowIndex} --</option>
-        ${tiffinsOptionsHtml}
-      </select>
-      ${rowIndex > 2 ? `
-        <button type="button" class="btn-sm-status" onclick="document.getElementById('${rowId}').remove()" style="background: rgba(244,67,54,0.15); color: #F44336; border: 1px solid #F44336; padding: 6px 12px; cursor: pointer;">
-          ✕
-        </button>
-      ` : ''}
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; padding: 6px; border: 1.5px solid var(--border-color); border-radius: 12px; background: rgba(0,0,0,0.3);">
     `;
 
-    container.appendChild(div);
+    list.forEach(t => {
+      const isSelected = (this.selectedPollFoodIds || []).includes(t.id);
+      html += `
+        <div onclick="app.togglePollFoodPillSelection('${t.id}')" style="cursor: pointer; padding: 8px; border-radius: 10px; border: 1.5px solid ${isSelected ? '#9C27B0' : 'rgba(255,255,255,0.1)'}; background: ${isSelected ? 'rgba(156,39,176,0.35)' : 'rgba(255,255,255,0.03)'}; display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
+          <img src="${t.image || '/images/idly_sambar.png'}" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover;">
+          <div style="overflow: hidden; flex: 1;">
+            <strong style="color: #FFF; font-size: 0.78rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.name}</strong>
+            <span style="color: var(--accent-gold); font-size: 0.72rem; font-weight: 800;">₹${t.price} ${isSelected ? '✅' : ''}</span>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = html;
+  }
+
+  togglePollFoodPillSelection(foodId) {
+    if (!this.selectedPollFoodIds) this.selectedPollFoodIds = [];
+
+    const idx = this.selectedPollFoodIds.indexOf(foodId);
+    if (idx > -1) {
+      this.selectedPollFoodIds.splice(idx, 1);
+    } else {
+      if (this.selectedPollFoodIds.length >= 5) {
+        this.showToast('Maximum 5 food options allowed per poll.', 'warning');
+        return;
+      }
+      this.selectedPollFoodIds.push(foodId);
+    }
+    this.renderFoodPillGrid();
+  }
+
+  addPollOptionRow() {
+    this.renderFoodPillGrid();
   }
 
   async submitCreatePoll(e) {
@@ -13944,14 +13965,17 @@ class TiffinApp {
     const start_at = document.getElementById('txtPollStartAt')?.value;
     const end_at = document.getElementById('txtPollEndAt')?.value;
 
-    const selects = document.querySelectorAll('.sel-poll-food-id');
-    const food_ids = [];
-    selects.forEach(s => {
-      if (s.value) food_ids.push(s.value);
-    });
+    let food_ids = Array.isArray(this.selectedPollFoodIds) ? [...this.selectedPollFoodIds] : [];
 
     if (food_ids.length < 2) {
-      this.showToast('Please select at least 2 food options.', 'warning');
+      const selects = document.querySelectorAll('.sel-poll-food-id');
+      selects.forEach(s => {
+        if (s.value) food_ids.push(s.value);
+      });
+    }
+
+    if (food_ids.length < 2) {
+      this.showToast('Please tap at least 2 food dishes to include in the poll.', 'warning');
       return;
     }
 
