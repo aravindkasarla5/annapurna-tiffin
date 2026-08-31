@@ -13872,7 +13872,14 @@ class TiffinApp {
       console.warn('fetchMenu warning in openCreatePollModal:', err);
     }
 
-    this.selectedPollFoodIds = [];
+    const list = (this.menu && this.menu.length > 0) ? this.menu : (this.menuItems || []);
+    if (list.length >= 2) {
+      this.selectedPollFoodIds = [list[0].id, list[1].id];
+    } else if (list.length === 1) {
+      this.selectedPollFoodIds = [list[0].id];
+    } else {
+      this.selectedPollFoodIds = [];
+    }
 
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -13961,9 +13968,19 @@ class TiffinApp {
   async submitCreatePoll(e) {
     if (e) e.preventDefault();
 
-    const question = (document.getElementById('txtPollQuestion')?.value || '').trim();
-    const start_at = document.getElementById('txtPollStartAt')?.value;
-    const end_at = document.getElementById('txtPollEndAt')?.value;
+    const question = (document.getElementById('txtPollQuestion')?.value || '').trim() || "Choose Tomorrow's Special";
+    let start_at = document.getElementById('txtPollStartAt')?.value;
+    let end_at = document.getElementById('txtPollEndAt')?.value;
+
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    if (!start_at) {
+      start_at = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+    if (!end_at) {
+      end_at = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
 
     let food_ids = Array.isArray(this.selectedPollFoodIds) ? [...this.selectedPollFoodIds] : [];
 
@@ -14001,7 +14018,7 @@ class TiffinApp {
       if (json.success) {
         this.showToast(json.message || 'Poll created successfully!', 'success');
         this.closeCreatePollModal();
-        this.loadOwnerPolls();
+        this.filterOwnerPolls('ALL');
       } else {
         this.showToast(json.message || 'Failed to create poll.', 'error');
       }
