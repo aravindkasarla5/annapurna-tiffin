@@ -13853,14 +13853,24 @@ class TiffinApp {
 
   async openCreatePollModal() {
     const modal = document.getElementById('modalCreatePoll');
-    if (!modal) return;
+    if (!modal) {
+      console.error('modalCreatePoll element not found');
+      return;
+    }
 
-    modal.classList.add('active');
-    modal.classList.add('open');
+    modal.style.display = 'flex';
+    modal.style.opacity = '1';
+    modal.style.visibility = 'visible';
+    modal.style.pointerEvents = 'auto';
+    modal.classList.add('active', 'open', 'visible');
     modal.classList.remove('hidden');
 
-    if (!this.menuItems || this.menuItems.length === 0) {
-      await this.fetchMenu();
+    try {
+      if (!this.menuItems || this.menuItems.length === 0) {
+        await this.fetchMenu();
+      }
+    } catch (err) {
+      console.warn('fetchMenu warning in openCreatePollModal:', err);
     }
 
     const now = new Date();
@@ -13885,8 +13895,11 @@ class TiffinApp {
   closeCreatePollModal() {
     const modal = document.getElementById('modalCreatePoll');
     if (modal) {
-      modal.classList.remove('active');
-      modal.classList.remove('open');
+      modal.style.display = 'none';
+      modal.style.opacity = '0';
+      modal.style.visibility = 'hidden';
+      modal.style.pointerEvents = 'none';
+      modal.classList.remove('active', 'open', 'visible');
       modal.classList.add('hidden');
     }
   }
@@ -15033,9 +15046,14 @@ class TiffinApp {
 
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.classList.add('active');
-      modal.classList.add('open');
+      modal.style.display = 'flex';
+      modal.style.opacity = '1';
+      modal.style.visibility = 'visible';
+      modal.style.pointerEvents = 'auto';
+      modal.classList.add('active', 'open', 'visible');
       modal.classList.remove('hidden');
+    } else {
+      console.error('modalCreateEditAddon element not found');
     }
   }
 
@@ -15060,8 +15078,11 @@ class TiffinApp {
 
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.classList.add('active');
-      modal.classList.add('open');
+      modal.style.display = 'flex';
+      modal.style.opacity = '1';
+      modal.style.visibility = 'visible';
+      modal.style.pointerEvents = 'auto';
+      modal.classList.add('active', 'open', 'visible');
       modal.classList.remove('hidden');
     }
   }
@@ -15069,8 +15090,11 @@ class TiffinApp {
   closeCreateEditAddonModal() {
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.classList.remove('active');
-      modal.classList.remove('open');
+      modal.style.display = 'none';
+      modal.style.opacity = '0';
+      modal.style.visibility = 'hidden';
+      modal.style.pointerEvents = 'none';
+      modal.classList.remove('active', 'open', 'visible');
       modal.classList.add('hidden');
     }
   }
