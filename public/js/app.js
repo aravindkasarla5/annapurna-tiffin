@@ -13972,15 +13972,16 @@ class TiffinApp {
     let start_at = document.getElementById('txtPollStartAt')?.value;
     let end_at = document.getElementById('txtPollEndAt')?.value;
 
-    const now = new Date();
-    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const startDateObj = start_at ? new Date(start_at) : now;
+    const endDateObj = end_at ? new Date(end_at) : tomorrow;
 
-    if (!start_at) {
-      start_at = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    // Ensure endDate is strictly after startDate
+    if (endDateObj <= startDateObj) {
+      endDateObj.setTime(startDateObj.getTime() + 24 * 60 * 60 * 1000);
     }
-    if (!end_at) {
-      end_at = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    }
+
+    const start_iso = startDateObj.toISOString();
+    const end_iso = endDateObj.toISOString();
 
     let food_ids = Array.isArray(this.selectedPollFoodIds) ? [...this.selectedPollFoodIds] : [];
 
@@ -14011,7 +14012,7 @@ class TiffinApp {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, start_at, end_at, food_ids })
+        body: JSON.stringify({ question, start_at: start_iso, end_at: end_iso, food_ids })
       });
       const json = await res.json();
 

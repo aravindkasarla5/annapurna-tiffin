@@ -6833,13 +6833,10 @@ app.post('/api/menu-voting/polls', authenticateToken, requireRole('OWNER'), asyn
     }
 
     // Verify all selected food items exist in tiffins table
-    const foodCheckRes = await db.query('SELECT id FROM tiffins WHERE id = ANY($1::varchar[]);', [food_ids]);
-    if (!foodCheckRes.rows || foodCheckRes.rows.length !== food_ids.length) {
-      // Fallback check for SQLite parameter query
-      const sqRes = await db.query(`SELECT id FROM tiffins WHERE id IN (${food_ids.map((_, i) => `$${i + 1}`).join(',')});`, food_ids);
-      if ((sqRes.rows || []).length < 2) {
-        return res.status(400).json({ success: false, message: "One or more selected menu dishes are invalid." });
-      }
+    const placeholders = food_ids.map((_, i) => `$${i + 1}`).join(', ');
+    const foodCheckRes = await db.query(`SELECT id FROM tiffins WHERE id IN (${placeholders});`, food_ids);
+    if (!foodCheckRes.rows || foodCheckRes.rows.length < 2) {
+      return res.status(400).json({ success: false, message: "One or more selected menu dishes are invalid." });
     }
 
     const pollId = 'poll_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
