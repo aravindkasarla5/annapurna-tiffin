@@ -2499,6 +2499,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secCustomerVoting' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerVoting');">
+            <div class="drawer-icon-box" style="background: rgba(156,39,176,0.15); color: #9C27B0;"><i class="fa-solid fa-square-poll-vertical"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🗳️ Menu Voting</strong>
+              <span class="drawer-item-sub">Vote for tomorrow's special dish</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerFavorites');">
             <div class="drawer-icon-box" style="background: rgba(229,57,53,0.15); color: #E53935;"><i class="fa-solid fa-heart"></i></div>
             <div class="drawer-text-group">
@@ -3163,6 +3172,7 @@ class TiffinApp {
     if (this.activeView === 'secCustomerProfile') {
       this.renderCustomerProfile();
     }
+    if (this.activeView === 'secCustomerVoting') this.loadCustomerVoting();
     if (this.activeView === 'secOwnerDashboard') {
       this.fetchStats();
       this.renderOrders();
@@ -16052,6 +16062,179 @@ class TiffinApp {
     this.toggleAiAssistantModal(false);
     this.showToast(`🎉 Added ${opt.title} (₹${opt.total}) to your cart!`, 'success');
     this.toggleCartDrawer(true);
+  }
+
+  // =========================================================================
+  // 🗳️ CUSTOMER MENU VOTING CLIENT MODULE
+  // =========================================================================
+
+  async loadCustomerVoting() {
+    const container = document.getElementById('customerVotingPollContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
+        <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: #9C27B0; margin-bottom: 1rem;"></i>
+        <p style="font-size: 0.9rem;">Loading menu voting poll...</p>
+      </div>
+    `;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/active`);
+      const json = await res.json();
+
+      if (!json.success || !json.poll) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 3rem 1.5rem; background: var(--bg-surface-elevated, #1E1E2E); border: 1.5px dashed var(--border-color); border-radius: 16px;">
+            <div style="font-size: 3rem; margin-bottom: 0.75rem;">🗳️</div>
+            <h3 style="color: #FFF; font-size: 1.2rem; margin: 0 0 0.5rem 0;">No Active Menu Voting</h3>
+            <p style="color: var(--text-muted); font-size: 0.88rem; max-width: 420px; margin: 0 auto;">
+              There is currently no active menu poll running. Please check back later to vote on tomorrow's special dish!
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      const poll = json.poll;
+      const hasVoted = json.has_voted;
+      const votedOptionId = json.voted_option_id;
+
+      let html = `
+        <div class="voting-poll-card">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.85rem;">
+            <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 8px;">
+              <span>🗳️</span> ${poll.question || "Choose Tomorrow's Special"}
+            </h3>
+            <span style="font-size: 0.78rem; font-weight: 800; padding: 4px 10px; border-radius: 12px; background: ${hasVoted ? 'rgba(76,175,80,0.2); color: #4CAF50;' : 'rgba(156,39,176,0.2); color: #9C27B0;'}">
+              ${hasVoted ? '✅ Voted' : '🟢 Voting is Open'}
+            </span>
+          </div>
+      `;
+
+      if (hasVoted) {
+        const votedObj = (poll.options || []).find(o => o.id === votedOptionId);
+
+        html += `
+          <div style="background: rgba(76,175,80,0.12); border: 1.5px solid #4CAF50; border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; color: #FFF;">
+            <strong style="color: #4CAF50; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-circle-check"></i> Vote Recorded!
+            </strong>
+            <p style="margin: 4px 0 0 0; font-size: 0.86rem; color: var(--text-muted);">
+              You voted for <strong>${votedObj ? votedObj.food_name : 'your selected dish'}</strong>. Thank you for helping us choose tomorrow's special!
+            </p>
+          </div>
+
+          <h4 style="margin: 0 0 1rem 0; font-size: 0.95rem; color: var(--accent-gold); font-weight: 800;">📊 Live Results Breakdown</h4>
+        `;
+
+        (poll.options || []).forEach(opt => {
+          const isUserSelection = opt.id === votedOptionId;
+          html += `
+            <div style="margin-bottom: 1rem; background: ${isUserSelection ? 'rgba(156,39,176,0.15)' : 'rgba(255,255,255,0.03)'}; border: 1px solid ${isUserSelection ? '#9C27B0' : 'var(--border-color)'}; padding: 0.85rem; border-radius: 12px;">
+              <div style="display: flex; justify-content: space-between; font-size: 0.88rem; font-weight: 700; color: #FFF; margin-bottom: 4px;">
+                <span>${opt.food_name} (₹${opt.food_price}) ${isUserSelection ? '⭐ Your Vote' : ''}</span>
+                <span style="color: var(--accent-gold);">${opt.vote_percentage}% (${opt.votes_count} votes)</span>
+              </div>
+              <div class="vote-progress-bar-bg">
+                <div class="vote-progress-bar-fill" style="width: ${opt.vote_percentage}%;"></div>
+              </div>
+            </div>
+          `;
+        });
+
+        html += `
+          <div style="text-align: right; font-size: 0.82rem; color: var(--text-muted); margin-top: 1rem;">
+            Total Votes Cast: <strong>${poll.total_votes || 0}</strong>
+          </div>
+        `;
+      } else {
+        html += `
+          <p style="font-size: 0.86rem; color: var(--text-muted); margin: 0 0 1.15rem 0;">
+            Select exactly one dish below and click <strong>Vote Now</strong> to cast your vote!
+          </p>
+
+          <form onsubmit="app.submitCustomerVote(event, '${poll.id}')">
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.25rem;">
+        `;
+
+        (poll.options || []).forEach(opt => {
+          html += `
+            <label class="voting-option-row">
+              <input type="radio" name="radPollOption" value="${opt.id}" required style="accent-color: #9C27B0; transform: scale(1.2);">
+              <img src="${opt.food_image || '/images/idly_sambar.png'}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover;">
+              <div style="flex: 1;">
+                <strong style="color: #FFF; font-size: 0.95rem; display: block;">${opt.food_name}</strong>
+                <span style="color: var(--text-muted); font-size: 0.8rem;">₹${opt.food_price} • ${opt.category || 'Special Dish'}</span>
+              </div>
+            </label>
+          `;
+        });
+
+        html += `
+            </div>
+            <button type="submit" class="btn-primary-block" id="btnSubmitCustVote" style="background: linear-gradient(135deg, #9C27B0, #7B1FA2); border: none; color: #FFF; font-weight: 800; padding: 10px 20px; font-size: 0.92rem;">
+              <i class="fa-solid fa-square-check"></i> 🗳️ Vote Now
+            </button>
+          </form>
+        `;
+      }
+
+      html += `</div>`;
+      container.innerHTML = html;
+    } catch (err) {
+      console.error('Load Customer Voting Error:', err);
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
+          Failed to load menu voting. Please try again.
+        </div>
+      `;
+    }
+  }
+
+  async submitCustomerVote(event, pollId) {
+    if (event) event.preventDefault();
+
+    const selectedRad = document.querySelector('input[name="radPollOption"]:checked');
+    if (!selectedRad || !selectedRad.value) {
+      this.showToast('Please select one food option before voting.', 'warning');
+      return;
+    }
+
+    const option_id = selectedRad.value;
+    const btn = document.getElementById('btnSubmitCustVote');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting vote...';
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ option_id })
+      });
+
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || '🎉 Vote recorded successfully!', 'success');
+        this.loadCustomerVoting();
+      } else {
+        this.showToast(json.message || 'Failed to submit vote.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-square-check"></i> 🗳️ Vote Now';
+        }
+      }
+    } catch (err) {
+      console.error('Submit vote error:', err);
+      this.showToast('Network error submitting vote.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-square-check"></i> 🗳️ Vote Now';
+      }
+    }
   }
 }
 

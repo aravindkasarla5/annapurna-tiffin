@@ -8240,6 +8240,59 @@ body.guest-mode #btnMobileMenuToggle {
   box-shadow: 0 6px 20px rgba(33, 150, 243, 0.2);
 }
 
+/* =========================================================================
+   CUSTOMER MENU VOTING STYLES
+   ========================================================================= */
+
+.voting-poll-card {
+  background: var(--bg-surface-elevated, #1E1E2E);
+  border: 1.5px solid var(--border-color);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.voting-option-row {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.voting-option-row:hover {
+  background: rgba(156, 39, 176, 0.1);
+  border-color: #9C27B0;
+}
+
+.voting-option-row.selected {
+  background: rgba(156, 39, 176, 0.18);
+  border-color: #9C27B0;
+  box-shadow: 0 4px 14px rgba(156, 39, 176, 0.3);
+}
+
+.vote-progress-bar-bg {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  height: 10px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.vote-progress-bar-fill {
+  background: linear-gradient(90deg, #9C27B0, #E91E63);
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.5s ease;
+}
+
+
 
 
 
