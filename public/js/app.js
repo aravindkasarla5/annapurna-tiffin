@@ -1837,15 +1837,12 @@ class TiffinApp {
       // 1. Bell Icon (Visible ONLY when logged in)
       if (btnNotif) btnNotif.classList.remove('hidden');
 
-      // 2. Cart Icon & AI Assistant (Visible ONLY for customer)
-      const btnAiHeader = document.getElementById('btnAiAssistantHeader');
+      // 2. Cart Icon (Visible ONLY for customer)
       if (btnCart) {
         if (this.currentUser.role === 'CUSTOMER') {
           btnCart.classList.remove('hidden');
-          if (btnAiHeader) btnAiHeader.classList.remove('hidden');
         } else {
           btnCart.classList.add('hidden');
-          if (btnAiHeader) btnAiHeader.classList.add('hidden');
         }
       }
 
@@ -2368,6 +2365,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.openAiAssistantModal();">
+            <div class="drawer-icon-box blue" style="background: linear-gradient(135deg, #2196F3, #1565C0); color: #FFF;"><i class="fa-solid fa-robot"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title" style="color: #2196F3;">🤖 AI Order Assistant</strong>
+              <span class="drawer-item-sub">Smart natural language menu assistant</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item highlight-login" onclick="app.toggleMobileDrawer(false); app.openAuthModal('CUSTOMER', 'LOGIN');">
             <div class="drawer-icon-box primary"><i class="fa-solid fa-right-to-bracket"></i></div>
             <div class="drawer-text-group">
@@ -2481,6 +2487,15 @@ class TiffinApp {
               <span class="drawer-item-sub">Review items & checkout</span>
             </div>
             ${cartCount > 0 ? `<span class="drawer-badge-count">${cartCount}</span>` : ''}
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.openAiAssistantModal();">
+            <div class="drawer-icon-box blue" style="background: linear-gradient(135deg, #2196F3, #1565C0); color: #FFF;"><i class="fa-solid fa-robot"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title" style="color: #2196F3;">🤖 AI Order Assistant</strong>
+              <span class="drawer-item-sub">Smart natural language menu assistant</span>
+            </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 

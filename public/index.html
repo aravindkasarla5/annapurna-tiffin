@@ -72,11 +72,6 @@
         <span class="badge hidden" id="cartBadgeCount">0</span>
       </button>
 
-      <!-- 2b. AI Order Assistant Button (Visible ONLY for customer) -->
-      <button class="ai-assistant-btn hidden" id="btnAiAssistantHeader" onclick="app.openAiAssistantModal()" title="AI Order Assistant">
-        <i class="fa-solid fa-robot"></i> <span>AI Assistant</span>
-      </button>
-
       <!-- 3. Profile Icon & Badge with Full Name (Visible ONLY after login, clicking switches to My Profile) -->
       <button class="header-profile-card hidden" id="btnHeaderProfile"
         onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerSettings' : 'secCustomerProfile')"
@@ -147,6 +142,15 @@
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Today's Menu</strong>
               <span class="drawer-item-sub">Idly, Dosa, Meals & Vada</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.openAiAssistantModal();">
+            <div class="drawer-icon-box blue" style="background: linear-gradient(135deg, #2196F3, #1565C0); color: #FFF;"><i class="fa-solid fa-robot"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title" style="color: #2196F3;">🤖 AI Order Assistant</strong>
+              <span class="drawer-item-sub">Smart natural language menu assistant</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
