@@ -16529,15 +16529,17 @@ class TiffinApp {
     const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
     if (!modal) return;
     this.resetFoodMemberQrScanner();
-    modal.style.display = 'flex';
     modal.classList.remove('hidden');
+    modal.style.setProperty('display', 'flex', 'important');
+    this.startQrCameraScanner();
   }
 
   closeFoodMemberQrScannerModal() {
+    this.stopQrCameraScanner();
     const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
     if (modal) {
-      modal.style.display = 'none';
       modal.classList.add('hidden');
+      modal.style.setProperty('display', 'none', 'important');
     }
   }
 
@@ -16548,12 +16550,71 @@ class TiffinApp {
     const btnScanAnother = document.getElementById('btnScanAnotherQrCard');
 
     if (txtInput) txtInput.value = '';
-    if (inputView) inputView.style.display = 'block';
+    if (inputView) inputView.style.setProperty('display', 'block', 'important');
     if (resultView) {
-      resultView.style.display = 'none';
+      resultView.style.setProperty('display', 'none', 'important');
       resultView.innerHTML = '';
     }
-    if (btnScanAnother) btnScanAnother.style.display = 'none';
+    if (btnScanAnother) btnScanAnother.style.setProperty('display', 'none', 'important');
+    this.startQrCameraScanner();
+  }
+
+  async startQrCameraScanner() {
+    const video = document.getElementById('videoOwnerQrScan');
+    const statusLbl = document.getElementById('lblQrCameraStatus');
+    if (!video) return;
+
+    this.stopQrCameraScanner();
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        this.qrCameraStream = stream;
+        video.srcObject = stream;
+        await video.play().catch(() => {});
+        if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-camera"></i> 📷 Camera Live Scanner';
+
+        if ('BarcodeDetector' in window) {
+          try {
+            const barcodeDetector = new BarcodeDetector({ formats: ['qr_code', 'code_128'] });
+            this.qrScanInterval = setInterval(async () => {
+              if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                try {
+                  const barcodes = await barcodeDetector.detect(video);
+                  if (barcodes && barcodes.length > 0) {
+                    const rawVal = barcodes[0].rawValue;
+                    if (rawVal) {
+                      this.stopQrCameraScanner();
+                      this.submitVerifyMemberQr(rawVal);
+                    }
+                  }
+                } catch (e) {}
+              }
+            }, 300);
+          } catch (err) {}
+        }
+      } catch (err) {
+        console.warn('Camera stream error or permission denied:', err);
+        if (statusLbl) statusLbl.innerHTML = '⚠️ Camera inactive. Type/paste Member ID below.';
+      }
+    } else if (statusLbl) {
+      statusLbl.innerHTML = 'ℹ️ Camera not supported. Type/paste Member ID below.';
+    }
+  }
+
+  stopQrCameraScanner() {
+    if (this.qrScanInterval) {
+      clearInterval(this.qrScanInterval);
+      this.qrScanInterval = null;
+    }
+    if (this.qrCameraStream) {
+      this.qrCameraStream.getTracks().forEach(t => t.stop());
+      this.qrCameraStream = null;
+    }
+    const video = document.getElementById('videoOwnerQrScan');
+    if (video) video.srcObject = null;
   }
 
   async submitVerifyMemberQr(qrCode = null) {
@@ -16564,6 +16625,8 @@ class TiffinApp {
       this.showToast('Please enter or scan a Member ID or QR code.', 'warning');
       return;
     }
+
+    this.stopQrCameraScanner();
 
     const btnSubmit = document.getElementById('btnSubmitVerifyMemberQr');
     if (btnSubmit) {
@@ -16590,9 +16653,9 @@ class TiffinApp {
 
       if (!inputView || !resultView) return;
 
-      inputView.style.display = 'none';
-      resultView.style.display = 'block';
-      if (btnScanAnother) btnScanAnother.style.display = 'inline-block';
+      inputView.style.setProperty('display', 'none', 'important');
+      resultView.style.setProperty('display', 'block', 'important');
+      if (btnScanAnother) btnScanAnother.style.setProperty('display', 'inline-block', 'important');
 
       if (!json.success || json.status_code === 'INVALID' || !json.member) {
         resultView.innerHTML = `
