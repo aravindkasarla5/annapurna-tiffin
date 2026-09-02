@@ -4,7 +4,7 @@
    CRITICAL: Never cache API requests, authentication, payments, or referrals!
    ========================================================================== */
 
-const CACHE_NAME = 'annapurna-tiffin-v86';
+const CACHE_NAME = 'annapurna-tiffin-v87';
 
 // Static Shell Assets to Pre-cache for Fast Loading & Offline Shell
 const STATIC_ASSETS = [
@@ -12,6 +12,7 @@ const STATIC_ASSETS = [
   '/index.html',
   '/css/styles.css',
   '/js/app.js',
+  '/js/jsQR.js',
   '/manifest.json',
   '/images/tiffin_logo.png',
   '/images/hero_banner.png',

@@ -19,6 +19,9 @@
   <!-- Custom Design System CSS -->
   <link rel="stylesheet" href="/css/styles.css">
 
+  <!-- JSQR Code Decoder Library for Camera & Photo QR Scanning -->
+  <script src="/js/jsQR.js"></script>
+
   <!-- PWA Manifest & Theme -->
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#FF5722">
@@ -5175,11 +5178,19 @@
               Or enter Member ID or QR code text below:
             </p>
             
-            <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
               <input type="text" id="txtScanQrCodeInput" placeholder="Enter Member ID (e.g. PMC1001) or QR Code..." style="flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border-color, #555); background: rgba(0,0,0,0.5); color: #FFF; font-size: 0.95rem; font-family: monospace; outline: none;" onkeydown="if(event.key === 'Enter') app.submitVerifyMemberQr();" />
               <button type="button" id="btnSubmitVerifyMemberQr" onclick="app.submitVerifyMemberQr()" style="padding: 12px 18px; border-radius: 10px; background: linear-gradient(135deg, #4CAF50, #388E3C); color: #FFF; font-weight: 700; border: none; cursor: pointer;">
                 🔍 Verify
               </button>
+            </div>
+
+            <!-- Upload Photo QR Fallback Button -->
+            <div>
+              <label for="fileQrPhotoInput" style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border-radius: 10px; background: rgba(64, 196, 255, 0.12); color: #40C4FF; border: 1px solid rgba(64, 196, 255, 0.4); font-weight: 700; font-size: 0.84rem; cursor: pointer; width: 100%; box-sizing: border-box;">
+                <i class="fa-solid fa-file-image"></i> 🖼️ Select QR Photo / Screenshot from Gallery
+              </label>
+              <input type="file" id="fileQrPhotoInput" accept="image/*" style="display: none;" onchange="app.handleQrPhotoUpload(event)">
             </div>
           </div>
         </div>

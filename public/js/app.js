@@ -16576,35 +16576,68 @@ class TiffinApp {
         await video.play().catch(() => {});
         if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-camera"></i> 📷 Camera Live Scanner';
 
-        if ('BarcodeDetector' in window) {
-          try {
-            const barcodeDetector = new BarcodeDetector({ formats: ['qr_code', 'code_128'] });
-            this.qrScanInterval = setInterval(async () => {
-              if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                try {
-                  const barcodes = await barcodeDetector.detect(video);
-                  if (barcodes && barcodes.length > 0) {
-                    const rawVal = barcodes[0].rawValue;
-                    if (rawVal) {
-                      this.stopQrCameraScanner();
-                      this.submitVerifyMemberQr(rawVal);
-                    }
-                  }
-                } catch (e) {}
-              }
-            }, 300);
-          } catch (err) {}
+        if (!this.qrCanvas) {
+          this.qrCanvas = document.createElement('canvas');
+          this.qrCanvasCtx = this.qrCanvas.getContext('2d');
         }
+
+        const scanFrame = () => {
+          if (!this.qrCameraStream || video.paused || video.ended) return;
+
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            try {
+              this.qrCanvas.width = video.videoWidth;
+              this.qrCanvas.height = video.videoHeight;
+              this.qrCanvasCtx.drawImage(video, 0, 0, this.qrCanvas.width, this.qrCanvas.height);
+
+              const imageData = this.qrCanvasCtx.getImageData(0, 0, this.qrCanvas.width, this.qrCanvas.height);
+
+              // 1. Decode with jsQR library
+              if (window.jsQR) {
+                const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+                  inversionAttempts: 'dontInvert'
+                });
+                if (code && code.data) {
+                  this.stopQrCameraScanner();
+                  this.submitVerifyMemberQr(code.data);
+                  return;
+                }
+              }
+
+              // 2. Native BarcodeDetector fallback
+              if ('BarcodeDetector' in window && !this.nativeDetector) {
+                try { this.nativeDetector = new BarcodeDetector({ formats: ['qr_code', 'code_128'] }); } catch (e) {}
+              }
+              if (this.nativeDetector) {
+                this.nativeDetector.detect(video).then(barcodes => {
+                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                    this.stopQrCameraScanner();
+                    this.submitVerifyMemberQr(barcodes[0].rawValue);
+                  }
+                }).catch(() => {});
+              }
+            } catch (err) {}
+          }
+
+          this.qrScanAnimFrame = requestAnimationFrame(scanFrame);
+        };
+
+        this.qrScanAnimFrame = requestAnimationFrame(scanFrame);
+
       } catch (err) {
         console.warn('Camera stream error or permission denied:', err);
-        if (statusLbl) statusLbl.innerHTML = '⚠️ Camera inactive. Type/paste Member ID below.';
+        if (statusLbl) statusLbl.innerHTML = '⚠️ Camera inactive. Type Member ID or upload QR photo below.';
       }
     } else if (statusLbl) {
-      statusLbl.innerHTML = 'ℹ️ Camera not supported. Type/paste Member ID below.';
+      statusLbl.innerHTML = 'ℹ️ Camera not supported. Type Member ID or upload QR photo below.';
     }
   }
 
   stopQrCameraScanner() {
+    if (this.qrScanAnimFrame) {
+      cancelAnimationFrame(this.qrScanAnimFrame);
+      this.qrScanAnimFrame = null;
+    }
     if (this.qrScanInterval) {
       clearInterval(this.qrScanInterval);
       this.qrScanInterval = null;
@@ -16615,6 +16648,35 @@ class TiffinApp {
     }
     const video = document.getElementById('videoOwnerQrScan');
     if (video) video.srcObject = null;
+  }
+
+  handleQrPhotoUpload(event) {
+    const file = event.target.files ? event.target.files[0] : null;
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        if (window.jsQR) {
+          const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+          if (code && code.data) {
+            this.submitVerifyMemberQr(code.data);
+            return;
+          }
+        }
+        this.showToast('Could not read QR code from photo. Please enter Member ID manually.', 'warning');
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   }
 
   async submitVerifyMemberQr(qrCode = null) {
