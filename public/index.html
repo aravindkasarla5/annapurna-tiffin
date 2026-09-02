@@ -2608,7 +2608,7 @@
             </div>
             
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <button type="button" class="member-filter-btn" style="color: #4CAF50 !important; border-color: #4CAF50 !important; background: rgba(76, 175, 80, 0.15) !important; font-weight: 700; padding: 8px 16px; display: inline-flex; align-items: center; gap: 6px;" onclick="app.openFoodMemberQrScannerModal()" title="Scan & Verify Member Card QR Code">
+              <button type="button" id="btnOwnerOpenQrScanner" class="member-filter-btn" style="color: #4CAF50 !important; border-color: #4CAF50 !important; background: rgba(76, 175, 80, 0.15) !important; font-weight: 700; padding: 8px 16px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;" onclick="if(window.app) window.app.openFoodMemberQrScannerModal()" title="Scan & Verify Member Card QR Code">
                 <i class="fa-solid fa-qrcode"></i> 📷 QR Scanner
               </button>
               <button type="button" class="member-filter-btn" style="color: #EF5350 !important; border-color: #EF5350 !important; background: rgba(239, 83, 80, 0.1) !important; font-weight: 700; padding: 8px 16px;" onclick="app.openDeleteAllMemberAppsModal()" title="Clear All Membership Records">
