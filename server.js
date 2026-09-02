@@ -9604,6 +9604,25 @@ app.post(['/api/food-member/owner/reject/:id', '/api/food-member/owner/applicati
   }
 });
 
+// Owner - Verify Food Member QR Code / Member ID (Strict Date-Based Verification)
+app.post('/api/food-member/owner/verify-qr', authenticateToken, async (req, res) => {
+  try {
+    const { qr_code, member_id, qr_data } = req.body;
+    const input = qr_code || member_id || qr_data || '';
+    const result = await db.verifyFoodMemberQr(input);
+    res.json(result);
+  } catch (err) {
+    console.error('POST /api/food-member/owner/verify-qr error:', err);
+    res.status(500).json({
+      success: false,
+      is_valid: false,
+      status_code: 'INVALID',
+      title: '⚠️ SERVER ERROR',
+      message: 'Failed to verify member card.'
+    });
+  }
+});
+
 // Owner - Suspend Card
 app.post(['/api/food-member/owner/suspend/:id', '/api/food-member/owner/application/:id/suspend'], authenticateToken, async (req, res) => {
   try {

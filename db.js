@@ -1109,6 +1109,127 @@ async function reactivateFoodMemberCard(id) {
   return true;
 }
 
+async function verifyFoodMemberQr(qrCodeInput) {
+  if (!qrCodeInput || !qrCodeInput.trim()) {
+    return {
+      success: false,
+      is_valid: false,
+      status_code: 'INVALID',
+      title: '⚠️ INVALID MEMBER CARD',
+      message: 'No QR code or Member ID provided.'
+    };
+  }
+
+  const cleanInput = qrCodeInput.trim();
+
+  // 1. Search food_member_cards by qr_verification_code, member_id, id, or application_id
+  let cardRes = await query(
+    `SELECT * FROM food_member_cards 
+     WHERE qr_verification_code = $1 OR member_id = $2 OR id = $3 OR application_id = $4 
+     LIMIT 1;`,
+    [cleanInput, cleanInput, cleanInput, cleanInput]
+  );
+
+  let card = cardRes.rows ? cardRes.rows[0] : null;
+
+  // 2. Fallback: match Member ID substring (PMC1001, PMC1002...) if scanned full raw text
+  if (!card) {
+    const match = cleanInput.match(/PMC\d+/i);
+    if (match) {
+      const pmcId = match[0].toUpperCase();
+      const fallbackRes = await query(`SELECT * FROM food_member_cards WHERE member_id = $1 LIMIT 1;`, [pmcId]);
+      card = fallbackRes.rows ? fallbackRes.rows[0] : null;
+    }
+  }
+
+  // 3. Fallback: match application_id or customer_mobile
+  if (!card) {
+    const appRes = await query(`SELECT * FROM food_member_applications WHERE id = $1 OR customer_mobile = $2 LIMIT 1;`, [cleanInput, cleanInput]);
+    if (appRes.rows && appRes.rows.length > 0) {
+      const appId = appRes.rows[0].id;
+      const cardByApp = await query(`SELECT * FROM food_member_cards WHERE application_id = $1 LIMIT 1;`, [appId]);
+      card = cardByApp.rows ? cardByApp.rows[0] : null;
+    }
+  }
+
+  if (!card) {
+    return {
+      success: false,
+      is_valid: false,
+      status_code: 'INVALID',
+      title: '⚠️ INVALID MEMBER CARD',
+      message: 'No valid membership record found for this QR code.'
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // CRITICAL: STRICT DATE-BASED VALIDITY CALCULATION (STORED STATUS IS IGNORED)
+  // -----------------------------------------------------------------------
+  const now = new Date(); // Server current date/time
+
+  const validFrom = new Date(card.valid_from);
+  const validUntil = new Date(card.valid_until);
+
+  // Set start of validFrom day (00:00:00.000)
+  const validFromStart = new Date(validFrom.getFullYear(), validFrom.getMonth(), validFrom.getDate(), 0, 0, 0, 0);
+
+  // Set end of validUntil day (23:59:59.999) - INCLUSIVE of full Valid Until date!
+  const validUntilEnd = new Date(validUntil.getFullYear(), validUntil.getMonth(), validUntil.getDate(), 23, 59, 59, 999);
+
+  const formatDateDDMMYYYY = (d) => {
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return 'N/A';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const formattedValidFrom = formatDateDDMMYYYY(validFrom);
+  const formattedValidUntil = formatDateDDMMYYYY(validUntil);
+  const formattedToday = formatDateDDMMYYYY(now);
+
+  let status_code = 'ACTIVE';
+  let is_valid = true;
+  let title = '🟢 MEMBER ACTIVE';
+  let message = 'Membership is currently valid.';
+
+  if (now < validFromStart) {
+    status_code = 'NOT_YET_ACTIVE';
+    is_valid = false;
+    title = '🟡 MEMBERSHIP NOT YET ACTIVE';
+    message = 'This membership has not started yet.';
+  } else if (now > validUntilEnd) {
+    status_code = 'EXPIRED';
+    is_valid = false;
+    title = '🔴 MEMBERSHIP EXPIRED';
+    message = 'This membership has expired.';
+  } else {
+    status_code = 'ACTIVE';
+    is_valid = true;
+    title = '🟢 MEMBER ACTIVE';
+    message = 'Membership is currently valid.';
+  }
+
+  return {
+    success: true,
+    is_valid,
+    status_code,
+    title,
+    message,
+    member: {
+      id: card.id,
+      member_id: card.member_id,
+      customer_name: card.customer_name,
+      customer_mobile: card.customer_mobile,
+      valid_from: formattedValidFrom,
+      valid_until: formattedValidUntil,
+      expired_on: formattedValidUntil,
+      server_date: formattedToday
+    }
+  };
+}
+
 module.exports = {
   query,
   initDatabase,
@@ -1131,7 +1252,8 @@ module.exports = {
   approveFoodMemberCard,
   rejectFoodMemberCard,
   suspendFoodMemberCard,
-  reactivateFoodMemberCard
+  reactivateFoodMemberCard,
+  verifyFoodMemberQr
 };
 
 

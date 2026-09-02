@@ -16525,6 +16525,158 @@ class TiffinApp {
     }
   }
 
+  openFoodMemberQrScannerModal() {
+    const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
+    if (!modal) return;
+    this.resetFoodMemberQrScanner();
+    modal.style.display = 'flex';
+    modal.classList.remove('hidden');
+  }
+
+  closeFoodMemberQrScannerModal() {
+    const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
+    if (modal) {
+      modal.style.display = 'none';
+      modal.classList.add('hidden');
+    }
+  }
+
+  resetFoodMemberQrScanner() {
+    const inputView = document.getElementById('viewOwnerQrScannerInput');
+    const resultView = document.getElementById('viewOwnerQrVerificationResult');
+    const txtInput = document.getElementById('txtScanQrCodeInput');
+    const btnScanAnother = document.getElementById('btnScanAnotherQrCard');
+
+    if (txtInput) txtInput.value = '';
+    if (inputView) inputView.style.display = 'block';
+    if (resultView) {
+      resultView.style.display = 'none';
+      resultView.innerHTML = '';
+    }
+    if (btnScanAnother) btnScanAnother.style.display = 'none';
+  }
+
+  async submitVerifyMemberQr(qrCode = null) {
+    const txtInput = document.getElementById('txtScanQrCodeInput');
+    const code = qrCode || (txtInput ? txtInput.value.trim() : '');
+
+    if (!code) {
+      this.showToast('Please enter or scan a Member ID or QR code.', 'warning');
+      return;
+    }
+
+    const btnSubmit = document.getElementById('btnSubmitVerifyMemberQr');
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/food-member/owner/verify-qr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qr_code: code, member_id: code })
+      });
+
+      const json = await res.json();
+      const inputView = document.getElementById('viewOwnerQrScannerInput');
+      const resultView = document.getElementById('viewOwnerQrVerificationResult');
+      const btnScanAnother = document.getElementById('btnScanAnotherQrCard');
+
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '🔍 Verify';
+      }
+
+      if (!inputView || !resultView) return;
+
+      inputView.style.display = 'none';
+      resultView.style.display = 'block';
+      if (btnScanAnother) btnScanAnother.style.display = 'inline-block';
+
+      if (!json.success || json.status_code === 'INVALID' || !json.member) {
+        resultView.innerHTML = `
+          <div style="background: rgba(255, 87, 34, 0.12); border: 2px dashed #FF5722; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.25rem; font-weight: 800; color: #FF7043; margin-bottom: 10px; text-transform: uppercase;">
+              ⚠️ INVALID MEMBER CARD
+            </div>
+            <p style="color: var(--text-muted, #AAA); font-size: 0.9rem; margin: 0;">
+              ${json.message || 'No valid membership record found for this QR code.'}
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      const m = json.member;
+      const status_code = json.status_code;
+
+      if (status_code === 'ACTIVE') {
+        resultView.innerHTML = `
+          <div style="background: rgba(76, 175, 80, 0.12); border: 2px solid #4CAF50; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.3rem; font-weight: 800; color: #4CAF50; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              🟢 MEMBER ACTIVE
+            </div>
+            <div style="font-size: 0.95rem; line-height: 1.8; margin-bottom: 14px; color: #FFF; text-align: left; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 12px;">
+              <div><strong>Member Name:</strong> ${m.customer_name}</div>
+              <div><strong>Member ID:</strong> <span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800;">${m.member_id}</span></div>
+              <div style="margin-top: 8px;"><strong>Valid From:</strong> ${m.valid_from}</div>
+              <div><strong>Valid Until:</strong> ${m.valid_until}</div>
+            </div>
+            <div style="background: rgba(76, 175, 80, 0.2); border-radius: 10px; padding: 10px; font-weight: 800; color: #81C784; font-size: 0.92rem; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              ✓ DATE VERIFIED
+            </div>
+            <p style="margin: 8px 0 0 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">
+              Membership is currently valid.
+            </p>
+          </div>
+        `;
+      } else if (status_code === 'EXPIRED') {
+        resultView.innerHTML = `
+          <div style="background: rgba(244, 67, 54, 0.12); border: 2px solid #F44336; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.3rem; font-weight: 800; color: #EF5350; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              🔴 MEMBERSHIP EXPIRED
+            </div>
+            <div style="font-size: 0.95rem; line-height: 1.8; margin-bottom: 14px; color: #FFF; text-align: left; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 12px;">
+              <div><strong>Member Name:</strong> ${m.customer_name}</div>
+              <div><strong>Member ID:</strong> <span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800;">${m.member_id}</span></div>
+              <div style="margin-top: 8px;"><strong>Valid From:</strong> ${m.valid_from}</div>
+              <div><strong>Valid Until:</strong> ${m.valid_until}</div>
+              <div><strong style="color: #EF5350;">Expired On:</strong> ${m.expired_on || m.valid_until}</div>
+            </div>
+            <div style="background: rgba(244, 67, 54, 0.2); border-radius: 10px; padding: 10px; font-weight: 800; color: #E57373; font-size: 0.92rem; margin-top: 10px;">
+              Membership is no longer valid.
+            </div>
+          </div>
+        `;
+      } else if (status_code === 'NOT_YET_ACTIVE') {
+        resultView.innerHTML = `
+          <div style="background: rgba(255, 152, 0, 0.12); border: 2px solid #FF9800; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.3rem; font-weight: 800; color: #FFB74D; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+              🟡 MEMBERSHIP NOT YET ACTIVE
+            </div>
+            <div style="font-size: 0.95rem; line-height: 1.8; margin-bottom: 14px; color: #FFF; text-align: left; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 12px;">
+              <div><strong>Member Name:</strong> ${m.customer_name}</div>
+              <div><strong>Member ID:</strong> <span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800;">${m.member_id}</span></div>
+              <div style="margin-top: 8px;"><strong>Valid From:</strong> ${m.valid_from}</div>
+              <div><strong>Valid Until:</strong> ${m.valid_until}</div>
+            </div>
+            <div style="background: rgba(255, 152, 0, 0.2); border-radius: 10px; padding: 10px; font-weight: 800; color: #FFB74D; font-size: 0.92rem; margin-top: 10px;">
+              This membership has not started yet.
+            </div>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('Verify QR error:', err);
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '🔍 Verify';
+      }
+      this.showToast('Failed to verify QR code. Network error.', 'error');
+    }
+  }
+
   async submitCustomerVote(event, pollId) {
     if (event && event.preventDefault) event.preventDefault();
 
