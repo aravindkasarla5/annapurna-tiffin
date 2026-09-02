@@ -6692,12 +6692,12 @@ async function updateAndFormatPoll(poll) {
   const endAt = new Date(poll.end_at);
 
   let currentStatus = poll.status;
-  if (currentStatus !== 'CANCELLED' && currentStatus !== 'COMPLETED') {
+  if (currentStatus !== 'CANCELLED' && currentStatus !== 'COMPLETED' && currentStatus !== 'CLOSED') {
     if (now < startAt) {
       currentStatus = 'SCHEDULED';
-    } else if (now >= startAt && now <= endAt && currentStatus !== 'CLOSED') {
+    } else if (now >= startAt && now <= endAt) {
       currentStatus = 'ACTIVE';
-    } else if (now > endAt && currentStatus === 'ACTIVE') {
+    } else if (now > endAt) {
       currentStatus = 'CLOSED';
     }
   }
@@ -6941,21 +6941,14 @@ app.get('/api/menu-voting/active', optionalAuth, async (req, res) => {
   try {
     const pollRes = await db.query("SELECT * FROM menu_polls WHERE status IN ('ACTIVE', 'SCHEDULED') ORDER BY created_at DESC LIMIT 1;");
     if (!pollRes.rows || pollRes.rows.length === 0) {
-      // Fallback: check most recent active poll
-      const lastPollRes = await db.query("SELECT * FROM menu_polls ORDER BY created_at DESC LIMIT 1;");
-      if (!lastPollRes.rows || lastPollRes.rows.length === 0) {
-        return res.json({ success: true, poll: null });
-      }
-      const fPoll = await updateAndFormatPoll(lastPollRes.rows[0]);
-      let userVote = null;
-      if (req.user) {
-        const vRes = await db.query('SELECT option_id FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2;', [fPoll.id, req.user.id]);
-        if (vRes.rows.length > 0) userVote = vRes.rows[0].option_id;
-      }
-      return res.json({ success: true, poll: fPoll, has_voted: Boolean(userVote), voted_option_id: userVote });
+      return res.json({ success: true, poll: null });
     }
 
     const formatted = await updateAndFormatPoll(pollRes.rows[0]);
+    if (!formatted || formatted.status !== 'ACTIVE') {
+      return res.json({ success: true, poll: null });
+    }
+
     let userVote = null;
     if (req.user) {
       const vRes = await db.query('SELECT option_id FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2;', [formatted.id, req.user.id]);
@@ -7002,7 +6995,7 @@ app.get('/api/menu-voting/polls/:id', optionalAuth, async (req, res) => {
   }
 });
 
-// 5. Submit Customer Vote (Strict Server-Side 1-Vote Protection)
+// 5. Submit Customer Vote (Strict Server-Side Authentication & Closed Protection)
 app.post('/api/menu-voting/polls/:id/vote', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -7021,8 +7014,25 @@ app.post('/api/menu-voting/polls/:id/vote', authenticateToken, requireRole('CUST
     const poll = pollRes.rows[0];
     const formatted = await updateAndFormatPoll(poll);
 
-    if (formatted.status !== 'ACTIVE') {
-      return res.status(400).json({ success: false, message: `Voting is currently closed for this poll (Status: ${formatted.status}).` });
+    const now = new Date();
+    const startAt = new Date(poll.start_at);
+    const endAt = new Date(poll.end_at);
+
+    if (!formatted || formatted.status !== 'ACTIVE' || now < startAt || now > endAt) {
+      if (now > endAt && poll.status === 'ACTIVE') {
+        try {
+          await db.query("UPDATE menu_polls SET status = 'CLOSED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;", [id]);
+          activeWsClients.forEach((client, ws) => {
+            if (ws.readyState === 1) {
+              try { ws.send(JSON.stringify({ type: 'POLL_CLOSED', data: { id, status: 'CLOSED' } })); } catch (e) {}
+            }
+          });
+        } catch (e) {}
+      }
+      return res.status(400).json({
+        success: false,
+        message: "🗳️ Voting Closed. Voting for tomorrow’s special has ended."
+      });
     }
 
     // Verify selected option belongs to this poll
@@ -7091,11 +7101,12 @@ app.post('/api/menu-voting/polls/:id/vote', authenticateToken, requireRole('CUST
 app.post('/api/menu-voting/polls/:id/close', authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {
     const { id } = req.params;
-    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
-    if (!pollRes.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
+    const pollCheck = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollCheck.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
 
     await db.query("UPDATE menu_polls SET status = 'CLOSED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;", [id]);
-    const updatedPoll = await updateAndFormatPoll(pollRes.rows[0]);
+    const freshRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    const updatedPoll = await updateAndFormatPoll(freshRes.rows[0]);
 
     activeWsClients.forEach((client, ws) => {
       if (ws.readyState === 1) {
@@ -7123,11 +7134,12 @@ app.post('/api/menu-voting/polls/:id/close', authenticateToken, requireRole('OWN
 app.post('/api/menu-voting/polls/:id/cancel', authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {
     const { id } = req.params;
-    const pollRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
-    if (!pollRes.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
+    const pollCheck = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    if (!pollCheck.rows.length) return res.status(404).json({ success: false, message: "Poll not found." });
 
     await db.query("UPDATE menu_polls SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;", [id]);
-    const updatedPoll = await updateAndFormatPoll(pollRes.rows[0]);
+    const freshRes = await db.query('SELECT * FROM menu_polls WHERE id = $1;', [id]);
+    const updatedPoll = await updateAndFormatPoll(freshRes.rows[0]);
 
     await logOwnerAuditAction({
       actor_id: req.user.id,
@@ -7995,6 +8007,21 @@ app.post('/api/refunds/owner/:id/retry', authenticateToken, requireRole('OWNER')
   }
 });
 
+// Helper to record owner actions into owner_audit_logs table
+async function logOwnerAuditAction({ actor_id, actor_name, action, resource_type, resource_id, details, ip_address }) {
+  try {
+    const id = 'audit_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const nowIso = new Date().toISOString();
+    await db.query(
+      `INSERT INTO owner_audit_logs (id, actor_id, actor_name, action, resource_type, resource_id, details, ip_address, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+      [id, actor_id || null, actor_name || null, action, resource_type || null, resource_id || null, details || null, ip_address || null, nowIso]
+    );
+  } catch (err) {
+    console.error('Audit Log Notice:', err.message);
+  }
+}
+
 // =========================================================================
 // 🥘 ADD-ONS / EXTRA ITEMS BACKEND MODULE
 // =========================================================================
@@ -8117,27 +8144,31 @@ app.patch('/api/add-ons/:id', authenticateToken, requireRole('OWNER'), async (re
   }
 });
 
-// DELETE /api/add-ons/:id - Owner Soft-Disable Add-on (preserves historical order data)
+// DELETE /api/add-ons/:id - Owner Delete Add-on
 app.delete('/api/add-ons/:id', authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {
     const { id } = req.params;
     const nowIso = new Date().toISOString();
 
-    await db.query('UPDATE add_ons SET enabled = false, available = false, updated_at = $1 WHERE id = $2;', [nowIso, id]);
+    try {
+      await db.query('DELETE FROM add_ons WHERE id = $1;', [id]);
+    } catch (dbErr) {
+      await db.query('UPDATE add_ons SET enabled = false, available = false, updated_at = $1 WHERE id = $2;', [nowIso, id]);
+    }
 
     await logOwnerAuditAction({
       actor_id: req.user.id,
       actor_name: req.user.name || 'Owner',
-      action: 'DISABLE_ADDON',
+      action: 'DELETE_ADDON',
       resource_type: 'add_ons',
       resource_id: id,
-      details: `Disabled add-on ${id}`
+      details: `Deleted add-on ${id}`
     });
 
-    res.json({ success: true, message: 'Add-on item disabled. Historical order records remain intact.' });
+    res.json({ success: true, message: 'Add-on item deleted successfully.' });
   } catch (err) {
-    console.error('Disable Add-on Error:', err);
-    res.status(500).json({ success: false, message: 'Failed to disable add-on.' });
+    console.error('Delete Add-on Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete add-on.' });
   }
 });
 
@@ -8159,6 +8190,452 @@ app.get('/api/add-ons/analytics', authenticateToken, requireRole('OWNER'), async
   } catch (err) {
     console.error('Add-on Analytics Error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch add-on analytics.' });
+  }
+});
+
+// =========================================================================
+// 🗳️ MENU VOTING BACKEND MODULE ("Choose Tomorrow's Special")
+// =========================================================================
+
+// Helper to format a single menu poll object with options, votes, and winner stats
+async function formatMenuPoll(pollRow, reqUserId = null) {
+  try {
+    const optionsRes = await db.query(
+      `SELECT o.id, o.food_id, t.name as food_name, t.description, t.price, t.image,
+              (SELECT COUNT(*) FROM menu_poll_votes v WHERE v.option_id = o.id) as votes
+       FROM menu_poll_options o
+       JOIN tiffins t ON o.food_id = t.id
+       WHERE o.poll_id = $1
+       ORDER BY o.created_at ASC;`,
+      [pollRow.id]
+    );
+
+    const rawOptions = optionsRes.rows || [];
+    let totalVotes = 0;
+    rawOptions.forEach(opt => {
+      opt.votes = Number(opt.votes || 0);
+      totalVotes += opt.votes;
+    });
+
+    const options = rawOptions.map(opt => ({
+      id: opt.id,
+      food_id: opt.food_id,
+      food_name: opt.food_name,
+      description: opt.description || '',
+      price: Number(opt.price || 0),
+      food_price: Number(opt.price || 0),
+      image: opt.image || '/images/idly_sambar.png',
+      food_image: opt.image || '/images/idly_sambar.png',
+      votes: opt.votes,
+      votes_count: opt.votes,
+      percentage: totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0,
+      vote_percentage: totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0
+    }));
+
+    let hasVoted = false;
+    let votedOptionId = null;
+    if (reqUserId) {
+      const userVoteRes = await db.query(
+        `SELECT option_id FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2 LIMIT 1;`,
+        [pollRow.id, reqUserId]
+      );
+      if (userVoteRes.rows && userVoteRes.rows.length > 0) {
+        hasVoted = true;
+        votedOptionId = userVoteRes.rows[0].option_id;
+      }
+    }
+
+    // Determine highest vote / winner / tie
+    let maxVotes = 0;
+    options.forEach(o => { if (o.votes > maxVotes) maxVotes = o.votes; });
+    const leading = maxVotes > 0 ? options.filter(o => o.votes === maxVotes) : [];
+    const isTie = leading.length > 1;
+
+    let winner = null;
+    if (pollRow.winner_food_id) {
+      winner = options.find(o => o.food_id === pollRow.winner_food_id) || null;
+    } else if (leading.length === 1) {
+      winner = leading[0];
+    }
+
+    // Auto-update poll status based on current time window if needed
+    const now = new Date();
+    const startAt = new Date(pollRow.start_at);
+    const endAt = new Date(pollRow.end_at);
+    let currentStatus = pollRow.status;
+
+    if (currentStatus === 'ACTIVE' || currentStatus === 'SCHEDULED') {
+      if (now < startAt) {
+        currentStatus = 'SCHEDULED';
+      } else if (now >= startAt && now <= endAt) {
+        currentStatus = 'ACTIVE';
+      } else if (now > endAt) {
+        currentStatus = 'CLOSED';
+        try {
+          await db.query(`UPDATE menu_polls SET status = 'CLOSED', updated_at = NOW() WHERE id = $1;`, [pollRow.id]);
+        } catch (e) { }
+      }
+    }
+
+    return {
+      id: pollRow.id,
+      question: pollRow.question || "Choose Tomorrow's Special",
+      start_at: pollRow.start_at,
+      end_at: pollRow.end_at,
+      status: currentStatus,
+      winner_food_id: pollRow.winner_food_id || (winner ? winner.food_id : null),
+      winner_selection_type: pollRow.winner_selection_type || 'AUTOMATIC',
+      tomorrow_special_published: Boolean(pollRow.tomorrow_special_published),
+      total_votes: totalVotes,
+      options,
+      has_voted: hasVoted,
+      voted_option_id: votedOptionId,
+      is_tie: isTie,
+      leading_options: isTie ? leading : [],
+      winner
+    };
+  } catch (err) {
+    console.error('formatMenuPoll error:', err);
+    return null;
+  }
+}
+
+// GET /api/menu-voting/active - Fetch active poll for Customer
+app.get('/api/menu-voting/active', async (req, res) => {
+  try {
+    let reqUserId = null;
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const decoded = require('jsonwebtoken').verify(token, process.env.JWT_SECRET || 'annapurna_secret_key_2026');
+        reqUserId = decoded.id;
+      } catch (e) {
+        try {
+          const tokRes = await db.query('SELECT user_id FROM tokens WHERE token = $1;', [token]);
+          if (tokRes.rows && tokRes.rows.length > 0) reqUserId = tokRes.rows[0].user_id;
+        } catch (e2) { }
+      }
+    }
+
+    const pollRes = await db.query(
+      `SELECT * FROM menu_polls WHERE status IN ('ACTIVE', 'SCHEDULED') ORDER BY created_at DESC LIMIT 1;`
+    );
+
+    if (!pollRes.rows || pollRes.rows.length === 0) {
+      return res.json({ success: true, poll: null });
+    }
+
+    const formatted = await formatMenuPoll(pollRes.rows[0], reqUserId);
+    if (!formatted || formatted.status !== 'ACTIVE') {
+      return res.json({ success: true, poll: null });
+    }
+
+    res.json({
+      success: true,
+      poll: formatted,
+      has_voted: formatted ? formatted.has_voted : false,
+      voted_option_id: formatted ? formatted.voted_option_id : null
+    });
+  } catch (err) {
+    console.error('Get active menu voting error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch active menu vote.' });
+  }
+});
+
+// POST /api/menu-voting/polls/:pollId/vote - Customer Submit Vote
+app.post('/api/menu-voting/polls/:pollId/vote', authenticateToken, async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const { option_id } = req.body;
+    const customer_id = req.user.id;
+
+    if (!option_id) {
+      return res.status(400).json({ success: false, message: 'Option ID is required to vote.' });
+    }
+
+    const pollRes = await db.query(`SELECT * FROM menu_polls WHERE id = $1;`, [pollId]);
+    if (!pollRes.rows || pollRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Menu voting poll not found.' });
+    }
+    const poll = pollRes.rows[0];
+    const formatted = await formatMenuPoll(poll, customer_id);
+
+    const now = new Date();
+    const startAt = new Date(poll.start_at);
+    const endAt = new Date(poll.end_at);
+
+    if (!formatted || formatted.status !== 'ACTIVE' || now < startAt || now > endAt) {
+      if (now > endAt && poll.status === 'ACTIVE') {
+        try {
+          await db.query("UPDATE menu_polls SET status = 'CLOSED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;", [pollId]);
+          activeWsClients.forEach((client, ws) => {
+            if (ws.readyState === 1) {
+              try { ws.send(JSON.stringify({ type: 'POLL_CLOSED', data: { id: pollId, status: 'CLOSED' } })); } catch (e) {}
+            }
+          });
+        } catch (e) {}
+      }
+      return res.status(400).json({
+        success: false,
+        message: '🗳️ Voting Closed. Voting for tomorrow’s special has ended.'
+      });
+    }
+
+    const optRes = await db.query(`SELECT * FROM menu_poll_options WHERE id = $1 AND poll_id = $2;`, [option_id, pollId]);
+    if (!optRes.rows || optRes.rows.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid voting option selected.' });
+    }
+
+    // Check if user already voted
+    const existingVote = await db.query(`SELECT * FROM menu_poll_votes WHERE poll_id = $1 AND customer_id = $2;`, [pollId, customer_id]);
+    if (existingVote.rows && existingVote.rows.length > 0) {
+      const formattedPoll = await formatMenuPoll(poll, customer_id);
+      return res.json({
+        success: true,
+        message: 'You have already voted in this poll.',
+        poll: formattedPoll,
+        voted_option_id: existingVote.rows[0].option_id
+      });
+    }
+
+    const voteId = 'vote_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `INSERT INTO menu_poll_votes (id, poll_id, option_id, customer_id, created_at) VALUES ($1, $2, $3, $4, $5);`,
+      [voteId, pollId, option_id, customer_id, nowIso]
+    );
+
+    const updatedFormatted = await formatMenuPoll(poll, customer_id);
+
+    res.json({
+      success: true,
+      message: '✅ Your vote has been recorded!',
+      poll: updatedFormatted,
+      voted_option_id: option_id
+    });
+  } catch (err) {
+    console.error('Vote Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to submit vote.' });
+  }
+});
+
+// GET /api/menu-voting/polls - Owner List Menu Voting Polls
+app.get('/api/menu-voting/polls', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { status, search } = req.query;
+
+    let sql = `SELECT * FROM menu_polls WHERE 1=1`;
+    const params = [];
+
+    if (status && status !== 'ALL') {
+      params.push(status);
+      sql += ` AND status = $${params.length}`;
+    }
+
+    if (search && search.trim()) {
+      params.push(`%${search.trim()}%`);
+      sql += ` AND LOWER(question) LIKE LOWER($${params.length})`;
+    }
+
+    sql += ` ORDER BY created_at DESC;`;
+
+    const r = await db.query(sql, params);
+    const polls = r.rows || [];
+
+    const formattedPolls = [];
+    for (const pollRow of polls) {
+      const f = await formatMenuPoll(pollRow, req.user.id);
+      if (f) formattedPolls.push(f);
+    }
+
+    res.json({ success: true, data: formattedPolls });
+  } catch (err) {
+    console.error('Get Owner Polls Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch menu voting polls.' });
+  }
+});
+
+// POST /api/menu-voting/polls - Owner Create New Menu Vote Poll
+app.post('/api/menu-voting/polls', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { question, start_at, end_at, food_ids } = req.body;
+
+    const cleanQuestion = (question || '').trim() || "Choose Tomorrow's Special";
+    const foodIds = Array.isArray(food_ids) ? food_ids.filter(id => Boolean(id)) : [];
+
+    if (foodIds.length < 2) {
+      return res.status(400).json({ success: false, message: 'Please select at least 2 food items for the poll.' });
+    }
+    if (foodIds.length > 5) {
+      return res.status(400).json({ success: false, message: 'Maximum 5 food items allowed per poll.' });
+    }
+
+    const now = new Date();
+    const startObj = start_at ? new Date(start_at) : now;
+    const endObj = end_at ? new Date(end_at) : new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+    if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid start or end date/time.' });
+    }
+    if (endObj <= startObj) {
+      return res.status(400).json({ success: false, message: 'Voting end time must be after start time.' });
+    }
+
+    let initialStatus = 'ACTIVE';
+    if (now < startObj) {
+      initialStatus = 'SCHEDULED';
+    } else if (now > endObj) {
+      initialStatus = 'CLOSED';
+    }
+
+    const pollId = 'poll_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const nowIso = now.toISOString();
+
+    await db.query(
+      `INSERT INTO menu_polls (id, question, start_at, end_at, status, winner_selection_type, tomorrow_special_published, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'AUTOMATIC', false, $6, $7);`,
+      [pollId, cleanQuestion, startObj.toISOString(), endObj.toISOString(), initialStatus, nowIso, nowIso]
+    );
+
+    for (const foodId of foodIds) {
+      const optId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+      await db.query(
+        `INSERT INTO menu_poll_options (id, poll_id, food_id, created_at) VALUES ($1, $2, $3, $4);`,
+        [optId, pollId, foodId, nowIso]
+      );
+    }
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'CREATE_MENU_POLL',
+      resource_type: 'menu_polls',
+      resource_id: pollId,
+      details: `Created menu vote poll "${cleanQuestion}" with ${foodIds.length} dishes`
+    });
+
+    res.json({
+      success: true,
+      message: '🗳️ Menu voting poll created successfully!',
+      data: { id: pollId, question: cleanQuestion, status: initialStatus }
+    });
+  } catch (err) {
+    console.error('Create Poll Error:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to create menu voting poll.' });
+  }
+});
+
+// POST /api/menu-voting/polls/:pollId/close - Owner Close Poll
+app.post('/api/menu-voting/polls/:pollId/close', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const nowIso = new Date().toISOString();
+
+    await db.query(`UPDATE menu_polls SET status = 'CLOSED', updated_at = $1 WHERE id = $2;`, [nowIso, pollId]);
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'CLOSE_MENU_POLL',
+      resource_type: 'menu_polls',
+      resource_id: pollId,
+      details: `Closed voting poll ${pollId}`
+    });
+
+    res.json({ success: true, message: 'Voting poll closed successfully.' });
+  } catch (err) {
+    console.error('Close Poll Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to close voting poll.' });
+  }
+});
+
+// POST /api/menu-voting/polls/:pollId/cancel - Owner Cancel Poll
+app.post('/api/menu-voting/polls/:pollId/cancel', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const nowIso = new Date().toISOString();
+
+    await db.query(`UPDATE menu_polls SET status = 'CANCELLED', updated_at = $1 WHERE id = $2;`, [nowIso, pollId]);
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'CANCEL_MENU_POLL',
+      resource_type: 'menu_polls',
+      resource_id: pollId,
+      details: `Cancelled voting poll ${pollId}`
+    });
+
+    res.json({ success: true, message: 'Voting poll cancelled.' });
+  } catch (err) {
+    console.error('Cancel Poll Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to cancel voting poll.' });
+  }
+});
+
+// POST /api/menu-voting/polls/:pollId/select-winner - Owner Resolve Tie / Select Winner
+app.post('/api/menu-voting/polls/:pollId/select-winner', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const { food_id } = req.body;
+    const nowIso = new Date().toISOString();
+
+    if (!food_id) {
+      return res.status(400).json({ success: false, message: 'Food ID is required to select winner.' });
+    }
+
+    await db.query(
+      `UPDATE menu_polls SET winner_food_id = $1, status = 'COMPLETED', winner_selection_type = 'MANUAL', updated_at = $2 WHERE id = $3;`,
+      [food_id, nowIso, pollId]
+    );
+
+    res.json({ success: true, message: 'Winner dish selected successfully!' });
+  } catch (err) {
+    console.error('Select Winner Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to select winner.' });
+  }
+});
+
+// POST /api/menu-voting/polls/:pollId/publish-special - Owner Set Winner as Tomorrow's Special
+app.post('/api/menu-voting/polls/:pollId/publish-special', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { pollId } = req.params;
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `UPDATE menu_polls SET tomorrow_special_published = true, status = 'COMPLETED', updated_at = $1 WHERE id = $2;`,
+      [nowIso, pollId]
+    );
+
+    res.json({ success: true, message: "✨ Winning dish set as Tomorrow's Special!" });
+  } catch (err) {
+    console.error('Publish Special Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to publish special.' });
+  }
+});
+
+// DELETE /api/menu-voting/polls/:pollId - Owner Delete Poll
+app.delete('/api/menu-voting/polls/:pollId', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { pollId } = req.params;
+
+    await db.query(`DELETE FROM menu_polls WHERE id = $1;`, [pollId]);
+
+    await logOwnerAuditAction({
+      actor_id: req.user.id,
+      actor_name: req.user.name || 'Owner',
+      action: 'DELETE_MENU_POLL',
+      resource_type: 'menu_polls',
+      resource_id: pollId,
+      details: `Deleted voting poll ${pollId}`
+    });
+
+    res.json({ success: true, message: 'Voting poll deleted successfully.' });
+  } catch (err) {
+    console.error('Delete Poll Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete voting poll.' });
   }
 });
 
@@ -8933,6 +9410,233 @@ app.get('/api/owner/ai-assistant/analytics', authenticateToken, requireRole('OWN
   } catch (err) {
     console.error('AI Assistant Analytics Error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch AI assistant analytics.' });
+  }
+});
+
+// =========================================================================
+// 🥘 ADD-ONS MANAGEMENT ENDPOINTS
+// =========================================================================
+
+// GET /api/add-ons - List Add-ons (Public / Owner)
+app.get('/api/add-ons', async (req, res) => {
+  try {
+    const includeDisabled = req.query.include_disabled === 'true';
+    const addons = await db.getAllAddons(includeDisabled);
+    res.json({ success: true, data: addons });
+  } catch (err) {
+    console.error('GET /api/add-ons error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch add-ons.' });
+  }
+});
+
+// GET /api/add-ons/analytics - Add-on Analytics (Owner)
+app.get('/api/add-ons/analytics', async (req, res) => {
+  try {
+    const analytics = await db.getAddonAnalytics();
+    res.json({ success: true, data: analytics });
+  } catch (err) {
+    console.error('GET /api/add-ons/analytics error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch add-on analytics.' });
+  }
+});
+
+// POST /api/add-ons - Create New Add-on
+app.post('/api/add-ons', async (req, res) => {
+  try {
+    const { name, price, description, available } = req.body;
+    if (!name || price === undefined || price === null || price === '') {
+      return res.status(400).json({ success: false, message: 'Name and price are required.' });
+    }
+    const addon = await db.createAddon({ name, price: Number(price), description, available });
+    res.status(201).json({ success: true, message: 'Add-on created successfully!', data: addon });
+  } catch (err) {
+    console.error('POST /api/add-ons error:', err);
+    res.status(500).json({ success: false, message: 'Failed to create add-on.' });
+  }
+});
+
+// PATCH /api/add-ons/:id - Update Add-on
+app.patch('/api/add-ons/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await db.updateAddon(id, req.body);
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Add-on item not found.' });
+    }
+    res.json({ success: true, message: 'Add-on updated successfully!', data: updated });
+  } catch (err) {
+    console.error('PATCH /api/add-ons/:id error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update add-on.' });
+  }
+});
+
+// DELETE /api/add-ons/:id - Delete Add-on
+app.delete('/api/add-ons/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await db.deleteAddon(id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: 'Add-on item not found or already deleted.' });
+    }
+    res.json({ success: true, message: 'Add-on item deleted successfully!' });
+  } catch (err) {
+    console.error('DELETE /api/add-ons/:id error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete add-on item.' });
+  }
+});
+
+// =========================================================================
+// 💳 PREMIUM FOOD MEMBER CARD ENDPOINTS
+// =========================================================================
+
+// Customer - Get Member Card State
+app.get('/api/food-member/status', authenticateToken, async (req, res) => {
+  try {
+    const state = await db.getFoodMemberStateForCustomer(req.user.id);
+    res.json({ success: true, ...state });
+  } catch (err) {
+    console.error('GET /api/food-member/status error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch food member status.' });
+  }
+});
+
+// Customer - Apply for ₹10 Premium Member Card
+app.post('/api/food-member/apply', authenticateToken, async (req, res) => {
+  try {
+    const customer = req.user;
+    const { payment_method = 'Cash Payment' } = req.body;
+    const appRecord = await db.createFoodMemberApplication({
+      customer_id: customer.id,
+      customer_name: customer.name,
+      customer_mobile: customer.mobile,
+      fee_amount: 10.00,
+      payment_method
+    });
+    res.json({ success: true, message: 'Application submitted successfully!', data: appRecord });
+  } catch (err) {
+    console.error('POST /api/food-member/apply error:', err);
+    res.status(500).json({ success: false, message: 'Failed to submit application.' });
+  }
+});
+
+// Owner - List Member Applications
+app.get('/api/food-member/owner/applications', authenticateToken, async (req, res) => {
+  try {
+    const statusFilter = req.query.status || 'ALL';
+    const result = await db.getOwnerFoodMemberApplications(statusFilter);
+    res.json({ success: true, data: result.apps, counts: result.counts });
+  } catch (err) {
+    console.error('GET /api/food-member/owner/applications error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch applications.' });
+  }
+});
+
+// Owner - Delete Single Application Record
+app.delete('/api/food-member/owner/application/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.deleteFoodMemberApplication(id);
+    res.json({ success: true, message: 'Premium Food Member Card deleted successfully.' });
+  } catch (err) {
+    console.error('DELETE /api/food-member/owner/application/:id error:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete record.' });
+  }
+});
+
+// Owner - Delete All Member Application Records
+app.delete('/api/food-member/owner/applications/all', authenticateToken, async (req, res) => {
+  try {
+    await db.deleteAllFoodMemberApplications();
+    res.json({ success: true, message: 'All Premium Food Card records deleted successfully.' });
+  } catch (err) {
+    console.error('DELETE /api/food-member/owner/applications/all error:', err);
+    res.status(500).json({ success: false, message: 'Failed to clear records.' });
+  }
+});
+
+// Owner - Verify Payment (both url styles)
+app.post(['/api/food-member/owner/verify-payment/:id', '/api/food-member/owner/application/:id/verify-payment'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await db.verifyFoodMemberPayment(id);
+    res.json({ success: true, message: 'Payment verified successfully.', data: updated });
+  } catch (err) {
+    console.error('POST verify-payment error:', err);
+    res.status(500).json({ success: false, message: 'Failed to verify payment.' });
+  }
+});
+
+// Owner - Reject Payment
+app.post(['/api/food-member/owner/reject-payment/:id', '/api/food-member/owner/application/:id/reject-payment'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejection_reason, reason } = req.body;
+    const updated = await db.rejectFoodMemberPayment(id, rejection_reason || reason || '');
+    res.json({ success: true, message: 'Payment rejected.', data: updated });
+  } catch (err) {
+    console.error('POST reject-payment error:', err);
+    res.status(500).json({ success: false, message: 'Failed to reject payment.' });
+  }
+});
+
+// Owner - Approve Card
+app.post(['/api/food-member/owner/approve/:id', '/api/food-member/owner/application/:id/approve'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const state = await db.approveFoodMemberCard(id);
+    res.json({ success: true, message: 'Member Card approved successfully!', data: state });
+  } catch (err) {
+    console.error('POST approve error:', err);
+    res.status(500).json({ success: false, message: 'Failed to approve card.' });
+  }
+});
+
+// Owner - Reject Card
+app.post(['/api/food-member/owner/reject/:id', '/api/food-member/owner/application/:id/reject'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rejection_reason, reason } = req.body;
+    await db.rejectFoodMemberCard(id, rejection_reason || reason || '');
+    res.json({ success: true, message: 'Member Card rejected.' });
+  } catch (err) {
+    console.error('POST reject error:', err);
+    res.status(500).json({ success: false, message: 'Failed to reject card.' });
+  }
+});
+
+// Owner - Suspend Card
+app.post(['/api/food-member/owner/suspend/:id', '/api/food-member/owner/application/:id/suspend'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.suspendFoodMemberCard(id);
+    res.json({ success: true, message: 'Member Card suspended.' });
+  } catch (err) {
+    console.error('POST suspend error:', err);
+    res.status(500).json({ success: false, message: 'Failed to suspend card.' });
+  }
+});
+
+// Owner - Reactivate / Unsuspend Card
+app.post(['/api/food-member/owner/unsuspend/:id', '/api/food-member/owner/reactivate/:id', '/api/food-member/owner/application/:id/reactivate'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.reactivateFoodMemberCard(id);
+    res.json({ success: true, message: 'Member Card reactivated.' });
+  } catch (err) {
+    console.error('POST reactivate error:', err);
+    res.status(500).json({ success: false, message: 'Failed to reactivate card.' });
+  }
+});
+
+// Owner - Re-approve Card
+app.post(['/api/food-member/owner/reapprove/:id', '/api/food-member/owner/application/:id/reapprove'], authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const state = await db.approveFoodMemberCard(id);
+    res.json({ success: true, message: 'Member Card re-approved successfully!', data: state });
+  } catch (err) {
+    console.error('POST reapprove error:', err);
+    res.status(500).json({ success: false, message: 'Failed to re-approve card.' });
   }
 });
 

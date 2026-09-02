@@ -308,7 +308,8 @@ class TiffinApp {
           if (msg && msg.type === 'NOTIFICATION' && msg.data) {
             this.handleRealTimeNotificationReceived(msg.data);
           } else if (msg && (msg.type === 'VOTE_UPDATE' || msg.type === 'POLL_CREATED' || msg.type === 'POLL_CLOSED')) {
-            if (this.activeView === 'secCustomerHome') this.loadActivePoll();
+            this.loadActivePoll();
+            if (this.activeView === 'secCustomerVoting') this.loadCustomerVoting();
             if (this.activeView === 'secOwnerVoting') this.loadOwnerPolls();
           } else if (msg && msg.type === 'SECURITY_ALERT') {
             this.showToast(`🚨 Security Alert (${msg.data.risk_level || 'HIGH'}): ${msg.data.event_type || 'Suspicious Activity'}`, 'warning');
@@ -6347,23 +6348,40 @@ class TiffinApp {
 
               ${(isReceived || isPreparing) ? `
                 <!-- ⏱️ KITCHEN LIVE PREPARATION TIME CONTROL -->
-                <div style="margin-bottom: 8px; padding: 10px; background: rgba(0,0,0,0.3); border: 1.5px dashed var(--accent-gold); border-radius: 10px;">
-                  <div style="font-size: 0.78rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                    <span><i class="fa-solid fa-stopwatch"></i> Prep Time: <strong>${order.preparation_minutes || 15}m</strong></span>
-                    <span style="font-size: 0.7rem; color: #FFF;">Expected ~ ${order.estimated_ready_at ? new Date(order.estimated_ready_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'Soon'}</span>
-                  </div>
-                  <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px;">
-                    ${[5, 10, 15, 20, 30].map(m => `
-                      <button type="button" class="prep-preset-btn" onclick="app.updateOrderPreparationTime('${order.id}', ${m})">${m}m</button>
-                    `).join('')}
-                  </div>
-                  <div style="display: flex; gap: 6px; align-items: center;">
-                    <input type="number" min="1" max="180" value="${order.preparation_minutes || 15}" id="txtPrepTime_${order.id}" class="form-control" style="padding: 4px 8px; font-size: 0.8rem; text-align: center; height: 30px; width: 70px;">
-                    <button type="button" class="btn-secondary-outline" onclick="app.updateOrderPreparationTime('${order.id}')" style="padding: 4px 10px; font-size: 0.78rem; height: 30px; white-space: nowrap; flex: 1;">
-                      Set Time
+                ${(order.estimated_ready_at && !this.editingPrepTimeOrders?.[order.id]) ? `
+                  <div style="margin-bottom: 8px; padding: 8px 12px; background: rgba(234, 162, 33, 0.1); border: 1px solid var(--accent-gold); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem;">
+                    <div style="color: var(--accent-gold); font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                      <i class="fa-solid fa-stopwatch"></i> Prep Time: <strong style="color: #FFF;">${order.preparation_minutes || 15}m</strong>
+                      <span style="color: var(--text-muted); font-size: 0.75rem;">(Expected ~ ${new Date(order.estimated_ready_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true })})</span>
+                    </div>
+                    <button type="button" class="btn-sm-status" onclick="app.togglePrepTimeEdit('${order.id}', true)" style="background: rgba(255,255,255,0.08); color: #AAA; border: 1px solid var(--border-color); font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; cursor: pointer;">
+                      ✏️ Edit Time
                     </button>
                   </div>
-                </div>
+                ` : `
+                  <div style="margin-bottom: 8px; padding: 10px; background: rgba(0,0,0,0.3); border: 1.5px dashed var(--accent-gold); border-radius: 10px;">
+                    <div style="font-size: 0.78rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                      <span><i class="fa-solid fa-stopwatch"></i> Prep Time: <strong>${order.preparation_minutes || 15}m</strong></span>
+                      <span style="font-size: 0.7rem; color: #FFF;">Expected ~ ${order.estimated_ready_at ? new Date(order.estimated_ready_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : 'Soon'}</span>
+                    </div>
+                    <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px;">
+                      ${[5, 10, 15, 20, 30].map(m => `
+                        <button type="button" class="prep-preset-btn" onclick="app.updateOrderPreparationTime('${order.id}', ${m})">${m}m</button>
+                      `).join('')}
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                      <input type="number" min="1" max="180" value="${order.preparation_minutes || 15}" id="txtPrepTime_${order.id}" class="form-control" style="padding: 4px 8px; font-size: 0.8rem; text-align: center; height: 30px; width: 70px;">
+                      <button type="button" class="btn-secondary-outline" onclick="app.updateOrderPreparationTime('${order.id}')" style="padding: 4px 10px; font-size: 0.78rem; height: 30px; white-space: nowrap; flex: 1;">
+                        Set Time
+                      </button>
+                      ${order.estimated_ready_at ? `
+                        <button type="button" class="btn-secondary-outline" onclick="app.togglePrepTimeEdit('${order.id}', false)" style="padding: 4px 8px; font-size: 0.75rem; height: 30px; color: #AAA;">
+                          Cancel
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `}
               ` : ''}
 
               ${isReady ? `
@@ -6373,11 +6391,11 @@ class TiffinApp {
               ` : ''}
 
               ${isPendingPayment && !isRejected ? `
-                <div style="display: flex; gap: 6px; margin-top: 4px;">
-                  <button type="button" class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Paid (UPI Verified)', this)" style="background: rgba(76,175,80,0.2); color: #4CAF50; border: 1px solid #4CAF50; padding: 6px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; cursor: pointer; flex: 1; text-align: center;">
+                <div style="display: flex; gap: 8px; margin-top: 6px;">
+                  <button type="button" class="btn-verify-paid" onclick="app.verifyOrderPayment('${order.id}', 'Paid (UPI Verified)', this)">
                     <i class="fa-solid fa-check"></i> Verify Paid
                   </button>
-                  <button type="button" class="btn-sm-status" onclick="app.verifyOrderPayment('${order.id}', 'Payment Failed', this)" style="background: rgba(229,57,53,0.2); color: #E53935; border: 1px solid #E53935; padding: 6px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; cursor: pointer; flex: 1; text-align: center;">
+                  <button type="button" class="btn-reject-pay" onclick="app.verifyOrderPayment('${order.id}', 'Payment Failed', this)">
                     <i class="fa-solid fa-xmark"></i> Reject Pay
                   </button>
                 </div>
@@ -6385,23 +6403,7 @@ class TiffinApp {
 
               ${(order.pickup_pin_verified || isCompleted) ? `
                 <div style="background: rgba(76, 175, 80, 0.15); border: 1.5px solid #4CAF50; border-radius: 8px; padding: 8px 10px; margin-top: 4px; text-align: center; color: #4CAF50; font-weight: 800; font-size: 0.82rem;">
-                  <i class="fa-solid fa-circle-check"></i> ✅ Pickup PIN Verified • Order Completed
-                </div>
-              ` : (!isCancelled && !isRejected) ? `
-                <!-- OWNER PICKUP PIN VERIFICATION BOX -->
-                <div class="owner-pin-verify-card" style="background: rgba(234, 162, 33, 0.08); border: 1.5px solid var(--accent-gold); border-radius: 8px; padding: 10px; margin-top: 4px;">
-                  <div style="font-weight: 800; font-size: 0.82rem; color: var(--accent-gold); display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                    <span><i class="fa-solid fa-key" style="color: var(--accent-gold);"></i> 🔐 Verify Pickup PIN</span>
-                    <span style="font-size: 0.72rem; color: var(--text-muted);">Customer 4-digit PIN</span>
-                  </div>
-                  
-                  <form onsubmit="app.verifyPickupPin('${order.id}', event)" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                    <input type="text" id="inputPin_${order.id}" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" placeholder="[ 4 8 2 7 ]" required autocomplete="off" style="flex: 1; min-width: 110px; background: rgba(0,0,0,0.4); border: 1.5px solid var(--accent-gold); color: #00E676; font-family: monospace; font-size: 1.1rem; font-weight: 900; text-align: center; letter-spacing: 4px; padding: 5px 8px; border-radius: 6px;">
-                    <button type="submit" id="btnVerifyPin_${order.id}" class="btn-primary-block" style="width: auto; padding: 6px 12px; background: var(--accent-gold); color: #000; font-weight: 900; font-size: 0.78rem; border: none; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
-                      <i class="fa-solid fa-shield-check"></i> Verify PIN
-                    </button>
-                  </form>
-                  <div id="pinFeedback_${order.id}" style="margin-top: 6px; font-size: 0.8rem; font-weight: 700; display: none;"></div>
+                  <i class="fa-solid fa-circle-check"></i> ✅ Order Completed
                 </div>
               ` : ''}
 
@@ -6858,14 +6860,16 @@ class TiffinApp {
         </span>
       </div>
 
-      <!-- PICKUP PIN BANNER IN ORDER DETAILS -->
-      <div style="background: rgba(0, 230, 118, 0.08); border: 1.5px solid #00E676; padding: 12px; border-radius: 8px; margin: 1rem 0; text-align: center;">
-        <span style="font-size: 0.74rem; font-weight: 800; color: #80E6A2; text-transform: uppercase; letter-spacing: 0.5px; display: block;">🔐 PICKUP PIN</span>
-        <div style="font-size: 2.2rem; font-weight: 900; color: #00E676; letter-spacing: 6px; font-family: monospace; margin: 4px 0;">${order.pickup_pin || '----'}</div>
-        <p style="font-size: 0.8rem; color: #FFFFFF; font-weight: 600; margin: 0;">
-          ${(order.pickup_pin_verified || isCompleted) ? '✅ Pickup PIN Verified & Order Completed' : '🔐 Please show or tell this PIN to the owner when collecting your order.'}
-        </p>
-      </div>
+      <!-- PICKUP PIN BANNER IN ORDER DETAILS (Hidden on Owner side until verified/completed) -->
+      ${(this.currentRole !== 'OWNER' || order.pickup_pin_verified || isCompleted) ? `
+        <div style="background: rgba(0, 230, 118, 0.08); border: 1.5px solid #00E676; padding: 12px; border-radius: 8px; margin: 1rem 0; text-align: center;">
+          <span style="font-size: 0.74rem; font-weight: 800; color: #80E6A2; text-transform: uppercase; letter-spacing: 0.5px; display: block;">🔐 PICKUP PIN</span>
+          <div style="font-size: 2.2rem; font-weight: 900; color: #00E676; letter-spacing: 6px; font-family: monospace; margin: 4px 0;">${order.pickup_pin || '----'}</div>
+          <p style="font-size: 0.8rem; color: #FFFFFF; font-weight: 600; margin: 0;">
+            ${(order.pickup_pin_verified || isCompleted) ? '✅ Pickup PIN Verified & Order Completed' : '🔐 Please show or tell this PIN to the owner when collecting your order.'}
+          </p>
+        </div>
+      ` : ''}
 
       <div class="od-info-grid">
         <div class="od-info-item">
@@ -12915,9 +12919,12 @@ class TiffinApp {
     this.pendingDeleteMemberAppId = appId;
     const modal = document.getElementById('modalConfirmDeleteMemberApp');
     if (modal) {
-      modal.style.display = 'flex';
-      modal.style.zIndex = '999999';
+      if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+      }
+      modal.classList.remove('hidden');
       modal.classList.add('open', 'visible', 'active');
+      modal.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 9999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;';
     }
   }
 
@@ -12925,7 +12932,8 @@ class TiffinApp {
     const modal = document.getElementById('modalConfirmDeleteMemberApp');
     if (modal) {
       modal.classList.remove('open', 'visible', 'active');
-      modal.style.display = 'none';
+      modal.classList.add('hidden');
+      modal.style.cssText = 'display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;';
     }
     this.pendingDeleteMemberAppId = null;
     this.isDeletingMemberApp = false;
@@ -12967,9 +12975,12 @@ class TiffinApp {
   openDeleteAllMemberAppsModal() {
     const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
     if (modal) {
-      modal.style.display = 'flex';
-      modal.style.zIndex = '999999';
+      if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+      }
+      modal.classList.remove('hidden');
       modal.classList.add('open', 'visible', 'active');
+      modal.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 9999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;';
     }
   }
 
@@ -12977,7 +12988,8 @@ class TiffinApp {
     const modal = document.getElementById('modalConfirmDeleteAllMemberApps');
     if (modal) {
       modal.classList.remove('open', 'visible', 'active');
-      modal.style.display = 'none';
+      modal.classList.add('hidden');
+      modal.style.cssText = 'display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;';
     }
     this.isDeletingAllMemberApps = false;
   }
@@ -13535,7 +13547,7 @@ class TiffinApp {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/active`, { isBackgroundPoll: true });
       const json = await res.json();
 
-      if (!json.success || !json.poll) {
+      if (!json.success || !json.poll || json.poll.status !== 'ACTIVE') {
         container.innerHTML = '';
         container.style.display = 'none';
         return;
@@ -13545,12 +13557,37 @@ class TiffinApp {
       this.renderCustomerVotingCard(json.poll, json.has_voted, json.voted_option_id);
     } catch (err) {
       console.error('Error loading active poll:', err);
+      const container = document.getElementById('customerVotingContainer');
+      if (container) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+      }
     }
   }
 
   renderCustomerVotingCard(poll, hasVoted = false, votedOptionId = null) {
     const container = document.getElementById('customerVotingContainer');
-    if (!container || !poll) return;
+    if (!container) return;
+
+    if (!poll || poll.status !== 'ACTIVE') {
+      container.innerHTML = '';
+      container.style.display = 'none';
+      return;
+    }
+
+    // Auto-close timer if poll has end_at time
+    if (poll.end_at) {
+      const msUntilEnd = new Date(poll.end_at).getTime() - Date.now();
+      if (msUntilEnd > 0 && msUntilEnd < 86400000) {
+        if (this.votingAutoCloseTimer) clearTimeout(this.votingAutoCloseTimer);
+        this.votingAutoCloseTimer = setTimeout(() => {
+          this.loadActivePoll();
+          this.loadCustomerVoting();
+        }, msUntilEnd + 300);
+      }
+    }
+
+    const isLoggedIn = Boolean(this.currentUser);
 
     const optionsHtml = poll.options.map((opt) => {
       const isSelected = votedOptionId === opt.id || this.selectedPollOptionId === opt.id;
@@ -13558,13 +13595,13 @@ class TiffinApp {
 
       return `
         <div class="poll-option-card ${isSelected ? 'selected' : ''} ${hasVoted ? 'voted-mode' : ''}"
-             onclick="${!hasVoted && poll.status === 'ACTIVE' ? `app.selectVotingOption('${opt.id}')` : ''}"
+             onclick="${isLoggedIn && !hasVoted && poll.status === 'ACTIVE' ? `app.selectVotingOption('${opt.id}')` : !isLoggedIn ? `app.openAuthModal('CUSTOMER', 'LOGIN')` : ''}"
              style="background: ${isSelected ? 'rgba(234, 162, 33, 0.15)' : 'rgba(255,255,255,0.04)'};
                     border: 2px solid ${isSelected ? 'var(--accent-gold)' : 'var(--border-color)'};
-                    border-radius: var(--radius-md); padding: 12px 16px; transition: all 0.2s ease; cursor: ${!hasVoted && poll.status === 'ACTIVE' ? 'pointer' : 'default'}; margin-bottom: 8px;">
+                    border-radius: var(--radius-md); padding: 12px 16px; transition: all 0.2s ease; cursor: ${isLoggedIn && !hasVoted && poll.status === 'ACTIVE' ? 'pointer' : 'pointer'}; margin-bottom: 8px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
             <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
-              ${!hasVoted && poll.status === 'ACTIVE' ? `
+              ${isLoggedIn && !hasVoted && poll.status === 'ACTIVE' ? `
                 <input type="radio" name="pollOptionRadio" id="optRadio_${opt.id}" value="${opt.id}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: var(--accent-gold);">
               ` : ''}
               ${opt.image ? `<img src="${opt.image}" alt="${opt.food_name}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : ''}
@@ -13577,7 +13614,7 @@ class TiffinApp {
               </div>
             </div>
 
-            ${hasVoted || poll.status === 'CLOSED' || poll.status === 'COMPLETED' ? `
+            ${hasVoted ? `
               <div style="text-align: right; min-width: 70px;">
                 <span style="font-size: 1.1rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">${opt.percentage}%</span>
                 <div style="font-size: 0.72rem; color: var(--text-muted);">${opt.votes} vote${opt.votes === 1 ? '' : 's'}</div>
@@ -13585,7 +13622,7 @@ class TiffinApp {
             ` : ''}
           </div>
 
-          ${hasVoted || poll.status === 'CLOSED' || poll.status === 'COMPLETED' ? `
+          ${hasVoted ? `
             <div style="width: 100%; background: rgba(255,255,255,0.1); height: 8px; border-radius: 4px; margin-top: 10px; overflow: hidden;">
               <div style="width: ${opt.percentage}%; background: linear-gradient(90deg, var(--primary), var(--accent-gold)); height: 100%; transition: width 0.4s ease;"></div>
             </div>
@@ -13595,9 +13632,18 @@ class TiffinApp {
     }).join('');
 
     let actionBtnHtml = '';
-    if (!hasVoted && poll.status === 'ACTIVE') {
+    if (!isLoggedIn) {
       actionBtnHtml = `
-        <button type="button" class="btn-primary-block" id="btnSubmitCustomerVote" onclick="app.submitCustomerVote('${poll.id}')" style="width: 100%; margin-top: 1rem; padding: 12px;">
+        <div style="margin-top: 1rem; text-align: center;">
+          <p style="margin: 0 0 8px 0; color: var(--text-muted, #AAA); font-size: 0.88rem;">🔐 Login required to vote in tomorrow's special poll.</p>
+          <button type="button" class="btn-primary-block" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')" style="width: 100%; padding: 12px; background: linear-gradient(135deg, #0088CC 0%, #006699 100%); font-weight: 700; border-radius: 12px; cursor: pointer;">
+            🔐 Login to Vote
+          </button>
+        </div>
+      `;
+    } else if (!hasVoted && poll.status === 'ACTIVE') {
+      actionBtnHtml = `
+        <button type="button" class="btn-primary-block" id="btnSubmitCustomerVote" onclick="app.submitCustomerVote('${poll.id}')" style="width: 100%; margin-top: 1rem; padding: 12px; cursor: pointer;">
           🗳️ Vote Now
         </button>
       `;
@@ -13619,8 +13665,8 @@ class TiffinApp {
             </h3>
             <p style="margin: 0; font-size: 0.82rem; color: var(--text-muted);">Which dish would you like to see as tomorrow's special?</p>
           </div>
-          <span class="status-badge" style="background: ${poll.status === 'ACTIVE' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(239, 83, 80, 0.15)'}; color: ${poll.status === 'ACTIVE' ? '#4CAF50' : '#EF5350'}; border: 1px solid ${poll.status === 'ACTIVE' ? '#4CAF50' : '#EF5350'}; font-size: 0.75rem; padding: 4px 10px;">
-            ${poll.status === 'ACTIVE' ? '🟢 Voting Active' : '🔴 Voting Closed'}
+          <span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid #4CAF50; font-size: 0.75rem; padding: 4px 10px;">
+            🟢 Voting Active
           </span>
         </div>
 
@@ -13634,6 +13680,10 @@ class TiffinApp {
   }
 
   selectVotingOption(optionId) {
+    if (!this.currentUser) {
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
     this.selectedPollOptionId = optionId;
     const radios = document.getElementsByName('pollOptionRadio');
     radios.forEach(r => {
@@ -13658,7 +13708,8 @@ class TiffinApp {
 
   async submitCustomerVote(pollId) {
     if (!this.currentUser) {
-      this.openAuthModal('LOGIN');
+      this.showToast('🔐 Login Required. Please login to your account to vote.', 'warning');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
       return;
     }
 
@@ -13688,7 +13739,13 @@ class TiffinApp {
         this.renderCustomerVotingCard(json.poll, true, json.voted_option_id);
       } else {
         this.showToast(json.message || 'Failed to submit vote.', 'error');
-        if (btn) { btn.disabled = false; btn.innerText = '🗳️ Vote Now'; }
+        if (json.message && json.message.includes('Voting Closed')) {
+          this.loadActivePoll();
+          this.loadCustomerVoting();
+        } else if (btn) {
+          btn.disabled = false;
+          btn.innerText = '🗳️ Vote Now';
+        }
       }
     } catch (err) {
       console.error('Submit vote error:', err);
@@ -13703,6 +13760,7 @@ class TiffinApp {
 
   async loadOwnerPolls() {
     try {
+      if (!this.ownerPollFilter) this.ownerPollFilter = 'ALL';
       const search = (document.getElementById('txtOwnerPollSearch')?.value || '').trim();
       let url = `${API_BASE}/menu-voting/polls?status=${this.ownerPollFilter}`;
       if (search) url += `&search=${encodeURIComponent(search)}`;
@@ -13857,81 +13915,134 @@ class TiffinApp {
   }
 
   async openCreatePollModal() {
-    const modal = document.getElementById('modalCreatePoll');
-    if (!modal) return;
-
-    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex !important; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;';
-    modal.classList.remove('hidden');
-    modal.classList.add('open', 'active', 'visible');
-
-    try {
-      if (!this.menu || this.menu.length === 0) {
-        await this.fetchMenu();
-      }
-    } catch (err) {
-      console.warn('fetchMenu warning in openCreatePollModal:', err);
+    let modal = document.getElementById('modalCreatePoll');
+    if (!modal) {
+      console.error('modalCreatePoll element not found!');
+      this.showToast('Error: Poll modal not found in page.', 'error');
+      return;
     }
 
-    const list = (this.menu && this.menu.length > 0) ? this.menu : (this.menuItems || []);
-    if (list.length >= 2) {
-      this.selectedPollFoodIds = [list[0].id, list[1].id];
-    } else if (list.length === 1) {
-      this.selectedPollFoodIds = [list[0].id];
-    } else {
-      this.selectedPollFoodIds = [];
+    // Always move to body root to avoid any parent container stacking context or overflow hidden issues
+    if (modal.parentNode !== document.body) {
+      document.body.appendChild(modal);
     }
 
+    // Reset selection for new poll
+    this.selectedPollFoodIds = [];
+
+    // FIRST: Show the modal immediately at top level
+    modal.className = 'modal-backdrop open active visible';
+    modal.style.cssText = 'position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100vh!important;z-index:9999999!important;display:flex!important;align-items:center!important;justify-content:center!important;background:rgba(0,0,0,0.85)!important;backdrop-filter:blur(8px)!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important;';
+
+    // Set dates & question
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
     const startIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     const endIso = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
     const txtStart = document.getElementById('txtPollStartAt');
     const txtEnd = document.getElementById('txtPollEndAt');
+    const txtQuestion = document.getElementById('txtPollQuestion');
     if (txtStart) txtStart.value = startIso;
     if (txtEnd) txtEnd.value = endIso;
+    if (txtQuestion) txtQuestion.value = "Choose Tomorrow's Special";
 
-    this.renderFoodPillGrid();
+    // Show loading in food container
+    const container = document.getElementById('pollOptionRowsContainer');
+    if (container) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--accent-gold);font-size:0.9rem;"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;margin-bottom:8px;display:block;"></i>Loading food dishes...</div>';
+    }
+
+    // THEN: Fetch menu items
+    try {
+      const res = await fetch(`${API_BASE}/menu`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        this.menu = json.data;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch menu for poll modal:', err);
+    }
+
+    // Pre-select first 2 items
+    const list = (this.menu && this.menu.length > 0) ? this.menu : (this.menuItems || []);
+    if (list.length >= 2) {
+      this.selectedPollFoodIds = [list[0].id, list[1].id];
+    } else if (list.length === 1) {
+      this.selectedPollFoodIds = [list[0].id];
+    }
+
+    // Render food selection grid
+    await this.renderFoodPillGrid();
   }
 
   closeCreatePollModal() {
     const modal = document.getElementById('modalCreatePoll');
     if (modal) {
-      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none !important; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;';
+      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999999; display: none !important; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;';
       modal.classList.remove('open', 'active', 'visible');
       modal.classList.add('hidden');
     }
   }
 
-  renderFoodPillGrid() {
+  async renderFoodPillGrid() {
     const container = document.getElementById('pollOptionRowsContainer');
     if (!container) return;
 
-    const list = (this.menu && this.menu.length > 0) ? this.menu : (this.menuItems || []);
+    if (!this.menu || this.menu.length === 0) {
+      try {
+        const res = await fetch(`${API_BASE}/menu`);
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          this.menu = json.data;
+        }
+      } catch (e) {}
+    }
+
+    const fallbackDishes = [
+      { id: 'tf_idly', name: 'Idly (4 Pieces)', price: 40, image: '/images/idly_sambar.png' },
+      { id: 'tf_vada', name: 'Medu Vada (2 Pieces)', price: 45, image: '/images/vada.png' },
+      { id: 'tf_puri', name: 'Puri Sagu (3 Pieces)', price: 60, image: '/images/puri.png' },
+      { id: 'tf_dosa', name: 'Masala Dosa', price: 65, image: '/images/dosa.png' },
+      { id: 'tf_meals', name: 'South Indian Mini Meals', price: 90, image: '/images/meals.png' }
+    ];
+
+    const list = (this.menu && this.menu.length > 0) ? this.menu : ((this.menuItems && this.menuItems.length > 0) ? this.menuItems : fallbackDishes);
+
+    if (list.length === 0) {
+      container.innerHTML = `
+        <div style="padding: 12px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+          Loading menu dishes...
+        </div>
+      `;
+      return;
+    }
 
     let html = `
-      <div style="margin-bottom: 0.5rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold);">
-            👇 Tap 2 to 5 dishes below to include in this poll:
+      <div style="margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+          <span style="font-size: 0.85rem; font-weight: 800; color: var(--accent-gold);">
+            👇 Method 1: Tap 2 to 5 food dishes below:
           </span>
-          <span style="font-size: 0.78rem; font-weight: 800; padding: 3px 10px; border-radius: 12px; background: rgba(156,39,176,0.25); color: #E040FB;" id="lblSelectedPollCount">
+          <span style="font-size: 0.8rem; font-weight: 800; padding: 4px 12px; border-radius: 12px; background: rgba(234, 162, 33, 0.2); color: var(--accent-gold); border: 1px solid var(--accent-gold);" id="lblSelectedPollCount">
             Selected: ${this.selectedPollFoodIds ? this.selectedPollFoodIds.length : 0} / 5
           </span>
         </div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; padding: 6px; border: 1.5px solid var(--border-color); border-radius: 12px; background: rgba(0,0,0,0.3);">
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; max-height: 220px; overflow-y: auto; padding: 10px; border: 1.5px solid var(--accent-gold); border-radius: 12px; background: rgba(0,0,0,0.4); margin-bottom: 1rem;">
     `;
 
     list.forEach(t => {
       const isSelected = (this.selectedPollFoodIds || []).includes(t.id);
       html += `
-        <div onclick="app.togglePollFoodPillSelection('${t.id}')" style="cursor: pointer; padding: 8px; border-radius: 10px; border: 1.5px solid ${isSelected ? '#9C27B0' : 'rgba(255,255,255,0.1)'}; background: ${isSelected ? 'rgba(156,39,176,0.35)' : 'rgba(255,255,255,0.03)'}; display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;">
-          <img src="${t.image || '/images/idly_sambar.png'}" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover;">
+        <div onclick="app.togglePollFoodPillSelection('${t.id}')" style="cursor: pointer; padding: 10px; border-radius: 10px; border: 2px solid ${isSelected ? 'var(--accent-gold)' : 'rgba(255,255,255,0.12)'}; background: ${isSelected ? 'rgba(234, 162, 33, 0.2)' : 'rgba(255,255,255,0.04)'}; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease; box-shadow: ${isSelected ? '0 4px 12px rgba(234, 162, 33, 0.25)' : 'none'};">
+          <img src="${t.image || '/images/idly_sambar.png'}" style="width: 38px; height: 38px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1);">
           <div style="overflow: hidden; flex: 1;">
-            <strong style="color: #FFF; font-size: 0.78rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.name}</strong>
-            <span style="color: var(--accent-gold); font-size: 0.72rem; font-weight: 800;">₹${t.price} ${isSelected ? '✅' : ''}</span>
+            <strong style="color: #FFF; font-size: 0.82rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 800;">${t.name}</strong>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+              <span style="color: var(--accent-gold); font-size: 0.78rem; font-weight: 800;">₹${t.price}</span>
+              <span style="font-size: 0.72rem; font-weight: 900; color: ${isSelected ? '#00E676' : '#AAA'};">${isSelected ? '✅ Selected' : '+ Tap'}</span>
+            </div>
           </div>
         </div>
       `;
@@ -13939,10 +14050,54 @@ class TiffinApp {
 
     html += `
         </div>
+
+        <div style="border-top: 1px dashed var(--border-color); padding-top: 0.75rem;">
+          <label style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold); display: block; margin-bottom: 6px;">
+            👇 Method 2: Or select from Dropdowns:
+          </label>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 0.78rem; font-weight: 700; color: #AAA; width: 75px;">Option 1:</span>
+              <select class="sel-poll-food-id form-control" onchange="app.syncPollSelectDropdowns()" style="flex: 1; padding: 6px 10px; font-size: 0.82rem;">
+                <option value="">-- Choose Dish 1 --</option>
+                ${list.map(t => `<option value="${t.id}" ${(this.selectedPollFoodIds?.[0] === t.id) ? 'selected' : ''}>${t.name} (₹${t.price})</option>`).join('')}
+              </select>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 0.78rem; font-weight: 700; color: #AAA; width: 75px;">Option 2:</span>
+              <select class="sel-poll-food-id form-control" onchange="app.syncPollSelectDropdowns()" style="flex: 1; padding: 6px 10px; font-size: 0.82rem;">
+                <option value="">-- Choose Dish 2 --</option>
+                ${list.map(t => `<option value="${t.id}" ${(this.selectedPollFoodIds?.[1] === t.id) ? 'selected' : ''}>${t.name} (₹${t.price})</option>`).join('')}
+              </select>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span style="font-size: 0.78rem; font-weight: 700; color: #AAA; width: 75px;">Option 3:</span>
+              <select class="sel-poll-food-id form-control" onchange="app.syncPollSelectDropdowns()" style="flex: 1; padding: 6px 10px; font-size: 0.82rem;">
+                <option value="">-- Choose Dish 3 (Optional) --</option>
+                ${list.map(t => `<option value="${t.id}" ${(this.selectedPollFoodIds?.[2] === t.id) ? 'selected' : ''}>${t.name} (₹${t.price})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
     container.innerHTML = html;
+  }
+
+  syncPollSelectDropdowns() {
+    const selects = document.querySelectorAll('.sel-poll-food-id');
+    const selected = [];
+    selects.forEach(s => {
+      if (s.value && !selected.includes(s.value)) {
+        selected.push(s.value);
+      }
+    });
+    if (selected.length > 0) {
+      this.selectedPollFoodIds = selected;
+    }
+    const lbl = document.getElementById('lblSelectedPollCount');
+    if (lbl) lbl.innerText = `Selected: ${this.selectedPollFoodIds ? this.selectedPollFoodIds.length : 0} / 5`;
   }
 
   togglePollFoodPillSelection(foodId) {
@@ -13968,9 +14123,19 @@ class TiffinApp {
   async submitCreatePoll(e) {
     if (e) e.preventDefault();
 
-    const question = (document.getElementById('txtPollQuestion')?.value || '').trim() || "Choose Tomorrow's Special";
-    let start_at = document.getElementById('txtPollStartAt')?.value;
-    let end_at = document.getElementById('txtPollEndAt')?.value;
+    const submitBtn = e?.target?.querySelector('button[type="submit"]') || document.querySelector('#modalCreatePoll button[type="submit"]');
+    const origText = submitBtn ? submitBtn.innerText : 'Create Menu Vote';
+
+    const questionInput = document.getElementById('txtPollQuestion');
+    const startAtInput = document.getElementById('txtPollStartAt');
+    const endAtInput = document.getElementById('txtPollEndAt');
+
+    const question = questionInput?.value ? questionInput.value.trim() : "Choose Tomorrow's Special";
+    const start_at = startAtInput?.value;
+    const end_at = endAtInput?.value;
+
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     const startDateObj = start_at ? new Date(start_at) : now;
     const endDateObj = end_at ? new Date(end_at) : tomorrow;
@@ -14009,6 +14174,8 @@ class TiffinApp {
     }
 
     try {
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = 'Creating Poll...'; }
+
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -14026,31 +14193,43 @@ class TiffinApp {
     } catch (err) {
       console.error('Submit create poll error:', err);
       this.showToast('Network error creating poll.', 'error');
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = origText; }
     }
   }
 
   async closePoll(pollId) {
-    if (!confirm('Are you sure you want to close voting for this poll?')) return;
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm('Are you sure you want to close voting for this poll?')) return;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/close`, { method: 'POST' });
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message || 'Poll closed.', 'success');
-        this.loadOwnerPolls();
+        await this.loadOwnerPolls();
+      } else {
+        this.showToast(json.message || 'Failed to close poll.', 'error');
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error closing poll:', e);
+      this.showToast('Network error closing poll.', 'error');
+    }
   }
 
   async cancelPoll(pollId) {
-    if (!confirm('Are you sure you want to cancel this poll?')) return;
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm('Are you sure you want to cancel this poll?')) return;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/cancel`, { method: 'POST' });
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message || 'Poll cancelled.', 'success');
-        this.loadOwnerPolls();
+        await this.loadOwnerPolls();
+      } else {
+        this.showToast(json.message || 'Failed to cancel poll.', 'error');
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error cancelling poll:', e);
+      this.showToast('Network error cancelling poll.', 'error');
+    }
   }
 
   async selectTieWinner(pollId, foodId) {
@@ -14063,33 +14242,48 @@ class TiffinApp {
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message || 'Winner dish set.', 'success');
-        this.loadOwnerPolls();
+        await this.loadOwnerPolls();
+      } else {
+        this.showToast(json.message || 'Failed to select winner.', 'error');
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error selecting winner:', e);
+      this.showToast('Network error selecting winner.', 'error');
+    }
   }
 
   async publishTomorrowSpecial(pollId) {
-    if (!confirm("Publish this dish as Tomorrow's Special and notify all customers?")) return;
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm("Publish this dish as Tomorrow's Special and notify all customers?")) return;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/publish-special`, { method: 'POST' });
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message || "Tomorrow's Special published successfully!", 'success');
-        this.loadOwnerPolls();
+        await this.loadOwnerPolls();
+      } else {
+        this.showToast(json.message || 'Failed to publish special.', 'error');
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error publishing special:', e);
+      this.showToast('Network error publishing special.', 'error');
+    }
   }
 
   async deletePoll(pollId) {
-    if (!confirm('Are you sure you want to delete this menu poll record?')) return;
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm('Are you sure you want to delete this menu poll record?')) return;
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) {
         this.showToast(json.message || 'Poll deleted.', 'success');
-        this.loadOwnerPolls();
+        await this.loadOwnerPolls();
+      } else {
+        this.showToast(json.message || 'Failed to delete poll.', 'error');
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error deleting poll:', e);
+      this.showToast('Network error deleting poll.', 'error');
+    }
   }
 
 
@@ -15059,6 +15253,10 @@ class TiffinApp {
               Enable Item
             </button>
           `}
+
+          <button type="button" class="btn-sm-status" onclick="app.deleteAddon('${ao.id}')" style="font-size: 0.78rem; padding: 6px 10px; background: rgba(244,67,54,0.2); color: #FF5252; border: 1px solid #FF5252; cursor: pointer;">
+            <i class="fa-solid fa-trash-can"></i> Delete
+          </button>
         </div>
       </div>
     `).join('');
@@ -15072,6 +15270,7 @@ class TiffinApp {
     const txtPrice = document.getElementById('txtAddonPrice');
     const selAvail = document.getElementById('selAddonAvailability');
     const txtDesc = document.getElementById('txtAddonDescription');
+    const btnDelete = document.getElementById('btnDeleteAddonInModal');
 
     if (title) title.innerHTML = '<span>🥘</span> Add New Add-on';
     if (txtId) txtId.value = '';
@@ -15079,12 +15278,16 @@ class TiffinApp {
     if (txtPrice) txtPrice.value = '';
     if (selAvail) selAvail.value = 'true';
     if (txtDesc) txtDesc.value = '';
+    if (btnDelete) btnDelete.classList.add('hidden');
 
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex !important; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;';
+      if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+      }
       modal.classList.remove('hidden');
       modal.classList.add('open', 'active', 'visible');
+      modal.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 9999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;';
     }
   }
 
@@ -15099,6 +15302,7 @@ class TiffinApp {
     const txtPrice = document.getElementById('txtAddonPrice');
     const selAvail = document.getElementById('selAddonAvailability');
     const txtDesc = document.getElementById('txtAddonDescription');
+    const btnDelete = document.getElementById('btnDeleteAddonInModal');
 
     if (title) title.innerHTML = `<span>🥘</span> Edit Add-on "${addon.name}"`;
     if (txtId) txtId.value = addon.id;
@@ -15106,52 +15310,76 @@ class TiffinApp {
     if (txtPrice) txtPrice.value = addon.price;
     if (selAvail) selAvail.value = addon.available ? 'true' : 'false';
     if (txtDesc) txtDesc.value = addon.description || '';
+    if (btnDelete) btnDelete.classList.remove('hidden');
 
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex !important; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;';
+      if (modal.parentNode !== document.body) {
+        document.body.appendChild(modal);
+      }
       modal.classList.remove('hidden');
       modal.classList.add('open', 'active', 'visible');
+      modal.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 9999999 !important; display: flex !important; align-items: center !important; justify-content: center !important; background: rgba(0,0,0,0.85) !important; backdrop-filter: blur(8px) !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important;';
     }
   }
 
   closeCreateEditAddonModal() {
     const modal = document.getElementById('modalCreateEditAddon');
     if (modal) {
-      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none !important; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;';
+      modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999999; display: none !important; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); opacity: 0 !important; visibility: hidden !important; pointer-events: none !important;';
       modal.classList.remove('open', 'active', 'visible');
       modal.classList.add('hidden');
     }
   }
 
+  deleteAddonFromModal() {
+    if (!this.currentEditAddonId) return;
+    const addonId = this.currentEditAddonId;
+    this.closeCreateEditAddonModal();
+    this.deleteAddon(addonId);
+  }
+
   async submitAddonForm(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    const submitBtn = e?.target?.querySelector('button[type="submit"]') || document.querySelector('#modalCreateEditAddon button[type="submit"]');
+    const origText = submitBtn ? submitBtn.innerText : '✓ Save Add-on';
+
     const id = document.getElementById('txtAddonId')?.value;
     const name = document.getElementById('txtAddonName')?.value;
     const price = document.getElementById('txtAddonPrice')?.value;
     const available = document.getElementById('selAddonAvailability')?.value === 'true';
     const description = document.getElementById('txtAddonDescription')?.value;
 
+    if (!name || !price) {
+      this.showToast('Please provide both name and price for the add-on.', 'warning');
+      return;
+    }
+
     try {
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = 'Saving Add-on...'; }
+
       const url = id ? `${API_BASE}/add-ons/${id}` : `${API_BASE}/add-ons`;
       const method = id ? 'PATCH' : 'POST';
 
       const res = await this.fetchWithAuth(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, price, available, description })
+        body: JSON.stringify({ name, price: Number(price), available, description })
       });
       const json = await res.json();
 
       if (json.success) {
         this.showToast(json.message || 'Add-on saved successfully!', 'success');
         this.closeCreateEditAddonModal();
-        this.loadOwnerAddonsDashboard();
+        await this.loadOwnerAddonsDashboard();
       } else {
         this.showToast(json.message || 'Failed to save add-on.', 'error');
       }
     } catch (err) {
       console.error('Submit Add-on Error:', err);
+      this.showToast('Network error saving add-on.', 'error');
+    } finally {
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = origText; }
     }
   }
 
@@ -15166,17 +15394,45 @@ class TiffinApp {
 
       if (json.success) {
         this.showToast(json.message || 'Add-on status updated.', 'success');
-        this.loadOwnerAddonsDashboard();
+        await this.loadOwnerAddonsDashboard();
       } else {
         this.showToast(json.message || 'Failed to update status.', 'error');
       }
     } catch (err) {
       console.error('Toggle availability error:', err);
+      this.showToast('Network error updating add-on status.', 'error');
     }
   }
 
+  loadOwnerAddons() {
+    return this.loadOwnerAddonsDashboard();
+  }
+
   async disableAddon(addonId) {
-    if (!confirm('Are you sure you want to disable this add-on? Disabled add-ons will no longer be available for new orders, but existing order records remain intact.')) return;
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm('Are you sure you want to disable this add-on? Disabled add-ons will no longer be available for new orders, but existing order records remain intact.')) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/add-ons/${addonId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: false })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Add-on disabled.', 'success');
+        await this.loadOwnerAddonsDashboard();
+      } else {
+        this.showToast(json.message || 'Failed to disable add-on.', 'error');
+      }
+    } catch (err) {
+      console.error('Disable add-on error:', err);
+      this.showToast('Network error disabling add-on.', 'error');
+    }
+  }
+
+  async deleteAddon(addonId) {
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm('Are you sure you want to delete this add-on item permanently?')) return;
 
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/add-ons/${addonId}`, {
@@ -15185,13 +15441,14 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message || 'Add-on disabled.', 'success');
-        this.loadOwnerAddonsDashboard();
+        this.showToast(json.message || 'Add-on item deleted successfully.', 'success');
+        await this.loadOwnerAddonsDashboard();
       } else {
-        this.showToast(json.message || 'Failed to disable add-on.', 'error');
+        this.showToast(json.message || 'Failed to delete add-on.', 'error');
       }
     } catch (err) {
-      console.error('Disable add-on error:', err);
+      console.error('Delete add-on error:', err);
+      this.showToast('Network error deleting add-on.', 'error');
     }
   }
 
@@ -15248,6 +15505,12 @@ class TiffinApp {
     }, 10000);
   }
 
+  togglePrepTimeEdit(orderId, showEdit) {
+    if (!this.editingPrepTimeOrders) this.editingPrepTimeOrders = {};
+    this.editingPrepTimeOrders[orderId] = showEdit;
+    this.renderOrders();
+  }
+
   async updateOrderPreparationTime(orderId, minsInput) {
     let prepMins = minsInput;
     if (prepMins === undefined || prepMins === null) {
@@ -15269,6 +15532,8 @@ class TiffinApp {
       const json = await res.json();
 
       if (json.success) {
+        if (!this.editingPrepTimeOrders) this.editingPrepTimeOrders = {};
+        this.editingPrepTimeOrders[orderId] = false;
         this.showToast(`⏱️ Preparation time updated to ${prepMins} minutes!`, 'success');
         this.renderOrders();
       } else {
@@ -16132,22 +16397,17 @@ class TiffinApp {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/active`);
       const json = await res.json();
 
-      if (!json.success || !json.poll) {
-        container.innerHTML = `
-          <div style="text-align: center; padding: 3rem 1.5rem; background: var(--bg-surface-elevated, #1E1E2E); border: 1.5px dashed var(--border-color); border-radius: 16px;">
-            <div style="font-size: 3rem; margin-bottom: 0.75rem;">🗳️</div>
-            <h3 style="color: #FFF; font-size: 1.2rem; margin: 0 0 0.5rem 0;">No Active Menu Voting</h3>
-            <p style="color: var(--text-muted); font-size: 0.88rem; max-width: 420px; margin: 0 auto;">
-              There is currently no active menu poll running. Please check back later to vote on tomorrow's special dish!
-            </p>
-          </div>
-        `;
+      if (!json.success || !json.poll || json.poll.status !== 'ACTIVE') {
+        container.innerHTML = '';
+        const sec = document.getElementById('secCustomerVoting');
+        if (sec) sec.classList.add('hidden');
         return;
       }
 
       const poll = json.poll;
       const hasVoted = json.has_voted;
       const votedOptionId = json.voted_option_id;
+      const isLoggedIn = Boolean(this.currentUser);
 
       let html = `
         <div class="voting-poll-card">
@@ -16197,6 +16457,32 @@ class TiffinApp {
             Total Votes Cast: <strong>${poll.total_votes || 0}</strong>
           </div>
         `;
+      } else if (!isLoggedIn) {
+        html += `
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.25rem;">
+        `;
+
+        (poll.options || []).forEach(opt => {
+          html += `
+            <div class="voting-option-row" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')" style="cursor: pointer;">
+              <img src="${opt.food_image || '/images/idly_sambar.png'}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover;">
+              <div style="flex: 1;">
+                <strong style="color: #FFF; font-size: 0.95rem; display: block;">${opt.food_name}</strong>
+                <span style="color: var(--text-muted); font-size: 0.8rem;">₹${opt.food_price} • ${opt.category || 'Special Dish'}</span>
+              </div>
+            </div>
+          `;
+        });
+
+        html += `
+          </div>
+          <div style="text-align: center; margin-top: 1rem;">
+            <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 0.75rem;">🔐 Please login to vote for tomorrow's special dish.</p>
+            <button type="button" class="btn-primary-block" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')" style="background: linear-gradient(135deg, #0088CC, #006699); border: none; color: #FFF; font-weight: 800; padding: 12px 24px; font-size: 0.95rem; border-radius: 12px; cursor: pointer;">
+              <i class="fa-solid fa-lock"></i> 🔐 Login to Vote
+            </button>
+          </div>
+        `;
       } else {
         html += `
           <p style="font-size: 0.86rem; color: var(--text-muted); margin: 0 0 1.15rem 0;">
@@ -16222,7 +16508,7 @@ class TiffinApp {
 
         html += `
             </div>
-            <button type="submit" class="btn-primary-block" id="btnSubmitCustVote" style="background: linear-gradient(135deg, #9C27B0, #7B1FA2); border: none; color: #FFF; font-weight: 800; padding: 10px 20px; font-size: 0.92rem;">
+            <button type="submit" class="btn-primary-block" id="btnSubmitCustVote" style="background: linear-gradient(135deg, #9C27B0, #7B1FA2); border: none; color: #FFF; font-weight: 800; padding: 10px 20px; font-size: 0.92rem; cursor: pointer;">
               <i class="fa-solid fa-square-check"></i> 🗳️ Vote Now
             </button>
           </form>
@@ -16233,16 +16519,20 @@ class TiffinApp {
       container.innerHTML = html;
     } catch (err) {
       console.error('Load Customer Voting Error:', err);
-      container.innerHTML = `
-        <div style="text-align: center; padding: 2rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
-          Failed to load menu voting. Please try again.
-        </div>
-      `;
+      container.innerHTML = '';
+      const sec = document.getElementById('secCustomerVoting');
+      if (sec) sec.classList.add('hidden');
     }
   }
 
   async submitCustomerVote(event, pollId) {
-    if (event) event.preventDefault();
+    if (event && event.preventDefault) event.preventDefault();
+
+    if (!this.currentUser) {
+      this.showToast('🔐 Login Required. Please login to your account to vote.', 'warning');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
 
     const selectedRad = document.querySelector('input[name="radPollOption"]:checked');
     if (!selectedRad || !selectedRad.value) {

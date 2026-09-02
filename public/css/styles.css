@@ -8292,6 +8292,79 @@ body.guest-mode #btnMobileMenuToggle {
   transition: width 0.5s ease;
 }
 
+/* Premium Attractive Verify Paid & Reject Pay Buttons (Increased Height & Prominent Sizing) */
+.btn-verify-paid {
+  background: linear-gradient(135deg, rgba(46, 125, 50, 0.25), rgba(76, 175, 80, 0.35));
+  color: #4EFE84;
+  border: 1.5px solid #4CAF50;
+  padding: 10px 18px;
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  min-width: 120px;
+  align-self: center;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 0.88rem;
+  cursor: pointer;
+  flex: 1;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(76, 175, 80, 0.18);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-verify-paid:hover {
+  background: linear-gradient(135deg, #2E7D32, #4CAF50);
+  color: #FFFFFF;
+  border-color: #81C784;
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
+}
+
+.btn-verify-paid:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-reject-pay {
+  background: linear-gradient(135deg, rgba(198, 40, 40, 0.25), rgba(244, 67, 54, 0.35));
+  color: #FF7B7B;
+  border: 1.5px solid #F44336;
+  padding: 10px 18px;
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  min-width: 120px;
+  align-self: center;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 0.88rem;
+  cursor: pointer;
+  flex: 1;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(244, 67, 54, 0.18);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-reject-pay:hover {
+  background: linear-gradient(135deg, #C62828, #E53935);
+  color: #FFFFFF;
+  border-color: #EF5350;
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 20px rgba(244, 67, 54, 0.5);
+}
+
+.btn-reject-pay:active {
+  transform: translateY(0) scale(0.98);
+}
+
 
 
 

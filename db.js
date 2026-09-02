@@ -840,11 +840,298 @@ async function executeTransaction(fn) {
   }
 }
 
+// --- Add-ons Management Helper Methods ---
+async function getAllAddons(includeDisabled = false) {
+  const sql = includeDisabled 
+    ? `SELECT * FROM add_ons ORDER BY display_order ASC, created_at DESC;`
+    : `SELECT * FROM add_ons WHERE enabled = true ORDER BY display_order ASC, created_at DESC;`;
+  const res = await query(sql);
+  return res.rows || [];
+}
+
+async function getAddonById(id) {
+  const res = await query(`SELECT * FROM add_ons WHERE id = $1;`, [id]);
+  return res.rows[0] || null;
+}
+
+async function createAddon({ name, price, description = '', available = true, enabled = true, category = 'Extras' }) {
+  const addonId = `ao_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const sql = `
+    INSERT INTO add_ons (id, name, price, description, available, enabled, category)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING *;
+  `;
+  const params = [addonId, name, Number(price), description, Boolean(available), Boolean(enabled), category];
+  const res = await query(sql, params);
+  if (res.rows && res.rows.length > 0) return res.rows[0];
+  return getAddonById(addonId);
+}
+
+async function updateAddon(id, data) {
+  const existing = await getAddonById(id);
+  if (!existing) return null;
+
+  const name = data.name !== undefined ? data.name : existing.name;
+  const price = data.price !== undefined ? Number(data.price) : existing.price;
+  const description = data.description !== undefined ? data.description : existing.description;
+  const available = data.available !== undefined ? Boolean(data.available) : existing.available;
+  const enabled = data.enabled !== undefined ? Boolean(data.enabled) : existing.enabled;
+
+  const sql = `
+    UPDATE add_ons 
+    SET name = $1, price = $2, description = $3, available = $4, enabled = $5, updated_at = CURRENT_TIMESTAMP
+    WHERE id = $6
+    RETURNING *;
+  `;
+  const res = await query(sql, [name, price, description, available, enabled, id]);
+  if (res.rows && res.rows.length > 0) return res.rows[0];
+  return getAddonById(id);
+}
+
+async function deleteAddon(id) {
+  const res = await query(`DELETE FROM add_ons WHERE id = $1;`, [id]);
+  return res.rowCount > 0;
+}
+
+async function getAddonAnalytics() {
+  const sql = `
+    SELECT 
+      ao.id,
+      ao.name,
+      COUNT(oao.id) as total_orders,
+      COALESCE(SUM(oao.quantity), 0) as total_quantity,
+      COALESCE(SUM(oao.subtotal), 0) as total_revenue
+    FROM add_ons ao
+    LEFT JOIN order_add_ons oao ON ao.id = oao.add_on_id
+    GROUP BY ao.id, ao.name
+    ORDER BY total_revenue DESC;
+  `;
+  const res = await query(sql);
+  return res.rows || [];
+}
+
+// --- Food Member Card Applications DB Helper Methods ---
+
+async function getFoodMemberStateForCustomer(customerId) {
+  const cardRes = await query(
+    `SELECT * FROM food_member_cards WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1;`,
+    [customerId]
+  );
+  const appRes = await query(
+    `SELECT * FROM food_member_applications WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1;`,
+    [customerId]
+  );
+
+  const card = cardRes.rows[0] || null;
+  const application = appRes.rows[0] || null;
+
+  let status = 'NOT_APPLIED';
+  if (card) {
+    const now = new Date();
+    const until = new Date(card.valid_until);
+    if (until < now) {
+      status = 'EXPIRED';
+    } else {
+      status = card.status || 'ACTIVE';
+    }
+  } else if (application) {
+    status = application.status || 'PENDING_APPROVAL';
+  }
+
+  return {
+    hasCard: Boolean(card && status === 'ACTIVE'),
+    card,
+    application,
+    status
+  };
+}
+
+async function createFoodMemberApplication({ customer_id, customer_name, customer_mobile, fee_amount = 10.00, payment_method = 'Cash Payment' }) {
+  // Clear any existing application records for this customer
+  await query(`DELETE FROM food_member_cards WHERE customer_id = $1;`, [customer_id]).catch(() => {});
+  await query(`DELETE FROM food_member_applications WHERE customer_id = $1;`, [customer_id]).catch(() => {});
+
+  const appId = `fma_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const nowIso = new Date().toISOString();
+  const sql = `
+    INSERT INTO food_member_applications 
+    (id, customer_id, customer_name, customer_mobile, fee_amount, payment_method, payment_status, status, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', 'PENDING_APPROVAL', $7, $8);
+  `;
+  const params = [appId, customer_id, customer_name, customer_mobile, Number(fee_amount), payment_method, nowIso, nowIso];
+  await query(sql, params);
+  const selRes = await query(`SELECT * FROM food_member_applications WHERE id = $1;`, [appId]);
+  return selRes.rows[0] || null;
+}
+
+async function getOwnerFoodMemberApplications(statusFilter = 'ALL') {
+  let where = '';
+  let params = [];
+
+  if (statusFilter === 'PENDING_APPROVAL') {
+    where = 'WHERE fma.status = $1';
+    params.push('PENDING_APPROVAL');
+  } else if (statusFilter === 'APPROVED') {
+    where = 'WHERE fma.status = $1';
+    params.push('APPROVED');
+  } else if (statusFilter === 'REJECTED') {
+    where = 'WHERE fma.status = $1';
+    params.push('REJECTED');
+  }
+
+  const sql = `
+    SELECT 
+      fma.*,
+      fmc.member_id,
+      fmc.status as card_status,
+      fmc.valid_from,
+      fmc.valid_until
+    FROM food_member_applications fma
+    LEFT JOIN food_member_cards fmc ON fma.id = fmc.application_id
+    ${where}
+    ORDER BY fma.created_at DESC;
+  `;
+
+  const listRes = await query(sql, params);
+  const apps = listRes.rows || [];
+
+  // Stats counts
+  const allRes = await query(`SELECT COUNT(*) as c FROM food_member_applications;`);
+  const pendingRes = await query(`SELECT COUNT(*) as c FROM food_member_applications WHERE status = 'PENDING_APPROVAL';`);
+  const approvedRes = await query(`SELECT COUNT(*) as c FROM food_member_applications WHERE status = 'APPROVED';`);
+  const rejectedRes = await query(`SELECT COUNT(*) as c FROM food_member_applications WHERE status = 'REJECTED';`);
+
+  const counts = {
+    all: Number(allRes.rows[0]?.c || allRes.rows[0]?.['COUNT(*)'] || 0),
+    pending: Number(pendingRes.rows[0]?.c || pendingRes.rows[0]?.['COUNT(*)'] || 0),
+    approved: Number(approvedRes.rows[0]?.c || approvedRes.rows[0]?.['COUNT(*)'] || 0),
+    rejected: Number(rejectedRes.rows[0]?.c || rejectedRes.rows[0]?.['COUNT(*)'] || 0)
+  };
+
+  return { apps, counts };
+}
+
+async function deleteFoodMemberApplication(id) {
+  await query(`DELETE FROM food_member_cards WHERE application_id = $1;`, [id]);
+  const res = await query(`DELETE FROM food_member_applications WHERE id = $1;`, [id]);
+  return (res.rowCount !== undefined ? res.rowCount : 1) >= 0;
+}
+
+async function deleteAllFoodMemberApplications() {
+  await query(`DELETE FROM food_member_cards;`);
+  const res = await query(`DELETE FROM food_member_applications;`);
+  return true;
+}
+
+async function verifyFoodMemberPayment(id) {
+  await query(
+    `UPDATE food_member_applications SET payment_status = 'VERIFIED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;`,
+    [id]
+  );
+  const selRes = await query(`SELECT * FROM food_member_applications WHERE id = $1;`, [id]);
+  return selRes.rows[0] || null;
+}
+
+async function rejectFoodMemberPayment(id, reason = '') {
+  await query(
+    `UPDATE food_member_applications SET payment_status = 'REJECTED', status = 'REJECTED', rejection_reason = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2;`,
+    [reason, id]
+  );
+  const selRes = await query(`SELECT * FROM food_member_applications WHERE id = $1;`, [id]);
+  return selRes.rows[0] || null;
+}
+
+async function approveFoodMemberCard(id) {
+  const appRes = await query(`SELECT * FROM food_member_applications WHERE id = $1;`, [id]);
+  const application = appRes.rows[0];
+  if (!application) return null;
+
+  const now = new Date();
+  const validFrom = now.toISOString();
+  const validUntil = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Generate unique member ID (PMC1001, PMC1002, ...)
+  const countRes = await query(`SELECT COUNT(*) as c FROM food_member_cards;`);
+  const num = 1001 + Number(countRes.rows[0]?.c || countRes.rows[0]?.['COUNT(*)'] || 0);
+  const memberId = `PMC${num}`;
+  const qrCode = `PMC_QR_${memberId}_${Date.now()}`;
+  const cardId = `fmc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+  // 1. Update application status
+  await query(
+    `UPDATE food_member_applications SET status = 'APPROVED', payment_status = 'VERIFIED', updated_at = CURRENT_TIMESTAMP WHERE id = $1;`,
+    [id]
+  );
+
+  // 2. Insert or update food member card
+  const existingCardRes = await query(`SELECT * FROM food_member_cards WHERE application_id = $1;`, [id]);
+  if (existingCardRes.rows && existingCardRes.rows.length > 0) {
+    await query(
+      `UPDATE food_member_cards SET status = 'ACTIVE', valid_from = $1, valid_until = $2, updated_at = CURRENT_TIMESTAMP WHERE application_id = $3;`,
+      [validFrom, validUntil, id]
+    );
+  } else {
+    await query(
+      `INSERT INTO food_member_cards (id, member_id, customer_id, customer_name, customer_mobile, application_id, status, valid_from, valid_until, discount_amount, express_delivery_eligible, qr_verification_code)
+       VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', $7, $8, 5.00, true, $9);`,
+      [cardId, memberId, application.customer_id, application.customer_name, application.customer_mobile, id, validFrom, validUntil, qrCode]
+    );
+  }
+
+  return getFoodMemberStateForCustomer(application.customer_id);
+}
+
+async function rejectFoodMemberCard(id, reason = '') {
+  await query(
+    `UPDATE food_member_applications SET status = 'REJECTED', rejection_reason = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2;`,
+    [reason, id]
+  );
+  await query(
+    `UPDATE food_member_cards SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE application_id = $1;`,
+    [id]
+  );
+  return true;
+}
+
+async function suspendFoodMemberCard(id) {
+  await query(
+    `UPDATE food_member_cards SET status = 'SUSPENDED', updated_at = CURRENT_TIMESTAMP WHERE application_id = $1 OR id = $1;`,
+    [id]
+  );
+  return true;
+}
+
+async function reactivateFoodMemberCard(id) {
+  await query(
+    `UPDATE food_member_cards SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE application_id = $1 OR id = $1;`,
+    [id]
+  );
+  return true;
+}
+
 module.exports = {
   query,
   initDatabase,
   getNextCounter,
   executeTransaction,
-  usePg: () => usePg
+  usePg: () => usePg,
+  getAllAddons,
+  getAddonById,
+  createAddon,
+  updateAddon,
+  deleteAddon,
+  getAddonAnalytics,
+  getFoodMemberStateForCustomer,
+  createFoodMemberApplication,
+  getOwnerFoodMemberApplications,
+  deleteFoodMemberApplication,
+  deleteAllFoodMemberApplications,
+  verifyFoodMemberPayment,
+  rejectFoodMemberPayment,
+  approveFoodMemberCard,
+  rejectFoodMemberCard,
+  suspendFoodMemberCard,
+  reactivateFoodMemberCard
 };
+
 

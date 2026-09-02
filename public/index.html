@@ -5103,7 +5103,7 @@
     </div>
 
     <!-- Confirm Individual Member Record Delete Modal (Owner) -->
-    <div class="modal-backdrop" id="modalConfirmDeleteMemberApp" onclick="if(event.target === this) app.closeDeleteMemberAppModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999;">
+    <div class="modal-backdrop hidden" id="modalConfirmDeleteMemberApp" onclick="if(event.target === this) app.closeDeleteMemberAppModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none;">
       <div class="modal-card" style="max-width: 420px; width: 92%; padding: 20px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="font-size: 2.8rem; margin-bottom: 8px; color: #EF5350;">⚠️</div>
         <h3 style="margin: 0 0 8px 0; color: #FFF; font-size: 1.25rem;">Confirm Delete</h3>
@@ -5122,7 +5122,7 @@
     </div>
 
     <!-- Confirm Delete All Member Records Modal (Owner) -->
-    <div class="modal-backdrop" id="modalConfirmDeleteAllMemberApps" onclick="if(event.target === this) app.closeDeleteAllMemberAppsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999;">
+    <div class="modal-backdrop hidden" id="modalConfirmDeleteAllMemberApps" onclick="if(event.target === this) app.closeDeleteAllMemberAppsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none;">
       <div class="modal-card" style="max-width: 450px; width: 92%; padding: 22px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="font-size: 3rem; margin-bottom: 8px; color: #D32F2F;">🚨</div>
         <h3 style="margin: 0 0 8px 0; color: #EF5350; font-size: 1.3rem;">Delete All Premium Food Member Cards?</h3>
@@ -5182,7 +5182,7 @@
 
           <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 1.5rem;">
             <button type="button" class="btn-secondary-outline" onclick="app.closeCreatePollModal()" style="padding: 10px 18px;">Cancel</button>
-            <button type="submit" class="btn-primary-block" onclick="app.submitCreatePoll(event)" style="width: auto; padding: 10px 24px; cursor: pointer;">Create Menu Vote</button>
+            <button type="submit" class="btn-primary-block" onclick="app.submitCreatePoll(event)" style="width: auto; padding: 10px 24px; cursor: pointer; background: linear-gradient(135deg, #4CAF50, #2E7D32); color: #FFF; font-weight: 800; border-radius: 10px; box-shadow: 0 4px 14px rgba(76,175,80,0.35);">✓ Confirm Poll</button>
           </div>
         </form>
       </div>
@@ -5348,7 +5348,10 @@
             <textarea class="form-control" id="txtAddonDescription" rows="2" placeholder="e.g. Fresh Coconut & Peanut Chutney"></textarea>
           </div>
 
-          <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+          <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <button type="button" id="btnDeleteAddonInModal" class="btn-sm-status hidden" onclick="app.deleteAddonFromModal()" style="margin-right: auto; background: rgba(244,67,54,0.2); color: #FF5252; border: 1px solid #FF5252; padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer;">
+              <i class="fa-solid fa-trash-can"></i> Delete Add-on
+            </button>
             <button type="button" class="btn-secondary-outline" onclick="app.closeCreateEditAddonModal()" style="padding: 8px 18px;">
               Cancel
             </button>
@@ -5363,7 +5366,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=10"></script>
+    <script src="/js/app.js?v=30"></script>
 </body>
 
 </html>
