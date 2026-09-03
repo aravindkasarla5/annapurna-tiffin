@@ -16806,29 +16806,86 @@ class TiffinApp {
     }
   }
 
-  handleQrPhotoUpload(event) {
-    const file = event.target.files ? event.target.files[0] : null;
+  async handleQrPhotoUpload(event) {
+    const fileInput = event.target;
+    const file = fileInput ? (fileInput.files ? fileInput.files[0] : null) : null;
     if (!file) return;
+
+    this.stopQrCameraScanner();
 
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        if (window.jsQR) {
-          const code = window.jsQR(imageData.data, imageData.width, imageData.height);
-          if (code && code.data) {
-            this.submitVerifyMemberQr(code.data);
-            return;
-          }
+      img.onload = async () => {
+        let extractedCode = null;
+
+        const decodeFromCanvas = (width, height) => {
+          try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+            const imageData = ctx.getImageData(0, 0, width, height);
+
+            if (window.jsQR) {
+              let res = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+              if (res && res.data && res.data.trim()) return res.data.trim();
+
+              res = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+              if (res && res.data && res.data.trim()) return res.data.trim();
+            }
+          } catch (err) {}
+          return null;
+        };
+
+        // 1. Original Image Resolution
+        extractedCode = decodeFromCanvas(img.width, img.height);
+
+        // 2. Downscaled 800px max dimension (ideal sampling for high-res mobile photos/screenshots)
+        if (!extractedCode && (img.width > 1000 || img.height > 1000)) {
+          const maxDim = 800;
+          const scale = Math.min(maxDim / img.width, maxDim / img.height);
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          extractedCode = decodeFromCanvas(w, h);
         }
-        this.showToast('Could not read QR code from photo. Please enter Member ID manually.', 'warning');
+
+        // 3. Downscaled 500px max dimension
+        if (!extractedCode && (img.width > 600 || img.height > 600)) {
+          const maxDim = 500;
+          const scale = Math.min(maxDim / img.width, maxDim / img.height);
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          extractedCode = decodeFromCanvas(w, h);
+        }
+
+        // 4. Native BarcodeDetector API Fallback
+        if (!extractedCode && 'BarcodeDetector' in window) {
+          try {
+            const detector = new BarcodeDetector({ formats: ['qr_code', 'code_128'] });
+            const barcodes = await detector.detect(img);
+            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+              extractedCode = barcodes[0].rawValue.trim();
+            }
+          } catch (e) {}
+        }
+
+        // Reset file input so re-selecting same photo works
+        fileInput.value = '';
+
+        if (extractedCode) {
+          console.log('[QR UPLOAD] Successfully decoded QR code:', extractedCode);
+          const txtInput = document.getElementById('txtScanQrCodeInput');
+          if (txtInput) txtInput.value = extractedCode;
+          this.submitVerifyMemberQr(extractedCode);
+        } else {
+          this.showToast('Could not read QR code from photo. Please enter Member ID manually or scan directly.', 'warning');
+        }
+      };
+      img.onerror = () => {
+        fileInput.value = '';
+        this.showToast('Invalid image file selected.', 'error');
       };
       img.src = e.target.result;
     };
