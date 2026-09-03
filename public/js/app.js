@@ -16631,51 +16631,63 @@ class TiffinApp {
 
     if (!video) return;
 
-    // Prevent concurrent startup race conditions
-    if (this.isStartingQrCamera) return;
+    // Reset stream state and flag
+    this.stopQrCameraScanner();
     this.isStartingQrCamera = true;
 
-    // Safely tear down existing camera stream before initializing fresh stream
-    this.stopQrCameraScanner();
-
-    if (errBox) errBox.style.display = 'none';
+    if (errBox) errBox.style.setProperty('display', 'none', 'important');
     if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Initializing Camera...';
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      let stream = null;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this.isStartingQrCamera = false;
+      if (errBox) {
+        errBox.style.setProperty('display', 'flex', 'important');
+        if (errTitle) errTitle.textContent = 'Camera Not Supported';
+        if (errMsg) errMsg.textContent = 'Camera access is not supported by this browser or connection. Please type Member ID or upload photo below.';
+      }
+      if (statusLbl) statusLbl.innerHTML = 'ℹ️ Camera not supported.';
+      return;
+    }
+
+    let stream = null;
+    let lastError = null;
+    const constraintOptions = [
+      { video: { facingMode: { ideal: 'environment' } } },
+      { video: { facingMode: 'environment' } },
+      { video: true }
+    ];
+
+    for (const constraints of constraintOptions) {
       try {
-        // Attempt 1: Rear camera setting for mobile devices (environment)
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-          });
-        } catch (firstErr) {
-          // Attempt 2: Fallback to basic environment facingMode
-          console.warn('[QR SCANNER] Ideal rear camera constraints failed, attempting fallback:', firstErr);
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (stream && stream.active && stream.getVideoTracks().length > 0) {
+          break;
         }
       } catch (err) {
-        // Attempt 3: Final fallback to default video device (Front webcam / laptop camera)
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        } catch (finalErr) {
-          console.warn('[QR SCANNER] Camera access denied or failed:', finalErr);
-          this.isStartingQrCamera = false;
-          if (errBox) {
-            errBox.style.display = 'flex';
-            if (errTitle) errTitle.textContent = 'Camera Access Required';
-            if (errMsg) {
-              if (finalErr.name === 'NotAllowedError' || finalErr.name === 'PermissionDeniedError') {
-                errMsg.textContent = 'Camera permission is required to scan a Premium Member Card. Please allow camera access in browser site settings.';
-              } else {
-                errMsg.textContent = 'Unable to access live camera stream. Please check camera connection or type Member ID below.';
-              }
-            }
-          }
-          if (statusLbl) statusLbl.innerHTML = '⚠️ Camera permission required.';
-          return;
+        lastError = err;
+        console.warn('[QR SCANNER] Camera constraint attempt failed:', constraints, err.name || err);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          break;
         }
       }
+    }
+
+    if (!stream || !stream.active || stream.getVideoTracks().length === 0) {
+      this.isStartingQrCamera = false;
+      if (errBox) {
+        errBox.style.setProperty('display', 'flex', 'important');
+        if (errTitle) errTitle.textContent = 'Camera Access Blocked / Required';
+        if (errMsg) {
+          if (lastError && (lastError.name === 'NotAllowedError' || lastError.name === 'PermissionDeniedError')) {
+            errMsg.innerHTML = 'Camera permission is required to scan member cards.<br><br><span style="font-size:0.82rem; color:#FFD700;">💡 If blocked, tap the 🔒 lock icon in your browser URL bar, set <strong>Camera</strong> to <strong>Allow</strong>, and tap <strong>Try Again</strong>.</span>';
+          } else {
+            errMsg.innerHTML = 'Unable to access live camera stream. Please check your camera connection, or type Member ID below.';
+          }
+        }
+      }
+      if (statusLbl) statusLbl.innerHTML = '⚠️ Camera permission required.';
+      return;
+    }
 
       try {
         this.qrCameraStream = stream;
@@ -16759,15 +16771,6 @@ class TiffinApp {
       } finally {
         this.isStartingQrCamera = false;
       }
-    } else {
-      this.isStartingQrCamera = false;
-      if (errBox) {
-        errBox.style.display = 'flex';
-        if (errTitle) errTitle.textContent = 'Camera Not Supported';
-        if (errMsg) errMsg.textContent = 'Camera access is not supported by this browser or connection. Please type Member ID below.';
-      }
-      if (statusLbl) statusLbl.innerHTML = 'ℹ️ Camera not supported.';
-    }
   }
 
   stopQrCameraScanner() {

@@ -1122,53 +1122,52 @@ async function verifyFoodMemberQr(qrCodeInput) {
 
   const cleanInput = qrCodeInput.trim();
 
-  // 1. Search food_member_cards by qr_verification_code, member_id, id, or application_id
+  // 1. Search food_member_cards by qr_verification_code, member_id, id, application_id, or customer_mobile
   let cardRes = await query(
     `SELECT * FROM food_member_cards 
-     WHERE qr_verification_code = $1 OR member_id = $2 OR id = $3 OR application_id = $4 
+     WHERE LOWER(qr_verification_code) = LOWER($1) 
+        OR LOWER(member_id) = LOWER($1) 
+        OR id = $1 
+        OR application_id = $1 
+        OR customer_mobile = $1
      LIMIT 1;`,
-    [cleanInput, cleanInput, cleanInput, cleanInput]
+    [cleanInput]
   );
 
   let card = cardRes.rows ? cardRes.rows[0] : null;
 
-  // 2. Fallback: match Member ID substring (PMC1001, PMC1002...) if scanned full raw text/URL
+  // 2. Fallback: match Member ID digits/pattern (e.g. PMC1001, pmc1001, 1001, PMC-1001)
   if (!card) {
-    const match = cleanInput.match(/PMC\d+/i);
-    if (match) {
-      const pmcId = match[0].toUpperCase();
-      const fallbackRes = await query(`SELECT * FROM food_member_cards WHERE member_id = $1 LIMIT 1;`, [pmcId]);
+    const digitsMatch = cleanInput.match(/\d+/);
+    if (digitsMatch) {
+      const pmcId = `PMC${digitsMatch[0]}`;
+      const fallbackRes = await query(`SELECT * FROM food_member_cards WHERE LOWER(member_id) = LOWER($1) LIMIT 1;`, [pmcId]);
       card = fallbackRes.rows ? fallbackRes.rows[0] : null;
     }
   }
 
-  // 3. Fallback: match application_id or customer_mobile
+  // 3. Fallback: match application_id, customer_mobile, or customer_name
   if (!card) {
-    const appRes = await query(`SELECT * FROM food_member_applications WHERE id = $1 OR customer_mobile = $2 LIMIT 1;`, [cleanInput, cleanInput]);
+    const appRes = await query(
+      `SELECT * FROM food_member_applications 
+       WHERE id = $1 OR customer_mobile = $1 OR LOWER(customer_name) LIKE LOWER($2) 
+       LIMIT 1;`,
+      [cleanInput, `%${cleanInput}%`]
+    );
     if (appRes.rows && appRes.rows.length > 0) {
       const appId = appRes.rows[0].id;
-      const cardByApp = await query(`SELECT * FROM food_member_cards WHERE application_id = $1 LIMIT 1;`, [appId]);
+      const cardByApp = await query(`SELECT * FROM food_member_cards WHERE application_id = $1 OR customer_id = $2 LIMIT 1;`, [appId, appRes.rows[0].customer_id]);
       card = cardByApp.rows ? cardByApp.rows[0] : null;
     }
   }
 
   if (!card) {
-    const isPmcFormat = /PMC/i.test(cleanInput) || /^card_/i.test(cleanInput) || /^app_/i.test(cleanInput);
-    if (isPmcFormat) {
-      return {
-        success: false,
-        is_valid: false,
-        status_code: 'NOT_FOUND',
-        title: 'Member Card Not Found',
-        message: 'No Premium Food Member Card record found for this identifier.'
-      };
-    }
     return {
       success: false,
       is_valid: false,
-      status_code: 'INVALID',
-      title: 'Invalid Premium Member Card',
-      message: 'QR code could not be verified.'
+      status_code: 'NOT_FOUND',
+      title: 'Member Card Not Found',
+      message: `No Premium Food Member Card record found for "${cleanInput}". Please check the ID or scan the QR code again.`
     };
   }
 

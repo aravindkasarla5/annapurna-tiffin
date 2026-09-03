@@ -5196,9 +5196,9 @@
               Or enter Member ID or QR code text below:
             </p>
             
-            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-              <input type="text" id="txtScanQrCodeInput" placeholder="Enter Member ID (e.g. PMC1001) or QR Code..." style="flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border-color, #555); background: rgba(0,0,0,0.5); color: #FFF; font-size: 0.95rem; font-family: monospace; outline: none;" onkeydown="if(event.key === 'Enter') app.submitVerifyMemberQr();" />
-              <button type="button" id="btnSubmitVerifyMemberQr" onclick="app.submitVerifyMemberQr()" style="padding: 12px 18px; border-radius: 10px; background: linear-gradient(135deg, #4CAF50, #388E3C); color: #FFF; font-weight: 700; border: none; cursor: pointer;">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+              <input type="text" id="txtScanQrCodeInput" placeholder="Enter Member ID (e.g. PMC1001 or 1001)..." style="flex: 1; min-width: 170px; padding: 12px; border-radius: 10px; border: 1px solid var(--border-color, #555); background: rgba(0,0,0,0.5); color: #FFF; font-size: 0.95rem; font-family: monospace; outline: none; box-sizing: border-box;" onkeydown="if(event.key === 'Enter') app.submitVerifyMemberQr();" />
+              <button type="button" id="btnSubmitVerifyMemberQr" onclick="app.submitVerifyMemberQr()" style="padding: 12px 20px; border-radius: 10px; background: linear-gradient(135deg, #4CAF50, #388E3C); color: #FFF; font-weight: 800; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; min-width: 96px;">
                 🔍 Verify
               </button>
             </div>
@@ -5457,7 +5457,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=35"></script>
+    <script src="/js/app.js?v=36"></script>
 </body>
 
 </html>
