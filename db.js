@@ -1120,28 +1120,51 @@ async function verifyFoodMemberQr(qrCodeInput) {
     };
   }
 
-  const cleanInput = qrCodeInput.trim();
+  const rawInput = qrCodeInput.trim();
+  let extractedToken = rawInput;
 
-  // 1. Search food_member_cards by qr_verification_code, member_id, id, application_id, or customer_mobile
+  // Extract core token if full URL or API path was scanned
+  if (rawInput.includes('/verify/')) {
+    const parts = rawInput.split('/verify/');
+    if (parts[1]) extractedToken = parts[1].trim();
+  }
+
+  // Extract pattern if contains QR_FM_, PMC, or FM-
+  const qrFmMatch = rawInput.match(/QR_FM_[A-Za-z0-9_]+/i);
+  if (qrFmMatch) {
+    extractedToken = qrFmMatch[0];
+  } else {
+    const memberIdMatch = rawInput.match(/(?:FM|PMC)-?\d+/i);
+    if (memberIdMatch) {
+      extractedToken = memberIdMatch[0].toUpperCase();
+    }
+  }
+
+  // 1. Search food_member_cards by qr_verification_code, member_id, id, application_id, customer_mobile, or URL substring
   let cardRes = await query(
     `SELECT * FROM food_member_cards 
      WHERE LOWER(qr_verification_code) = LOWER($1) 
+        OR LOWER(qr_verification_code) = LOWER($2)
         OR LOWER(member_id) = LOWER($1) 
-        OR id = $1 
-        OR application_id = $1 
-        OR customer_mobile = $1
+        OR LOWER(member_id) = LOWER($2)
+        OR id = $1 OR id = $2 
+        OR application_id = $1 OR application_id = $2 
+        OR customer_mobile = $1 OR customer_mobile = $2
+        OR $1 LIKE '%' || qr_verification_code || '%'
+        OR $2 LIKE '%' || qr_verification_code || '%'
      LIMIT 1;`,
-    [cleanInput]
+    [rawInput, extractedToken]
   );
 
   let card = cardRes.rows ? cardRes.rows[0] : null;
 
   // 2. Fallback: match Member ID digits/pattern (e.g. PMC1001, pmc1001, 1001, PMC-1001, FM-1001)
   if (!card) {
-    const digitsMatch = cleanInput.match(/\d+/);
+    const digitsMatch = rawInput.match(/\d+/);
     if (digitsMatch) {
       const pmcId = `PMC${digitsMatch[0]}`;
-      const fallbackRes = await query(`SELECT * FROM food_member_cards WHERE LOWER(member_id) = LOWER($1) LIMIT 1;`, [pmcId]);
+      const fmId = `FM-${String(digitsMatch[0]).padStart(6, '0')}`;
+      const fallbackRes = await query(`SELECT * FROM food_member_cards WHERE LOWER(member_id) = LOWER($1) OR LOWER(member_id) = LOWER($2) LIMIT 1;`, [pmcId, fmId]);
       card = fallbackRes.rows ? fallbackRes.rows[0] : null;
     }
   }
@@ -1150,9 +1173,9 @@ async function verifyFoodMemberQr(qrCodeInput) {
   if (!card) {
     const appRes = await query(
       `SELECT * FROM food_member_applications 
-       WHERE id = $1 OR customer_mobile = $1 OR LOWER(customer_name) LIKE LOWER($2) 
+       WHERE id = $1 OR id = $2 OR customer_mobile = $1 OR customer_mobile = $2 OR LOWER(customer_name) LIKE LOWER($3) 
        ORDER BY created_at DESC LIMIT 1;`,
-      [cleanInput, `%${cleanInput}%`]
+      [rawInput, extractedToken, `%${extractedToken}%`]
     );
     if (appRes.rows && appRes.rows.length > 0) {
       const appRow = appRes.rows[0];
