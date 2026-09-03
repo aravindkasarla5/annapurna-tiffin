@@ -16679,14 +16679,26 @@ class TiffinApp {
 
       try {
         this.qrCameraStream = stream;
-        video.srcObject = stream;
-        video.setAttribute('playsinline', 'true');
-        video.setAttribute('autoplay', 'true');
         video.muted = true;
+        video.defaultMuted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
+        video.setAttribute('autoplay', 'true');
+        video.setAttribute('muted', 'true');
+        video.srcObject = stream;
 
-        await video.play().catch(playErr => {
-          console.warn('[QR SCANNER] video.play() notice:', playErr);
-        });
+        // Give browser DOM a brief tick to process video stream metadata
+        await new Promise(r => setTimeout(r, 100));
+
+        try {
+          await video.play();
+        } catch (playErr) {
+          console.warn('[QR SCANNER] Initial video.play() notice, retrying play...', playErr);
+          await new Promise(r => setTimeout(r, 250));
+          await video.play().catch(e => console.warn('[QR SCANNER] Retry play notice:', e));
+        }
 
         if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-camera"></i> 📷 Live Camera Active';
 
