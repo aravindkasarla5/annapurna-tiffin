@@ -1770,6 +1770,9 @@ class TiffinApp {
   }
 
   logout() {
+    if (this.closeFoodMemberQrScannerModal) {
+      this.closeFoodMemberQrScannerModal();
+    }
     if (this.authToken) {
       fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
@@ -3095,6 +3098,11 @@ class TiffinApp {
     }
 
     const previousView = this.activeView;
+
+    // Always stop active QR camera scanner when switching views
+    if (this.closeFoodMemberQrScannerModal) {
+      this.closeFoodMemberQrScannerModal();
+    }
 
     // Skip redundant re-rendering if already on target view
     if (this.activeView === viewId && document.getElementById(viewId) && !document.getElementById(viewId).classList.contains('hidden')) {
@@ -16527,8 +16535,41 @@ class TiffinApp {
     }
   }
 
+  initQrScannerLifecycleListeners() {
+    if (this._qrLifecycleListenersBound) return;
+    this._qrLifecycleListenersBound = true;
+
+    // Handle Page Visibility Changes (Tab switch, PWA minimized, phone locked)
+    document.addEventListener('visibilitychange', () => {
+      const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
+      const isModalOpen = modal && !modal.classList.contains('hidden') && modal.classList.contains('open');
+
+      if (document.visibilityState === 'hidden') {
+        if (this.qrCameraStream || isModalOpen) {
+          console.log('[QR SCANNER] App/Tab backgrounded. Safely stopping camera stream...');
+          this.isCameraPausedForBackground = isModalOpen;
+          this.stopQrCameraScanner();
+        }
+      } else if (document.visibilityState === 'visible') {
+        if (this.isCameraPausedForBackground && isModalOpen) {
+          console.log('[QR SCANNER] App/Tab restored. Restarting camera stream for active modal...');
+          this.isCameraPausedForBackground = false;
+          this.startQrCameraScanner();
+        } else {
+          this.isCameraPausedForBackground = false;
+        }
+      }
+    });
+
+    // Handle Window Unload, Page Hide, and Navigation
+    window.addEventListener('pagehide', () => this.stopQrCameraScanner());
+    window.addEventListener('beforeunload', () => this.stopQrCameraScanner());
+    window.addEventListener('popstate', () => this.closeFoodMemberQrScannerModal());
+  }
+
   openFoodMemberQrScannerModal() {
     console.log('[QR SCANNER] Opening food member QR scanner modal...');
+    this.initQrScannerLifecycleListeners();
     const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
     if (!modal) {
       console.error('[QR SCANNER] Element #modalOwnerFoodMemberQrScanner not found!');
@@ -16549,6 +16590,8 @@ class TiffinApp {
   }
 
   closeFoodMemberQrScannerModal() {
+    console.log('[QR SCANNER] Closing food member QR scanner modal...');
+    this.isCameraPausedForBackground = false;
     this.stopQrCameraScanner();
     const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
     if (modal) {
@@ -16592,6 +16635,7 @@ class TiffinApp {
     if (this.isStartingQrCamera) return;
     this.isStartingQrCamera = true;
 
+    // Safely tear down existing camera stream before initializing fresh stream
     this.stopQrCameraScanner();
 
     if (errBox) errBox.style.display = 'none';
@@ -16600,31 +16644,31 @@ class TiffinApp {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       let stream = null;
       try {
-        // Attempt 1: Ideal rear camera environment setting
+        // Attempt 1: Rear camera setting for mobile devices (environment)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
           });
         } catch (firstErr) {
-          // Attempt 2: Fallback to simple video constraints if overconstrained
-          console.warn('First camera constraints failed, attempting fallback constraints:', firstErr);
+          // Attempt 2: Fallback to basic environment facingMode
+          console.warn('[QR SCANNER] Ideal rear camera constraints failed, attempting fallback:', firstErr);
           stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         }
       } catch (err) {
-        // Attempt 3: Final fallback to default video device
+        // Attempt 3: Final fallback to default video device (Front webcam / laptop camera)
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true });
         } catch (finalErr) {
-          console.warn('Camera access denied or failed:', finalErr);
+          console.warn('[QR SCANNER] Camera access denied or failed:', finalErr);
           this.isStartingQrCamera = false;
           if (errBox) {
             errBox.style.display = 'flex';
             if (errTitle) errTitle.textContent = 'Camera Access Required';
             if (errMsg) {
               if (finalErr.name === 'NotAllowedError' || finalErr.name === 'PermissionDeniedError') {
-                errMsg.textContent = 'Camera permission is required to scan a Premium Member Card.';
+                errMsg.textContent = 'Camera permission is required to scan a Premium Member Card. Please allow camera access in browser site settings.';
               } else {
-                errMsg.textContent = 'Unable to access live camera stream. Please check camera permissions or type Member ID below.';
+                errMsg.textContent = 'Unable to access live camera stream. Please check camera connection or type Member ID below.';
               }
             }
           }
@@ -16637,7 +16681,12 @@ class TiffinApp {
         this.qrCameraStream = stream;
         video.srcObject = stream;
         video.setAttribute('playsinline', 'true');
-        await video.play().catch(() => {});
+        video.setAttribute('autoplay', 'true');
+        video.muted = true;
+
+        await video.play().catch(playErr => {
+          console.warn('[QR SCANNER] video.play() notice:', playErr);
+        });
 
         if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-camera"></i> 📷 Live Camera Active';
 
@@ -16694,7 +16743,7 @@ class TiffinApp {
         this.qrScanAnimFrame = requestAnimationFrame(scanFrame);
 
       } catch (err) {
-        console.warn('Video element play error:', err);
+        console.warn('[QR SCANNER] Video setup error:', err);
       } finally {
         this.isStartingQrCamera = false;
       }
@@ -16722,12 +16771,24 @@ class TiffinApp {
     }
     if (this.qrCameraStream) {
       try {
-        this.qrCameraStream.getTracks().forEach(t => t.stop());
+        this.qrCameraStream.getTracks().forEach(t => {
+          t.stop();
+          console.log('[QR SCANNER] Camera track stopped:', t.label);
+        });
       } catch (e) {}
       this.qrCameraStream = null;
     }
     const video = document.getElementById('videoOwnerQrScan');
-    if (video) video.srcObject = null;
+    if (video) {
+      try {
+        video.pause();
+        video.srcObject = null;
+      } catch (e) {}
+    }
+    const statusLbl = document.getElementById('lblQrCameraStatus');
+    if (statusLbl) {
+      statusLbl.innerHTML = '<i class="fa-solid fa-video-slash"></i> Camera Stopped';
+    }
   }
 
   handleQrPhotoUpload(event) {
