@@ -2295,6 +2295,25 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
       });
     } catch (rErr) { }
 
+    let cardMap = new Map();
+    try {
+      const cardsRes = await db.query('SELECT customer_id, valid_from, valid_until, status FROM food_member_cards ORDER BY valid_until DESC, created_at DESC;');
+      const now = new Date();
+      (cardsRes.rows || []).forEach(c => {
+        if (c.customer_id && !cardMap.has(c.customer_id)) {
+          const vFrom = new Date(c.valid_from);
+          const vUntil = new Date(c.valid_until);
+          let vUntilEnd = new Date(vUntil);
+          if (typeof c.valid_until === 'string' && c.valid_until.length <= 10) {
+            vUntilEnd.setHours(23, 59, 59, 999);
+          }
+          if (vFrom <= now && now <= vUntilEnd) {
+            cardMap.set(c.customer_id, c);
+          }
+        }
+      });
+    } catch (cErr) { }
+
     const parsedOrders = oRes.rows.map(o => {
       if (typeof o.items === 'string') {
         try { o.items = JSON.parse(o.items); } catch (e) { o.items = []; }
@@ -2309,6 +2328,10 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
         db.query('UPDATE orders SET pickup_pin = $1 WHERE id = $2 AND (pickup_pin IS NULL OR pickup_pin = \'\');', [legacyPin, o.id]).catch(() => { });
       }
       o.pickup_pin_verified = Boolean(o.pickup_pin_verified);
+      const activeCard = cardMap.get(o.customer_id) || null;
+      o.customer_card_valid_until = activeCard ? activeCard.valid_until : null;
+      o.customer_card_valid_from = activeCard ? activeCard.valid_from : null;
+      o.customer_is_currently_premium = Boolean(activeCard);
       return o;
     });
     res.json({ success: true, data: parsedOrders });
@@ -3060,30 +3083,40 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, 
       const requestedExpress = Boolean(req.body.is_express_delivery);
 
       const cardCheckRes = await tx.query(
-        `SELECT * FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE';`,
+        `SELECT * FROM food_member_cards WHERE customer_id = $1 ORDER BY valid_until DESC, created_at DESC;`,
         [req.user.id]
       );
-      if (cardCheckRes.rows && cardCheckRes.rows.length > 0) {
-        const activeMemberCard = cardCheckRes.rows[0];
-        const expiryMs = new Date(activeMemberCard.valid_until).getTime();
-        if (expiryMs > Date.now()) {
-          foodMemberDiscount = 5.00;
-          isPremiumMember = true;
-          if (requestedExpress && activeMemberCard.express_delivery_eligible) {
-            isExpressDelivery = true;
-          }
-          // Audit Log Member Discount Application
-          logMemberCardAudit({
-            customer_id: req.user.id,
-            member_id: activeMemberCard.member_id,
-            action: 'MEMBER_DISCOUNT_APPLIED',
-            actor_role: 'CUSTOMER',
-            actor_id: req.user.id,
-            details: JSON.stringify({ discount_amount: 5.00, is_express: isExpressDelivery })
-          });
-        } else {
-          await tx.query(`UPDATE food_member_cards SET status = 'EXPIRED', updated_at = $1 WHERE id = $2;`, [new Date().toISOString(), activeMemberCard.id]);
+      const nowDate = new Date();
+      let activeMemberCard = null;
+
+      for (const card of (cardCheckRes.rows || [])) {
+        const vFrom = new Date(card.valid_from);
+        const vUntil = new Date(card.valid_until);
+        let vUntilEnd = new Date(vUntil);
+        if (typeof card.valid_until === 'string' && card.valid_until.length <= 10) {
+          vUntilEnd.setHours(23, 59, 59, 999);
         }
+        if (vFrom <= nowDate && nowDate <= vUntilEnd) {
+          activeMemberCard = card;
+          break;
+        }
+      }
+
+      if (activeMemberCard) {
+        foodMemberDiscount = 5.00;
+        isPremiumMember = true;
+        if (requestedExpress && activeMemberCard.express_delivery_eligible) {
+          isExpressDelivery = true;
+        }
+        // Audit Log Member Discount Application
+        logMemberCardAudit({
+          customer_id: req.user.id,
+          member_id: activeMemberCard.member_id,
+          action: 'MEMBER_DISCOUNT_APPLIED',
+          actor_role: 'CUSTOMER',
+          actor_id: req.user.id,
+          details: JSON.stringify({ discount_amount: 5.00, is_express: isExpressDelivery })
+        });
       }
 
       // Apply Premium Discount to Net Amount if applicable
@@ -3976,18 +4009,30 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
 
         if (req.user) {
           const cardCheckRes = await tx.query(
-            `SELECT * FROM food_member_cards WHERE customer_id = $1 AND status = 'ACTIVE';`,
+            `SELECT * FROM food_member_cards WHERE customer_id = $1 ORDER BY valid_until DESC, created_at DESC;`,
             [req.user.id]
           );
-          if (cardCheckRes.rows && cardCheckRes.rows.length > 0) {
-            const activeMemberCard = cardCheckRes.rows[0];
-            const expiryMs = new Date(activeMemberCard.valid_until).getTime();
-            if (expiryMs > Date.now()) {
-              foodMemberDiscount = 5.00;
-              isPremiumMember = true;
-              if (requestedExpress && activeMemberCard.express_delivery_eligible) {
-                isExpressDelivery = true;
-              }
+          const nowDate = new Date();
+          let activeMemberCard = null;
+
+          for (const card of (cardCheckRes.rows || [])) {
+            const vFrom = new Date(card.valid_from);
+            const vUntil = new Date(card.valid_until);
+            let vUntilEnd = new Date(vUntil);
+            if (typeof card.valid_until === 'string' && card.valid_until.length <= 10) {
+              vUntilEnd.setHours(23, 59, 59, 999);
+            }
+            if (vFrom <= nowDate && nowDate <= vUntilEnd) {
+              activeMemberCard = card;
+              break;
+            }
+          }
+
+          if (activeMemberCard) {
+            foodMemberDiscount = 5.00;
+            isPremiumMember = true;
+            if (requestedExpress && activeMemberCard.express_delivery_eligible) {
+              isExpressDelivery = true;
             }
           }
         }

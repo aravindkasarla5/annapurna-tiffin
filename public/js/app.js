@@ -6145,6 +6145,66 @@ class TiffinApp {
   }
 
 
+  getPremiumHighlightDetails(order) {
+    if (!order) return { isHighlight: false, remainingDaysText: '' };
+
+    const wasPlacedAsPremium = Boolean(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0));
+    if (!wasPlacedAsPremium) {
+      return { isHighlight: false, remainingDaysText: '' };
+    }
+
+    const validUntilStr = order.customer_card_valid_until || order.valid_until;
+    const validFromStr = order.customer_card_valid_from || order.valid_from;
+
+    if (!validUntilStr) {
+      return { isHighlight: false, remainingDaysText: '' };
+    }
+
+    const now = new Date();
+    const validUntil = new Date(validUntilStr);
+    const validFrom = validFromStr ? new Date(validFromStr) : null;
+
+    let validUntilEnd = new Date(validUntil);
+    if (typeof validUntilStr === 'string' && validUntilStr.length <= 10) {
+      validUntilEnd.setHours(23, 59, 59, 999);
+    }
+
+    if (validFrom && now < validFrom) {
+      return { isHighlight: false, remainingDaysText: '' };
+    }
+
+    if (now > validUntilEnd) {
+      return { isHighlight: false, remainingDaysText: '' };
+    }
+
+    const parseDateParts = (input) => {
+      const d = new Date(input);
+      if (isNaN(d.getTime())) return null;
+      if (typeof input === 'string' && input.includes('T')) {
+        const parts = input.split('T')[0].split('-');
+        if (parts.length === 3) {
+          return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+        }
+      }
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+
+    const todayStart = parseDateParts(now);
+    const untilStart = parseDateParts(validUntilStr);
+
+    const diffMs = (untilStart ? untilStart.getTime() : 0) - (todayStart ? todayStart.getTime() : 0);
+    const daysDiff = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+    const dayLabel = daysDiff === 1 ? 'day' : 'days';
+    const remainingDaysText = `🟢 ${daysDiff} ${dayLabel} remaining`;
+
+    return {
+      isHighlight: true,
+      daysRemaining: daysDiff,
+      remainingDaysText: remainingDaysText
+    };
+  }
+
   createOwnerOrderCardHTML(order) {
     const dateFormatted = new Date(order.created_at).toLocaleString('en-IN', {
       day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -6177,10 +6237,10 @@ class TiffinApp {
     const isPaid = order.payment_status.includes('Paid') || order.payment_status.includes('Verified');
     const isPendingPayment = order.payment_status.includes('Pending') || order.payment_status.includes('Verification');
 
-    const isPremiumOrder = Boolean(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0));
+    const premInfo = this.getPremiumHighlightDetails(order);
 
     return `
-      <div class="co-row-card owner-mode ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''} ${isPremiumOrder ? 'card-order-premium' : ''}" data-order-card-id="${order.id}">
+      <div class="co-row-card owner-mode ${isCancelled ? 'is-customer-cancelled' : isRejected ? 'is-owner-rejected' : ''} ${premInfo.isHighlight ? 'card-order-premium' : ''}" data-order-card-id="${order.id}">
         ${isCancelled ? `
           <!-- CUSTOMER CANCELLED BANNER (ORANGE) -->
           <div style="background: rgba(255, 152, 0, 0.14); border: 1.5px solid #FF9800; padding: 12px 16px; border-radius: var(--radius-md); color: #FFE0B2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 0.25rem;">
@@ -6229,9 +6289,9 @@ class TiffinApp {
         <div class="co-card-top-bar">
           <div class="co-top-left" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="co-row-num"><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> Order #${order.order_number}</span>
-            ${(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0)) ? `
+            ${premInfo.isHighlight ? `
               <span class="badge-premium-member" style="background: linear-gradient(135deg, #FFD700 0%, #FFA000 100%); color: #1A1A2E; padding: 3px 10px; border-radius: 12px; font-weight: 800; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);">
-                ⭐ PREMIUM MEMBER
+                🎟️ PREMIUM MEMBER
               </span>
             ` : ''}
             ${order.is_express_delivery ? `
@@ -6288,6 +6348,18 @@ class TiffinApp {
               <i class="fa-solid fa-clock"></i> Placed: ${new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
+
+          ${premInfo.isHighlight ? `
+            <div style="margin-top: 8px; padding: 8px 12px; background: rgba(255, 215, 0, 0.12); border: 1.5px solid #FFD700; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+              <div style="font-weight: 800; color: #FFD700; font-size: 0.84rem; display: flex; align-items: center; gap: 6px;">
+                🎟️ PREMIUM MEMBER
+              </div>
+              <div style="font-size: 0.82rem; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 6px;">
+                <span style="color: var(--text-muted, #AAA);">Premium Membership:</span>
+                <span style="color: #4CAF50; font-weight: 800; font-size: 0.88rem;">${premInfo.remainingDaysText}</span>
+              </div>
+            </div>
+          ` : ''}
         </div>
 
         <!-- 2. MIDDLE SECTION: ORDER DETAILS AND KITCHEN ACTIONS SIDE BY SIDE -->
