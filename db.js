@@ -395,6 +395,10 @@ async function initDatabase() {
       discount_amount NUMERIC(10, 2) DEFAULT 5.00,
       express_delivery_eligible BOOLEAN DEFAULT true,
       qr_verification_code VARCHAR(255) NOT NULL UNIQUE,
+      reminded_7d_at TIMESTAMPTZ,
+      reminded_3d_at TIMESTAMPTZ,
+      reminded_1d_at TIMESTAMPTZ,
+      reminded_expired_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
@@ -638,6 +642,10 @@ async function initDatabase() {
         await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_account VARCHAR(100) DEFAULT '';`);
         await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(50) DEFAULT '';`);
         await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS account_holder VARCHAR(255) DEFAULT '';`);
+        await query(`ALTER TABLE food_member_cards ADD COLUMN IF NOT EXISTS reminded_7d_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE food_member_cards ADD COLUMN IF NOT EXISTS reminded_3d_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE food_member_cards ADD COLUMN IF NOT EXISTS reminded_1d_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE food_member_cards ADD COLUMN IF NOT EXISTS reminded_expired_at TIMESTAMPTZ;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS screenshot_url TEXT;`);
@@ -715,6 +723,10 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE password_resets ADD COLUMN attempts INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE password_resets ADD COLUMN is_verified INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN status TEXT DEFAULT 'SUCCESS';`);
+      await safeAlter(`ALTER TABLE food_member_cards ADD COLUMN reminded_7d_at TEXT;`);
+      await safeAlter(`ALTER TABLE food_member_cards ADD COLUMN reminded_3d_at TEXT;`);
+      await safeAlter(`ALTER TABLE food_member_cards ADD COLUMN reminded_1d_at TEXT;`);
+      await safeAlter(`ALTER TABLE food_member_cards ADD COLUMN reminded_expired_at TEXT;`);
     }
   } catch (cErr) {
     console.error('Error initializing counters:', cErr);

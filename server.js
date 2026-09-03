@@ -14,10 +14,86 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+
+// HTTP Security Headers Middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+// In-Memory Rate Limiter Engine
+const rateLimitMap = new Map();
+
+// Periodic cleanup of expired rate limit records
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 10 * 60 * 1000);
+
+function createRateLimiter(options) {
+  const windowMs = options.windowMs || 15 * 60 * 1000;
+  const maxRequests = options.max || 15;
+  const message = options.message || "Too many requests, please try again later.";
+  const keyPrefix = options.prefix || 'rl';
+
+  return (req, res, next) => {
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const userId = req.user ? req.user.id : '';
+    const key = `${keyPrefix}:${ip}:${userId}`;
+    const now = Date.now();
+
+    let record = rateLimitMap.get(key);
+    if (!record || now > record.resetTime) {
+      record = { count: 1, resetTime: now + windowMs };
+      rateLimitMap.set(key, record);
+      return next();
+    }
+
+    record.count++;
+    if (record.count > maxRequests) {
+      const retryAfterSec = Math.ceil((record.resetTime - now) / 1000);
+      res.setHeader('Retry-After', retryAfterSec);
+      return res.status(429).json({
+        success: false,
+        message,
+        retryAfterSeconds: retryAfterSec
+      });
+    }
+
+    next();
+  };
+}
+
+const authLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 15, prefix: 'auth', message: 'Too many authentication attempts. Please try again in 15 minutes.' });
+const otpLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5, prefix: 'otp', message: 'Too many OTP verification attempts. Please try again in 15 minutes.' });
+const orderLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, prefix: 'order', message: 'Order submission rate limit exceeded. Please wait a moment.' });
+
+// HTML Sanitization Helper for XSS Prevention
+function sanitizeHTMLInput(input) {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+    .replace(/\//g, '&#x2F;');
+}
+
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Base64 Image Persistence Helper
+// Base64 Image Persistence & Upload Security Helper
 async function saveBase64Image(base64Data, subfolder = 'screenshots') {
   if (!base64Data) return null;
   if (!base64Data.startsWith('data:image/')) return base64Data;
@@ -33,9 +109,24 @@ async function saveBase64Image(base64Data, subfolder = 'screenshots') {
       return base64Data;
     }
 
-    const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+    const rawExt = matches[1].toLowerCase();
+    const allowedExts = ['jpeg', 'jpg', 'png', 'webp'];
+    const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+
+    if (!allowedExts.includes(ext)) {
+      console.warn('Blocked upload of unauthorized format:', rawExt);
+      return null;
+    }
+
     const buffer = Buffer.from(matches[2], 'base64');
-    const fileName = `proof_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${ext}`;
+    if (buffer.length > 5 * 1024 * 1024) {
+      console.warn('Blocked upload exceeding 5MB size limit:', buffer.length);
+      return null;
+    }
+
+    // Generate safe alphanumeric random filename to prevent path traversal
+    const safeRandomHex = crypto.randomBytes(8).toString('hex');
+    const fileName = `proof_${Date.now()}_${safeRandomHex}.${ext}`;
     const filePath = path.join(uploadsDir, fileName);
 
     fs.writeFileSync(filePath, buffer);
@@ -907,7 +998,7 @@ function checkPasswordMatch(storedPassword, inputPassword) {
 // =========================================================================
 
 // AUTH 1. Register New Customer
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const { name, mobile, password, confirm_password, confirmPassword, email, address } = req.body;
 
@@ -1133,7 +1224,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // AUTH 2. Login User (Unified Owner & Customer Authentication)
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const rawIdentifier = (req.body.identifier || req.body.mobile || req.body.username || '').toString().trim();
     const password = (req.body.password || '').toString().trim();
@@ -1539,7 +1630,7 @@ app.post('/api/auth/recovery-methods', async (req, res) => {
 });
 
 // AUTH 3b. Forgot Password (Generate Crypto OTP & Send via Provider)
-app.post('/api/auth/forgot-password', async (req, res) => {
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   try {
     const rawMobile = (req.body.mobile || req.body.identifier || '').toString().replace(/[^0-9]/g, '').trim();
     const method = (req.body.method || 'SMS').toString().trim().toUpperCase();
@@ -1605,7 +1696,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 });
 
 // AUTH 3c. Verify OTP Code Server-Side
-app.post('/api/auth/verify-otp', async (req, res) => {
+app.post('/api/auth/verify-otp', otpLimiter, async (req, res) => {
   try {
     const rawMobile = (req.body.mobile || req.body.identifier || '').toString().replace(/[^0-9]/g, '').trim();
     const inputOtp = (req.body.otp || '').toString().trim();
@@ -1659,7 +1750,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 });
 
 // AUTH 3d. Reset Password (After Server-Side OTP Verification)
-app.post('/api/auth/reset-password', async (req, res) => {
+app.post('/api/auth/reset-password', otpLimiter, async (req, res) => {
   try {
     const rawMobile = (req.body.mobile || req.body.identifier || '').toString().replace(/[^0-9]/g, '').trim();
     const inputOtp = (req.body.otp || '').toString().trim();
@@ -2898,7 +2989,7 @@ app.post('/api/loyalty/redeem', authenticateToken, requireRole('CUSTOMER'), asyn
   }
 });
 
-app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), async (req, res) => {
+app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter, async (req, res) => {
   try {
     const sRes = await db.query('SELECT is_open, is_qr_pay_enabled FROM settings WHERE id = 1;');
     const settings = sRes.rows[0] || {};
@@ -4881,12 +4972,338 @@ async function logMemberCardAudit({ customer_id, member_id, action, actor_role, 
   }
 }
 
+// =========================================================================
+// AUTOMATIC & IDEMPOTENT PREMIUM MEMBER CARD EXPIRY REMINDERS ENGINE
+// =========================================================================
+
+async function processMemberCardExpiryReminders(targetDateObj = null) {
+  const now = targetDateObj ? new Date(targetDateObj) : new Date();
+  const nowIso = now.toISOString();
+  const nowMs = now.getTime();
+
+  let summary = {
+    processed: 0,
+    reminded7d: 0,
+    reminded3d: 0,
+    reminded1d: 0,
+    expired: 0,
+    errors: 0
+  };
+
+  try {
+    const cardRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE status = 'ACTIVE';`
+    );
+    const activeCards = cardRes.rows || [];
+    summary.processed = activeCards.length;
+
+    for (const card of activeCards) {
+      try {
+        const validUntil = new Date(card.valid_until);
+        let validUntilEnd = new Date(validUntil);
+        if (typeof card.valid_until === 'string' && card.valid_until.length <= 10) {
+          validUntilEnd.setHours(23, 59, 59, 999);
+        }
+
+        const formattedExpiry = validUntil.toLocaleDateString('en-IN');
+
+        // Check if card has expired
+        if (nowMs > validUntilEnd.getTime()) {
+          if (!card.reminded_expired_at) {
+            await db.query(
+              `UPDATE food_member_cards SET status = 'EXPIRED', reminded_expired_at = $1, updated_at = $2 WHERE id = $3;`,
+              [nowIso, nowIso, card.id]
+            );
+            card.status = 'EXPIRED';
+            await logMemberCardAudit({
+              customer_id: card.customer_id,
+              member_id: card.member_id,
+              action: 'MEMBERSHIP_EXPIRED',
+              actor_role: 'SYSTEM',
+              details: `Membership auto-expired on ${formattedExpiry}.`
+            });
+            await createAndDispatchNotification({
+              target_role: 'CUSTOMER',
+              customer_id: card.customer_id,
+              title: '🔴 Premium Food Membership Expired',
+              message: `Your Premium Food Member Card (${card.member_id}) has expired. Click Buy Again ₹10 to reactivate your benefits!`,
+              type: 'MEMBER_CARD',
+              priority: 'HIGH',
+              action_url: '/#secCustomerMemberCard'
+            });
+            summary.expired++;
+          } else {
+            await db.query(
+              `UPDATE food_member_cards SET status = 'EXPIRED', updated_at = $1 WHERE id = $2 AND status != 'EXPIRED';`,
+              [nowIso, card.id]
+            );
+          }
+          continue;
+        }
+
+        // Calculate days remaining (consistent date component diff)
+        const todayStart = parseDateComponents(now);
+        const untilStart = parseDateComponents(card.valid_until);
+        const diffMs = untilStart.getTime() - todayStart.getTime();
+        const daysDiff = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+
+        // 1-Day Tier (<= 1 day remaining)
+        if (daysDiff <= 1 && !card.reminded_1d_at) {
+          const dayLabel = daysDiff === 1 ? 'tomorrow' : 'today';
+          await db.query(
+            `UPDATE food_member_cards SET reminded_1d_at = $1, updated_at = $2 WHERE id = $3;`,
+            [nowIso, nowIso, card.id]
+          );
+          await logMemberCardAudit({
+            customer_id: card.customer_id,
+            member_id: card.member_id,
+            action: 'REMINDER_1D_SENT',
+            actor_role: 'SYSTEM',
+            details: `Sent 1-day expiry reminder (expires ${dayLabel})`
+          });
+          await createAndDispatchNotification({
+            target_role: 'CUSTOMER',
+            customer_id: card.customer_id,
+            title: `🚨 Final Reminder: Premium Card Expires ${dayLabel === 'tomorrow' ? 'Tomorrow' : 'Today'}`,
+            message: `Your Premium Food Member Card (${card.member_id}) expires ${dayLabel}! Renew for ₹10 to keep your ₹5 OFF & Express Delivery benefits.`,
+            type: 'MEMBER_CARD',
+            priority: 'HIGH',
+            action_url: '/#secCustomerMemberCard'
+          });
+          summary.reminded1d++;
+        }
+        // 3-Day Tier (<= 3 days remaining)
+        else if (daysDiff <= 3 && daysDiff > 1 && !card.reminded_3d_at) {
+          await db.query(
+            `UPDATE food_member_cards SET reminded_3d_at = $1, updated_at = $2 WHERE id = $3;`,
+            [nowIso, nowIso, card.id]
+          );
+          await logMemberCardAudit({
+            customer_id: card.customer_id,
+            member_id: card.member_id,
+            action: 'REMINDER_3D_SENT',
+            actor_role: 'SYSTEM',
+            details: `Sent 3-day expiry reminder (${daysDiff} days remaining)`
+          });
+          await createAndDispatchNotification({
+            target_role: 'CUSTOMER',
+            customer_id: card.customer_id,
+            title: `⚠️ Premium Member Card Expiring Soon`,
+            message: `Only 3 days left on your Premium Food Member Card (${card.member_id}). Don't lose your discount & express delivery benefits!`,
+            type: 'MEMBER_CARD',
+            priority: 'NORMAL',
+            action_url: '/#secCustomerMemberCard'
+          });
+          summary.reminded3d++;
+        }
+        // 7-Day Tier (<= 7 days remaining)
+        else if (daysDiff <= 7 && daysDiff > 3 && !card.reminded_7d_at) {
+          await db.query(
+            `UPDATE food_member_cards SET reminded_7d_at = $1, updated_at = $2 WHERE id = $3;`,
+            [nowIso, nowIso, card.id]
+          );
+          await logMemberCardAudit({
+            customer_id: card.customer_id,
+            member_id: card.member_id,
+            action: 'REMINDER_7D_SENT',
+            actor_role: 'SYSTEM',
+            details: `Sent 7-day expiry reminder (${daysDiff} days remaining)`
+          });
+          await createAndDispatchNotification({
+            target_role: 'CUSTOMER',
+            customer_id: card.customer_id,
+            title: `⏳ Premium Member Card Expiry Notice`,
+            message: `Your Premium Food Member Card (${card.member_id}) expires in 7 days on ${formattedExpiry}. Renew now to keep enjoying ₹5 OFF & Express Delivery!`,
+            type: 'MEMBER_CARD',
+            priority: 'NORMAL',
+            action_url: '/#secCustomerMemberCard'
+          });
+          summary.reminded7d++;
+        }
+      } catch (cardErr) {
+        console.error(`Error processing card expiry reminder for ${card.id}:`, cardErr);
+        summary.errors++;
+      }
+    }
+  } catch (err) {
+    console.error('Master processMemberCardExpiryReminders error:', err);
+  }
+
+  return summary;
+}
+
+// Endpoint to manually or test trigger expiry reminder processing (Owner Only)
+app.post('/api/food-member/process-expiry-reminders', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const summary = await processMemberCardExpiryReminders(req.body?.targetDate);
+    res.json({
+      success: true,
+      message: 'Member card expiry reminders processed successfully.',
+      summary
+    });
+  } catch (err) {
+    console.error('Process Expiry Reminders API Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to process card expiry reminders.' });
+  }
+});
+
+// Calculate dynamic Premium Savings Tracker metrics for customer
+async function calculateCustomerPremiumSavings(customerId) {
+  const now = new Date();
+  const nowMs = now.getTime();
+
+  try {
+    const cardsRes = await db.query(
+      `SELECT * FROM food_member_cards WHERE customer_id = $1 ORDER BY created_at DESC;`,
+      [String(customerId)]
+    );
+    const cards = cardsRes.rows || [];
+
+    if (cards.length === 0) {
+      return {
+        has_any_card: false,
+        is_current_active: false,
+        current_card_id: null,
+        current_card_member_id: null,
+        current_card_orders: 0,
+        current_card_saved: 0.00,
+        current_card_valid_until: null,
+        current_card_days_remaining: 0,
+        current_card_status: 'NO_CARD',
+        lifetime_orders: 0,
+        lifetime_saved: 0.00,
+        savings_breakdown: []
+      };
+    }
+
+    const latestCard = cards[0];
+    const latestValidFrom = new Date(latestCard.valid_from);
+    const latestValidUntil = new Date(latestCard.valid_until);
+    let latestValidUntilEnd = new Date(latestValidUntil);
+    if (typeof latestCard.valid_until === 'string' && latestCard.valid_until.length <= 10) {
+      latestValidUntilEnd.setHours(23, 59, 59, 999);
+    }
+
+    let isCurrentActive = false;
+    let currentCardStatus = 'EXPIRED';
+    let currentDaysRemaining = 0;
+
+    if (nowMs < latestValidFrom.getTime()) {
+      currentCardStatus = 'NOT_STARTED';
+    } else if (nowMs <= latestValidUntilEnd.getTime() && latestCard.status === 'ACTIVE') {
+      isCurrentActive = true;
+      currentCardStatus = 'ACTIVE';
+      const todayStart = parseDateComponents(now);
+      const untilStart = parseDateComponents(latestCard.valid_until);
+      const diffMs = untilStart.getTime() - todayStart.getTime();
+      currentDaysRemaining = Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+    } else {
+      currentCardStatus = 'EXPIRED';
+      currentDaysRemaining = 0;
+    }
+
+    const ordersRes = await db.query(
+      `SELECT id, order_number, created_at, food_member_discount, is_premium_member, order_status, payment_status, total_amount, net_amount
+       FROM orders
+       WHERE customer_id = $1
+         AND UPPER(COALESCE(order_status, '')) NOT IN ('CANCELLED', 'REJECTED')
+         AND UPPER(COALESCE(payment_status, '')) NOT IN ('FAILED', 'REFUNDED')
+       ORDER BY created_at DESC;`,
+      [String(customerId)]
+    );
+    const orders = ordersRes.rows || [];
+
+    let currentCardOrders = 0;
+    let currentCardSaved = 0;
+    let lifetimeOrders = 0;
+    let lifetimeSaved = 0;
+    const savingsBreakdown = [];
+
+    for (const order of orders) {
+      const orderDate = new Date(order.created_at);
+      const orderMs = orderDate.getTime();
+
+      let matchedCard = null;
+      for (const c of cards) {
+        const vFrom = new Date(c.valid_from).getTime();
+        const vUntil = new Date(c.valid_until);
+        if (typeof c.valid_until === 'string' && c.valid_until.length <= 10) {
+          vUntil.setHours(23, 59, 59, 999);
+        }
+        const vUntilMs = vUntil.getTime();
+
+        if (orderMs >= vFrom && orderMs <= vUntilMs) {
+          matchedCard = c;
+          break;
+        }
+      }
+
+      const explicitDiscount = Number(order.food_member_discount || 0);
+      const isExplicitPremium = Boolean(order.is_premium_member || explicitDiscount > 0);
+
+      if (matchedCard || isExplicitPremium) {
+        const discountAmount = explicitDiscount > 0 ? explicitDiscount : 5.00;
+        const associatedCard = matchedCard || latestCard;
+
+        lifetimeOrders++;
+        lifetimeSaved += discountAmount;
+
+        if (associatedCard.id === latestCard.id) {
+          currentCardOrders++;
+          currentCardSaved += discountAmount;
+        }
+
+        savingsBreakdown.push({
+          order_id: order.id,
+          order_number: order.order_number || order.id,
+          order_date: order.created_at,
+          discount_amount: discountAmount,
+          card_id: associatedCard.id,
+          member_id: associatedCard.member_id
+        });
+      }
+    }
+
+    return {
+      has_any_card: true,
+      is_current_active: isCurrentActive,
+      current_card_id: latestCard.id,
+      current_card_member_id: latestCard.member_id,
+      current_card_orders: currentCardOrders,
+      current_card_saved: Number(currentCardSaved.toFixed(2)),
+      current_card_valid_until: latestCard.valid_until,
+      current_card_days_remaining: currentDaysRemaining,
+      current_card_status: currentCardStatus,
+      lifetime_orders: lifetimeOrders,
+      lifetime_saved: Number(lifetimeSaved.toFixed(2)),
+      savings_breakdown: savingsBreakdown
+    };
+  } catch (err) {
+    console.error('calculateCustomerPremiumSavings error:', err);
+    return {
+      has_any_card: false,
+      is_current_active: false,
+      current_card_id: null,
+      current_card_member_id: null,
+      current_card_orders: 0,
+      current_card_saved: 0.00,
+      current_card_valid_until: null,
+      current_card_days_remaining: 0,
+      current_card_status: 'ERROR',
+      lifetime_orders: 0,
+      lifetime_saved: 0.00,
+      savings_breakdown: []
+    };
+  }
+}
+
 // 1. GET /api/food-member/status - Fetch Customer Membership & Application State with Dynamic Expiration
 app.get('/api/food-member/status', authenticateToken, async (req, res) => {
   try {
     const customerId = req.user.id;
-    const nowIso = new Date().toISOString();
-    const nowMs = Date.now();
+    
+    // Process any pending reminders and auto-expiry idempotently
+    await processMemberCardExpiryReminders();
 
     // Check for Active / Expired / Suspended Card
     const cardRes = await db.query(
@@ -4895,34 +5312,6 @@ app.get('/api/food-member/status', authenticateToken, async (req, res) => {
     );
 
     let card = cardRes.rows && cardRes.rows.length > 0 ? cardRes.rows[0] : null;
-
-    if (card && card.status === 'ACTIVE') {
-      const expiryMs = new Date(card.valid_until).getTime();
-      if (expiryMs <= nowMs) {
-        // Automatically expire card if valid_until has passed
-        await db.query(
-          `UPDATE food_member_cards SET status = 'EXPIRED', updated_at = $1 WHERE id = $2;`,
-          [nowIso, card.id]
-        );
-        card.status = 'EXPIRED';
-        await logMemberCardAudit({
-          customer_id: customerId,
-          member_id: card.member_id,
-          action: 'MEMBERSHIP_EXPIRED',
-          actor_role: 'SYSTEM',
-          details: 'Membership auto-expired past 3 calendar months.'
-        });
-        await createAndDispatchNotification({
-          target_role: 'CUSTOMER',
-          customer_id: customerId,
-          title: '⚠️ Premium Food Membership Expired',
-          message: 'Your 3-month Premium Food Membership has expired. Click Buy Again ₹10 to renew!',
-          type: 'MEMBER_CARD',
-          priority: 'NORMAL',
-          action_url: '/#secCustomerMemberCard'
-        });
-      }
-    }
 
     // Fetch Latest Application
     const appRes = await db.query(
@@ -4944,6 +5333,8 @@ app.get('/api/food-member/status', authenticateToken, async (req, res) => {
       overallStatus = 'REJECTED';
     }
 
+    const savingsTracker = await calculateCustomerPremiumSavings(customerId);
+
     res.json({
       success: true,
       status: overallStatus,
@@ -4952,7 +5343,8 @@ app.get('/api/food-member/status', authenticateToken, async (req, res) => {
       benefits: {
         discount_amount: overallStatus === 'ACTIVE' ? 5.00 : 0.00,
         express_delivery_eligible: overallStatus === 'ACTIVE'
-      }
+      },
+      savings_tracker: savingsTracker
     });
   } catch (err) {
     console.error('Fetch Food Member Status Error:', err);
@@ -9746,6 +10138,16 @@ server.listen(PORT, async () => {
       const migrate = require('./migrate_to_postgres');
       await migrate();
     }
+
+    // Start background cron interval for automatic & idempotent card expiry reminders (Every 1 hour)
+    setInterval(() => {
+      processMemberCardExpiryReminders().catch(err => console.error('[Background Expiry Engine] Error:', err.message));
+    }, 3600000);
+
+    // Initial check 10 seconds after server startup
+    setTimeout(() => {
+      processMemberCardExpiryReminders().catch(err => console.error('[Background Expiry Engine Initial] Error:', err.message));
+    }, 10000);
   } catch (err) {
     console.error('PostgreSQL Database Initialization Notice:', err.message);
   }

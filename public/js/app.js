@@ -12286,11 +12286,146 @@ class TiffinApp {
     }
   }
 
+  renderPremiumSavingsTrackerHTML(st) {
+    if (!st || !st.has_any_card) return '';
+
+    const isExpired = !st.is_current_active;
+
+    let lifetimeHTML = '';
+    if (st.lifetime_orders > st.current_card_orders || st.lifetime_saved > st.current_card_saved) {
+      lifetimeHTML = `
+        <div style="background: rgba(255, 255, 255, 0.03); border-top: 1px dashed rgba(255, 255, 255, 0.12); padding-top: 12px; margin-top: 14px; display: flex; justify-content: space-around; font-size: 0.88rem; color: #E0E0E0; flex-wrap: wrap; gap: 10px;">
+          <div>🏆 <strong>Lifetime Premium Orders:</strong> ${st.lifetime_orders}</div>
+          <div>🏆 <strong>Lifetime Total Saved:</strong> <strong style="color: #FFD700;">₹${st.lifetime_saved}</strong></div>
+        </div>
+      `;
+    }
+
+    const formattedValidUntil = st.current_card_valid_until 
+      ? new Date(st.current_card_valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '';
+
+    return `
+      <div class="premium-savings-tracker-card" style="background: var(--bg-surface-elevated, #1E1E2E); border: 1px solid rgba(255, 215, 0, 0.35); border-radius: 18px; padding: 20px; margin-bottom: 24px; box-shadow: 0 8px 25px rgba(0,0,0,0.25); box-sizing: border-box; overflow: hidden;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #FFD700; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-piggy-bank"></i> 💰 Premium Savings Tracker
+          </h3>
+          <span style="font-size: 0.85rem; color: #4CAF50; background: rgba(76, 175, 80, 0.12); border: 1px solid rgba(76, 175, 80, 0.3); padding: 4px 12px; border-radius: 14px; font-weight: 600;">
+            Keep enjoying your Premium benefits!
+          </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; margin-bottom: 10px;">
+          
+          <!-- 🍽️ Premium Orders -->
+          <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px 12px; text-align: center;">
+            <div style="font-size: 1.6rem; margin-bottom: 4px;">🍽️</div>
+            <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Premium Orders</div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: #FFF; margin-top: 2px;">${st.current_card_orders}</div>
+          </div>
+
+          <!-- 💰 Total Saved -->
+          <div onclick="app.openPremiumSavingsBreakdownModal()" style="background: rgba(255, 215, 0, 0.06); border: 1px solid rgba(255, 215, 0, 0.4); border-radius: 14px; padding: 16px 12px; text-align: center; cursor: pointer; transition: transform 0.2s;" title="Click to view itemized savings breakdown">
+            <div style="font-size: 1.6rem; margin-bottom: 4px;">💰</div>
+            <div style="font-size: 0.75rem; color: #FFD700; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">You Saved</div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: #FFD700; margin-top: 2px;">₹${st.current_card_saved}</div>
+            <div style="font-size: 0.7rem; color: #FFD700; margin-top: 4px; text-decoration: underline; font-weight: 600;">View Breakdown <i class="fa-solid fa-chevron-right" style="font-size: 0.6rem;"></i></div>
+          </div>
+
+          <!-- 📅 Days Remaining -->
+          <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px 12px; text-align: center;">
+            <div style="font-size: 1.6rem; margin-bottom: 4px;">📅</div>
+            <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Days Remaining</div>
+            <div style="font-size: 1.4rem; font-weight: 800; color: ${!isExpired ? '#4CAF50' : '#EF5350'}; margin-top: 2px;">
+              ${!isExpired ? `${st.current_card_days_remaining} Days` : 'Expired'}
+            </div>
+            ${formattedValidUntil ? `<div style="font-size: 0.7rem; color: #AAA; margin-top: 4px;">Until ${formattedValidUntil}</div>` : ''}
+          </div>
+
+        </div>
+
+        ${lifetimeHTML}
+
+      </div>
+    `;
+  }
+
+  openPremiumSavingsBreakdownModal() {
+    const st = this.currentMemberState?.savings_tracker;
+    if (!st || !st.savings_breakdown) {
+      alert('No savings breakdown available.');
+      return;
+    }
+
+    const breakdown = st.savings_breakdown;
+    let listHTML = '';
+
+    if (breakdown.length === 0) {
+      listHTML = `
+        <div style="text-align: center; padding: 30px; color: #AAA;">
+          <p style="margin: 0;">No completed Premium orders yet.</p>
+          <p style="font-size: 0.85rem; color: #777; margin-top: 6px;">Place an order to enjoy your ₹5 discount!</p>
+        </div>
+      `;
+    } else {
+      listHTML = breakdown.map(item => `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.9rem;">
+          <div>
+            <div style="font-weight: 700; color: #FFF;">Order #${item.order_number}</div>
+            <div style="font-size: 0.75rem; color: #AAA; margin-top: 2px;">${new Date(item.order_date).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          </div>
+          <div style="font-weight: 800; color: #4CAF50; font-size: 1rem;">
+            +₹${item.discount_amount} saved
+          </div>
+        </div>
+      `).join('');
+    }
+
+    const modalHTML = `
+      <div id="savingsBreakdownModal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 15px; box-sizing: border-box;">
+        <div style="background: #1E1E2E; border: 1px solid #FFD700; border-radius: 20px; width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; color: #FFF; padding: 24px; box-shadow: 0 15px 40px rgba(0,0,0,0.5); position: relative; box-sizing: border-box;">
+          
+          <button onclick="document.getElementById('savingsBreakdownModal').remove()" style="position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.1); border: none; color: #FFF; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center;">✕</button>
+
+          <h3 style="margin: 0 0 6px 0; color: #FFD700; font-size: 1.3rem; display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-receipt"></i> 💰 Premium Savings Breakdown
+          </h3>
+          <p style="margin: 0 0 18px 0; font-size: 0.85rem; color: #AAA;">Itemized savings from your completed Premium Food Member orders:</p>
+
+          <div style="background: rgba(255,215,0,0.08); border: 1px dashed #FFD700; border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600;">Total Premium Orders</div>
+              <div style="font-size: 1.2rem; font-weight: 800; color: #FFF;">${st.current_card_orders} Orders</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600;">Total Saved</div>
+              <div style="font-size: 1.3rem; font-weight: 800; color: #FFD700;">₹${st.current_card_saved}</div>
+            </div>
+          </div>
+
+          <div style="background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px solid rgba(255,255,255,0.06); max-height: 320px; overflow-y: auto;">
+            ${listHTML}
+          </div>
+
+          <button onclick="document.getElementById('savingsBreakdownModal').remove()" style="width: 100%; margin-top: 20px; padding: 12px; background: linear-gradient(135deg, #333 0%, #222 100%); color: #FFF; border: 1px solid #555; border-radius: 10px; font-weight: 700; cursor: pointer;">Close</button>
+
+        </div>
+      </div>
+    `;
+
+    const existing = document.getElementById('savingsBreakdownModal');
+    if (existing) existing.remove();
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+  }
+
   renderFoodMemberCardUI(data) {
     const container = document.getElementById('memberCardContent');
     if (!container) return;
 
-    const { status, card, application, benefits } = data;
+    const { status, card, application, benefits, savings_tracker } = data;
+    const trackerHTML = this.renderPremiumSavingsTrackerHTML(savings_tracker);
 
     // STATE 1: NO APPLICATION or EXPIRED (Allows purchase / repurchase)
     if (status === 'NO_APPLICATION') {
@@ -12397,6 +12532,8 @@ class TiffinApp {
       const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(verifyUrl)}`;
 
       container.innerHTML = `
+        ${trackerHTML}
+
         <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
           <div style="background: rgba(76, 175, 80, 0.15); color: #81C784; border: 1px solid #4CAF50; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px;">
             <i class="fa-solid fa-circle-check"></i> Premium Member Active
@@ -12480,6 +12617,8 @@ class TiffinApp {
       const phone = this.settings?.contact_phone || '9392874900';
       const cleanPhone = phone.replace(/^\+91/, '').replace(/\s+/g, '');
       container.innerHTML = `
+        ${trackerHTML}
+
         <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid #EF5350; box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
           <div style="width: 70px; height: 70px; background: rgba(244, 67, 54, 0.15); color: #E53935; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
             🔒
@@ -12512,6 +12651,8 @@ class TiffinApp {
     // STATE 4: EXPIRED
     if (status === 'EXPIRED') {
       container.innerHTML = `
+        ${trackerHTML}
+
         <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
           <div style="width: 70px; height: 70px; background: rgba(244, 67, 54, 0.15); color: #E53935; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
             ⚠️
