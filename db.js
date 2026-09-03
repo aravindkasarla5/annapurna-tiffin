@@ -1136,7 +1136,7 @@ async function verifyFoodMemberQr(qrCodeInput) {
 
   let card = cardRes.rows ? cardRes.rows[0] : null;
 
-  // 2. Fallback: match Member ID digits/pattern (e.g. PMC1001, pmc1001, 1001, PMC-1001)
+  // 2. Fallback: match Member ID digits/pattern (e.g. PMC1001, pmc1001, 1001, PMC-1001, FM-1001)
   if (!card) {
     const digitsMatch = cleanInput.match(/\d+/);
     if (digitsMatch) {
@@ -1146,18 +1146,52 @@ async function verifyFoodMemberQr(qrCodeInput) {
     }
   }
 
-  // 3. Fallback: match application_id, customer_mobile, or customer_name
+  // 3. Fallback: match application_id, customer_mobile, or customer_name in food_member_applications
   if (!card) {
     const appRes = await query(
       `SELECT * FROM food_member_applications 
        WHERE id = $1 OR customer_mobile = $1 OR LOWER(customer_name) LIKE LOWER($2) 
-       LIMIT 1;`,
+       ORDER BY created_at DESC LIMIT 1;`,
       [cleanInput, `%${cleanInput}%`]
     );
     if (appRes.rows && appRes.rows.length > 0) {
-      const appId = appRes.rows[0].id;
-      const cardByApp = await query(`SELECT * FROM food_member_cards WHERE application_id = $1 OR customer_id = $2 LIMIT 1;`, [appId, appRes.rows[0].customer_id]);
+      const appRow = appRes.rows[0];
+      let cardByApp = await query(`SELECT * FROM food_member_cards WHERE application_id = $1 OR customer_id = $2 OR customer_mobile = $3 LIMIT 1;`, [appRow.id, appRow.customer_id, appRow.customer_mobile]);
       card = cardByApp.rows ? cardByApp.rows[0] : null;
+
+      // Auto-heal: If application is APPROVED but card row was missing, create card on the fly
+      if (!card && appRow.status === 'APPROVED') {
+        const now = new Date();
+        const validFrom = now.toISOString();
+        const validUntil = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000).toISOString();
+        const countRes = await query(`SELECT COUNT(*) as c FROM food_member_cards;`);
+        const num = 1001 + Number(countRes.rows[0]?.c || countRes.rows[0]?.['COUNT(*)'] || 0);
+        const memberId = `PMC${num}`;
+        const qrCode = `PMC_QR_${memberId}_${Date.now()}`;
+        const cardId = `fmc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+        await query(
+          `INSERT INTO food_member_cards (id, member_id, customer_id, customer_name, customer_mobile, application_id, status, valid_from, valid_until, discount_amount, express_delivery_eligible, qr_verification_code)
+           VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', $7, $8, 5.00, true, $9);`,
+          [cardId, memberId, appRow.customer_id, appRow.customer_name, appRow.customer_mobile, appRow.id, validFrom, validUntil, qrCode]
+        );
+
+        const newCardRes = await query(`SELECT * FROM food_member_cards WHERE id = $1;`, [cardId]);
+        card = newCardRes.rows ? newCardRes.rows[0] : null;
+      }
+    }
+  }
+
+  // 4. Fallback: match customer account in users table by mobile or name
+  if (!card) {
+    const userRes = await query(
+      `SELECT * FROM users WHERE mobile = $1 OR LOWER(name) LIKE LOWER($2) LIMIT 1;`,
+      [cleanInput, `%${cleanInput}%`]
+    );
+    if (userRes.rows && userRes.rows.length > 0) {
+      const u = userRes.rows[0];
+      const cardByUser = await query(`SELECT * FROM food_member_cards WHERE customer_id = $1 OR customer_mobile = $2 LIMIT 1;`, [u.id, u.mobile]);
+      card = cardByUser.rows ? cardByUser.rows[0] : null;
     }
   }
 

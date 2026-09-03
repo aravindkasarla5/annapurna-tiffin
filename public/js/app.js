@@ -16666,9 +16666,6 @@ class TiffinApp {
       } catch (err) {
         lastError = err;
         console.warn('[QR SCANNER] Camera constraint attempt failed:', constraints, err.name || err);
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          break;
-        }
       }
     }
 
@@ -16923,7 +16920,7 @@ class TiffinApp {
 
       if (btnSubmit) {
         btnSubmit.disabled = false;
-        btnSubmit.innerHTML = '🔍 Verify';
+        btnSubmit.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> VERIFY MEMBER CARD';
       }
 
       if (!inputView || !resultView) return;
