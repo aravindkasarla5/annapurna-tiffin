@@ -1115,8 +1115,8 @@ async function verifyFoodMemberQr(qrCodeInput) {
       success: false,
       is_valid: false,
       status_code: 'INVALID',
-      title: '⚠️ INVALID MEMBER CARD',
-      message: 'No QR code or Member ID provided.'
+      title: 'Invalid Premium Member Card',
+      message: 'QR code could not be verified.'
     };
   }
 
@@ -1132,7 +1132,7 @@ async function verifyFoodMemberQr(qrCodeInput) {
 
   let card = cardRes.rows ? cardRes.rows[0] : null;
 
-  // 2. Fallback: match Member ID substring (PMC1001, PMC1002...) if scanned full raw text
+  // 2. Fallback: match Member ID substring (PMC1001, PMC1002...) if scanned full raw text/URL
   if (!card) {
     const match = cleanInput.match(/PMC\d+/i);
     if (match) {
@@ -1153,27 +1153,51 @@ async function verifyFoodMemberQr(qrCodeInput) {
   }
 
   if (!card) {
+    const isPmcFormat = /PMC/i.test(cleanInput) || /^card_/i.test(cleanInput) || /^app_/i.test(cleanInput);
+    if (isPmcFormat) {
+      return {
+        success: false,
+        is_valid: false,
+        status_code: 'NOT_FOUND',
+        title: 'Member Card Not Found',
+        message: 'No Premium Food Member Card record found for this identifier.'
+      };
+    }
     return {
       success: false,
       is_valid: false,
       status_code: 'INVALID',
-      title: '⚠️ INVALID MEMBER CARD',
-      message: 'No valid membership record found for this QR code.'
+      title: 'Invalid Premium Member Card',
+      message: 'QR code could not be verified.'
     };
   }
 
   // -----------------------------------------------------------------------
   // CRITICAL: STRICT DATE-BASED VALIDITY CALCULATION (STORED STATUS IS IGNORED)
   // -----------------------------------------------------------------------
-  const now = new Date(); // Server current date/time
+  const now = new Date();
 
-  const validFrom = new Date(card.valid_from);
-  const validUntil = new Date(card.valid_until);
+  // Helper to parse dates safely
+  const parseDateObj = (dateVal) => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) return dateVal;
+    if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateVal.trim())) {
+      const [y, m, d] = dateVal.trim().split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    const d = new Date(dateVal);
+    return isNaN(d.getTime()) ? null : d;
+  };
 
-  // Set start of validFrom day (00:00:00.000)
+  const validFrom = parseDateObj(card.valid_from) || now;
+  const validUntil = parseDateObj(card.valid_until) || now;
+
+  // Set start of today & validFrom day (00:00:00.000)
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const validFromStart = new Date(validFrom.getFullYear(), validFrom.getMonth(), validFrom.getDate(), 0, 0, 0, 0);
 
-  // Set end of validUntil day (23:59:59.999) - INCLUSIVE of full Valid Until date!
+  // Set end of today & validUntil day (23:59:59.999) - INCLUSIVE of full Valid Until date!
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   const validUntilEnd = new Date(validUntil.getFullYear(), validUntil.getMonth(), validUntil.getDate(), 23, 59, 59, 999);
 
   const formatDateDDMMYYYY = (d) => {
@@ -1192,24 +1216,28 @@ async function verifyFoodMemberQr(qrCodeInput) {
   let status_code = 'ACTIVE';
   let is_valid = true;
   let title = '🟢 MEMBER ACTIVE';
-  let message = 'Membership is currently valid.';
+  let message = 'Membership is currently active.';
 
-  if (now < validFromStart) {
+  if (todayStart < validFromStart) {
     status_code = 'NOT_YET_ACTIVE';
     is_valid = false;
     title = '🟡 MEMBERSHIP NOT YET ACTIVE';
-    message = 'This membership has not started yet.';
-  } else if (now > validUntilEnd) {
+    message = 'Membership has not started yet.';
+  } else if (todayEnd > validUntilEnd) {
     status_code = 'EXPIRED';
     is_valid = false;
     title = '🔴 MEMBERSHIP EXPIRED';
-    message = 'This membership has expired.';
+    message = 'Membership has expired.';
   } else {
     status_code = 'ACTIVE';
     is_valid = true;
     title = '🟢 MEMBER ACTIVE';
-    message = 'Membership is currently valid.';
+    message = 'Membership is currently active.';
   }
+
+  // Calculate Days Remaining (for active card: from todayStart to validUntilEnd inclusive)
+  const msDiff = validUntilEnd.getTime() - todayStart.getTime();
+  const daysRemaining = Math.max(1, Math.ceil(msDiff / (1000 * 60 * 60 * 24)));
 
   return {
     success: true,
@@ -1220,11 +1248,12 @@ async function verifyFoodMemberQr(qrCodeInput) {
     member: {
       id: card.id,
       member_id: card.member_id,
-      customer_name: card.customer_name,
-      customer_mobile: card.customer_mobile,
+      customer_name: card.customer_name || 'Member',
+      customer_mobile: card.customer_mobile || '',
       valid_from: formattedValidFrom,
       valid_until: formattedValidUntil,
       expired_on: formattedValidUntil,
+      days_remaining: daysRemaining,
       server_date: formattedToday
     }
   };

@@ -232,6 +232,8 @@ class TiffinApp {
       }
     });
 
+
+
     await this.fetchSettings();
     await this.fetchMenu();
     await this.fetchFaqs();
@@ -16526,20 +16528,36 @@ class TiffinApp {
   }
 
   openFoodMemberQrScannerModal() {
+    console.log('[QR SCANNER] Opening food member QR scanner modal...');
     const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
-    if (!modal) return;
-    this.resetFoodMemberQrScanner();
+    if (!modal) {
+      console.error('[QR SCANNER] Element #modalOwnerFoodMemberQrScanner not found!');
+      return;
+    }
     modal.classList.remove('hidden');
+    modal.classList.add('open', 'visible', 'active');
     modal.style.setProperty('display', 'flex', 'important');
-    this.startQrCameraScanner();
+    modal.style.setProperty('opacity', '1', 'important');
+    modal.style.setProperty('visibility', 'visible', 'important');
+    modal.style.setProperty('pointer-events', 'auto', 'important');
+    modal.style.setProperty('z-index', '9999999', 'important');
+    try {
+      this.resetFoodMemberQrScanner();
+    } catch (err) {
+      console.error('[QR SCANNER] Error in resetFoodMemberQrScanner:', err);
+    }
   }
 
   closeFoodMemberQrScannerModal() {
     this.stopQrCameraScanner();
     const modal = document.getElementById('modalOwnerFoodMemberQrScanner');
     if (modal) {
+      modal.classList.remove('open', 'visible', 'active');
       modal.classList.add('hidden');
       modal.style.setProperty('display', 'none', 'important');
+      modal.style.setProperty('opacity', '0', 'important');
+      modal.style.setProperty('visibility', 'hidden', 'important');
+      modal.style.setProperty('pointer-events', 'none', 'important');
     }
   }
 
@@ -16548,8 +16566,10 @@ class TiffinApp {
     const resultView = document.getElementById('viewOwnerQrVerificationResult');
     const txtInput = document.getElementById('txtScanQrCodeInput');
     const btnScanAnother = document.getElementById('btnScanAnotherQrCard');
+    const errBox = document.getElementById('boxCameraPermissionError');
 
     if (txtInput) txtInput.value = '';
+    if (errBox) errBox.style.display = 'none';
     if (inputView) inputView.style.setProperty('display', 'block', 'important');
     if (resultView) {
       resultView.style.setProperty('display', 'none', 'important');
@@ -16562,27 +16582,74 @@ class TiffinApp {
   async startQrCameraScanner() {
     const video = document.getElementById('videoOwnerQrScan');
     const statusLbl = document.getElementById('lblQrCameraStatus');
+    const errBox = document.getElementById('boxCameraPermissionError');
+    const errTitle = document.getElementById('lblCameraErrorTitle');
+    const errMsg = document.getElementById('lblCameraErrorMsg');
+
     if (!video) return;
+
+    // Prevent concurrent startup race conditions
+    if (this.isStartingQrCamera) return;
+    this.isStartingQrCamera = true;
 
     this.stopQrCameraScanner();
 
+    if (errBox) errBox.style.display = 'none';
+    if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Initializing Camera...';
+
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      let stream = null;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
+        // Attempt 1: Ideal rear camera environment setting
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          });
+        } catch (firstErr) {
+          // Attempt 2: Fallback to simple video constraints if overconstrained
+          console.warn('First camera constraints failed, attempting fallback constraints:', firstErr);
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        }
+      } catch (err) {
+        // Attempt 3: Final fallback to default video device
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        } catch (finalErr) {
+          console.warn('Camera access denied or failed:', finalErr);
+          this.isStartingQrCamera = false;
+          if (errBox) {
+            errBox.style.display = 'flex';
+            if (errTitle) errTitle.textContent = 'Camera Access Required';
+            if (errMsg) {
+              if (finalErr.name === 'NotAllowedError' || finalErr.name === 'PermissionDeniedError') {
+                errMsg.textContent = 'Camera permission is required to scan a Premium Member Card.';
+              } else {
+                errMsg.textContent = 'Unable to access live camera stream. Please check camera permissions or type Member ID below.';
+              }
+            }
+          }
+          if (statusLbl) statusLbl.innerHTML = '⚠️ Camera permission required.';
+          return;
+        }
+      }
+
+      try {
         this.qrCameraStream = stream;
         video.srcObject = stream;
+        video.setAttribute('playsinline', 'true');
         await video.play().catch(() => {});
-        if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-camera"></i> 📷 Camera Live Scanner';
+
+        if (statusLbl) statusLbl.innerHTML = '<i class="fa-solid fa-camera"></i> 📷 Live Camera Active';
 
         if (!this.qrCanvas) {
           this.qrCanvas = document.createElement('canvas');
           this.qrCanvasCtx = this.qrCanvas.getContext('2d');
         }
 
+        this.isScanProcessing = false;
+
         const scanFrame = () => {
-          if (!this.qrCameraStream || video.paused || video.ended) return;
+          if (!this.qrCameraStream || video.paused || video.ended || this.isScanProcessing) return;
 
           if (video.readyState === video.HAVE_ENOUGH_DATA) {
             try {
@@ -16597,9 +16664,10 @@ class TiffinApp {
                 const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
                   inversionAttempts: 'dontInvert'
                 });
-                if (code && code.data) {
+                if (code && code.data && code.data.trim()) {
+                  this.isScanProcessing = true;
                   this.stopQrCameraScanner();
-                  this.submitVerifyMemberQr(code.data);
+                  this.submitVerifyMemberQr(code.data.trim());
                   return;
                 }
               }
@@ -16608,11 +16676,12 @@ class TiffinApp {
               if ('BarcodeDetector' in window && !this.nativeDetector) {
                 try { this.nativeDetector = new BarcodeDetector({ formats: ['qr_code', 'code_128'] }); } catch (e) {}
               }
-              if (this.nativeDetector) {
+              if (this.nativeDetector && !this.isScanProcessing) {
                 this.nativeDetector.detect(video).then(barcodes => {
-                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue && barcodes[0].rawValue.trim() && !this.isScanProcessing) {
+                    this.isScanProcessing = true;
                     this.stopQrCameraScanner();
-                    this.submitVerifyMemberQr(barcodes[0].rawValue);
+                    this.submitVerifyMemberQr(barcodes[0].rawValue.trim());
                   }
                 }).catch(() => {});
               }
@@ -16625,15 +16694,24 @@ class TiffinApp {
         this.qrScanAnimFrame = requestAnimationFrame(scanFrame);
 
       } catch (err) {
-        console.warn('Camera stream error or permission denied:', err);
-        if (statusLbl) statusLbl.innerHTML = '⚠️ Camera inactive. Type Member ID or upload QR photo below.';
+        console.warn('Video element play error:', err);
+      } finally {
+        this.isStartingQrCamera = false;
       }
-    } else if (statusLbl) {
-      statusLbl.innerHTML = 'ℹ️ Camera not supported. Type Member ID or upload QR photo below.';
+    } else {
+      this.isStartingQrCamera = false;
+      if (errBox) {
+        errBox.style.display = 'flex';
+        if (errTitle) errTitle.textContent = 'Camera Not Supported';
+        if (errMsg) errMsg.textContent = 'Camera access is not supported by this browser or connection. Please type Member ID below.';
+      }
+      if (statusLbl) statusLbl.innerHTML = 'ℹ️ Camera not supported.';
     }
   }
 
   stopQrCameraScanner() {
+    this.isStartingQrCamera = false;
+    this.isScanProcessing = false;
     if (this.qrScanAnimFrame) {
       cancelAnimationFrame(this.qrScanAnimFrame);
       this.qrScanAnimFrame = null;
@@ -16643,7 +16721,9 @@ class TiffinApp {
       this.qrScanInterval = null;
     }
     if (this.qrCameraStream) {
-      this.qrCameraStream.getTracks().forEach(t => t.stop());
+      try {
+        this.qrCameraStream.getTracks().forEach(t => t.stop());
+      } catch (e) {}
       this.qrCameraStream = null;
     }
     const video = document.getElementById('videoOwnerQrScan');
@@ -16719,14 +16799,30 @@ class TiffinApp {
       resultView.style.setProperty('display', 'block', 'important');
       if (btnScanAnother) btnScanAnother.style.setProperty('display', 'inline-block', 'important');
 
+      // Member not found in database
+      if (json.status_code === 'NOT_FOUND') {
+        resultView.innerHTML = `
+          <div style="background: rgba(255, 152, 0, 0.12); border: 2px dashed #FF9800; border-radius: 16px; padding: 22px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.3rem; font-weight: 900; color: #FFB74D; margin-bottom: 10px;">
+              Member Card Not Found
+            </div>
+            <p style="color: var(--text-muted, #AAA); font-size: 0.92rem; margin: 0; line-height: 1.5;">
+              ${json.message || 'No Premium Food Member Card record found for this identifier.'}
+            </p>
+          </div>
+        `;
+        return;
+      }
+
+      // Invalid QR code or non-member QR
       if (!json.success || json.status_code === 'INVALID' || !json.member) {
         resultView.innerHTML = `
-          <div style="background: rgba(255, 87, 34, 0.12); border: 2px dashed #FF5722; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
-            <div style="font-size: 1.25rem; font-weight: 800; color: #FF7043; margin-bottom: 10px; text-transform: uppercase;">
-              ⚠️ INVALID MEMBER CARD
+          <div style="background: rgba(255, 87, 34, 0.12); border: 2px dashed #FF5722; border-radius: 16px; padding: 22px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.3rem; font-weight: 900; color: #FF7043; margin-bottom: 10px;">
+              Invalid Premium Member Card
             </div>
-            <p style="color: var(--text-muted, #AAA); font-size: 0.9rem; margin: 0;">
-              ${json.message || 'No valid membership record found for this QR code.'}
+            <p style="color: var(--text-muted, #AAA); font-size: 0.92rem; margin: 0; line-height: 1.5;">
+              ${json.message || 'QR code could not be verified.'}
             </p>
           </div>
         `;
@@ -16738,57 +16834,64 @@ class TiffinApp {
 
       if (status_code === 'ACTIVE') {
         resultView.innerHTML = `
-          <div style="background: rgba(76, 175, 80, 0.12); border: 2px solid #4CAF50; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
-            <div style="font-size: 1.3rem; font-weight: 800; color: #4CAF50; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
-              🟢 MEMBER ACTIVE
+          <div style="background: rgba(76, 175, 80, 0.12); border: 2px solid #4CAF50; border-radius: 16px; padding: 22px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.35rem; font-weight: 900; color: #4CAF50; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span>✓</span> PREMIUM MEMBER
             </div>
-            <div style="font-size: 0.95rem; line-height: 1.8; margin-bottom: 14px; color: #FFF; text-align: left; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 12px;">
+            <div style="font-size: 1.1rem; font-weight: 800; color: #81C784; margin-bottom: 16px; text-transform: uppercase;">
+              ACTIVE
+            </div>
+            <div style="font-size: 0.95rem; line-height: 1.9; margin-bottom: 16px; color: #FFF; text-align: left; background: rgba(0,0,0,0.35); padding: 16px; border-radius: 14px; border: 1px solid rgba(76,175,80,0.3);">
               <div><strong>Member Name:</strong> ${m.customer_name}</div>
               <div><strong>Member ID:</strong> <span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800;">${m.member_id}</span></div>
               <div style="margin-top: 8px;"><strong>Valid From:</strong> ${m.valid_from}</div>
               <div><strong>Valid Until:</strong> ${m.valid_until}</div>
+              <div style="margin-top: 8px; font-weight: 800; color: #FFD700;"><strong>Days Remaining:</strong> ${m.days_remaining} ${m.days_remaining === 1 ? 'day' : 'days'}</div>
             </div>
-            <div style="background: rgba(76, 175, 80, 0.2); border-radius: 10px; padding: 10px; font-weight: 800; color: #81C784; font-size: 0.92rem; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-              ✓ DATE VERIFIED
-            </div>
-            <p style="margin: 8px 0 0 0; font-size: 0.85rem; color: var(--text-muted, #AAA);">
-              Membership is currently valid.
+            <p style="margin: 0; font-size: 0.92rem; font-weight: 700; color: #81C784;">
+              "Membership is currently active."
             </p>
           </div>
         `;
       } else if (status_code === 'EXPIRED') {
         resultView.innerHTML = `
-          <div style="background: rgba(244, 67, 54, 0.12); border: 2px solid #F44336; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
-            <div style="font-size: 1.3rem; font-weight: 800; color: #EF5350; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
-              🔴 MEMBERSHIP EXPIRED
+          <div style="background: rgba(244, 67, 54, 0.12); border: 2px solid #F44336; border-radius: 16px; padding: 22px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.35rem; font-weight: 900; color: #EF5350; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span>✕</span> PREMIUM MEMBER
             </div>
-            <div style="font-size: 0.95rem; line-height: 1.8; margin-bottom: 14px; color: #FFF; text-align: left; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 12px;">
+            <div style="font-size: 1.1rem; font-weight: 800; color: #E57373; margin-bottom: 16px; text-transform: uppercase;">
+              EXPIRED
+            </div>
+            <div style="font-size: 0.95rem; line-height: 1.9; margin-bottom: 16px; color: #FFF; text-align: left; background: rgba(0,0,0,0.35); padding: 16px; border-radius: 14px; border: 1px solid rgba(244,67,54,0.3);">
               <div><strong>Member Name:</strong> ${m.customer_name}</div>
               <div><strong>Member ID:</strong> <span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800;">${m.member_id}</span></div>
               <div style="margin-top: 8px;"><strong>Valid From:</strong> ${m.valid_from}</div>
               <div><strong>Valid Until:</strong> ${m.valid_until}</div>
-              <div><strong style="color: #EF5350;">Expired On:</strong> ${m.expired_on || m.valid_until}</div>
+              <div style="margin-top: 8px; color: #EF5350; font-weight: 800;"><strong>Expired On:</strong> ${m.expired_on || m.valid_until}</div>
             </div>
-            <div style="background: rgba(244, 67, 54, 0.2); border-radius: 10px; padding: 10px; font-weight: 800; color: #E57373; font-size: 0.92rem; margin-top: 10px;">
-              Membership is no longer valid.
-            </div>
+            <p style="margin: 0; font-size: 0.92rem; font-weight: 700; color: #E57373;">
+              "Membership has expired."
+            </p>
           </div>
         `;
       } else if (status_code === 'NOT_YET_ACTIVE') {
         resultView.innerHTML = `
-          <div style="background: rgba(255, 152, 0, 0.12); border: 2px solid #FF9800; border-radius: 16px; padding: 20px; text-align: center; color: #FFF; margin-top: 10px;">
-            <div style="font-size: 1.3rem; font-weight: 800; color: #FFB74D; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
-              🟡 MEMBERSHIP NOT YET ACTIVE
+          <div style="background: rgba(255, 152, 0, 0.12); border: 2px solid #FF9800; border-radius: 16px; padding: 22px; text-align: center; color: #FFF; margin-top: 10px;">
+            <div style="font-size: 1.35rem; font-weight: 900; color: #FFB74D; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span>⚠</span> PREMIUM MEMBER
             </div>
-            <div style="font-size: 0.95rem; line-height: 1.8; margin-bottom: 14px; color: #FFF; text-align: left; background: rgba(0,0,0,0.3); padding: 14px; border-radius: 12px;">
+            <div style="font-size: 1.1rem; font-weight: 800; color: #FFB74D; margin-bottom: 16px; text-transform: uppercase;">
+              NOT YET ACTIVE
+            </div>
+            <div style="font-size: 0.95rem; line-height: 1.9; margin-bottom: 16px; color: #FFF; text-align: left; background: rgba(0,0,0,0.35); padding: 16px; border-radius: 14px; border: 1px solid rgba(255,152,0,0.3);">
               <div><strong>Member Name:</strong> ${m.customer_name}</div>
               <div><strong>Member ID:</strong> <span style="font-family: monospace; color: var(--accent-gold, #FFD700); font-weight: 800;">${m.member_id}</span></div>
               <div style="margin-top: 8px;"><strong>Valid From:</strong> ${m.valid_from}</div>
               <div><strong>Valid Until:</strong> ${m.valid_until}</div>
             </div>
-            <div style="background: rgba(255, 152, 0, 0.2); border-radius: 10px; padding: 10px; font-weight: 800; color: #FFB74D; font-size: 0.92rem; margin-top: 10px;">
-              This membership has not started yet.
-            </div>
+            <p style="margin: 0; font-size: 0.92rem; font-weight: 700; color: #FFB74D;">
+              "Membership has not started yet."
+            </p>
           </div>
         `;
       }

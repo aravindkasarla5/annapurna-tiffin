@@ -5825,6 +5825,25 @@ app.delete('/api/food-member/owner/applications/all', authenticateToken, require
   }
 });
 
+// 6D. POST /api/food-member/owner/verify-qr - Owner-Only QR Code Verification
+app.post('/api/food-member/owner/verify-qr', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { qr_code, member_id } = req.body;
+    const input = (qr_code || member_id || '').toString().trim();
+    const result = await db.verifyFoodMemberQr(input);
+    res.json(result);
+  } catch (err) {
+    console.error('Owner Verify QR Error:', err);
+    res.status(500).json({
+      success: false,
+      is_valid: false,
+      status_code: 'INVALID',
+      title: 'Invalid Premium Member Card',
+      message: 'QR code could not be verified: ' + (err.message || '')
+    });
+  }
+});
+
 // 7. GET /api/food-member/verify/:code - Public Verification Endpoint
 app.get('/api/food-member/verify/:code', async (req, res) => {
   try {

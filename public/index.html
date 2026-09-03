@@ -2498,6 +2498,8 @@
           <div class="owner-tickets-grid" id="ownerTicketsCardsContainer">
             <!-- Rendered dynamically by JS -->
           </div>
+        </div>
+      </div>
     </section>
 
     <!-- Owner Customer Management Section -->
@@ -2611,7 +2613,7 @@
             </div>
             
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <button type="button" id="btnOwnerOpenQrScanner" class="member-filter-btn" style="color: #4CAF50 !important; border-color: #4CAF50 !important; background: rgba(76, 175, 80, 0.15) !important; font-weight: 700; padding: 8px 16px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;" onclick="if(window.app) window.app.openFoodMemberQrScannerModal()" title="Scan & Verify Member Card QR Code">
+              <button type="button" id="btnOwnerOpenQrScanner" class="member-filter-btn" style="color: #4CAF50 !important; border-color: #4CAF50 !important; background: rgba(76, 175, 80, 0.15) !important; font-weight: 700; padding: 8px 16px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;" onclick="app.openFoodMemberQrScannerModal()" title="Scan & Verify Member Card QR Code">
                 <i class="fa-solid fa-qrcode"></i> 📷 QR Scanner
               </button>
               <button type="button" class="member-filter-btn" style="color: #EF5350 !important; border-color: #EF5350 !important; background: rgba(239, 83, 80, 0.1) !important; font-weight: 700; padding: 8px 16px;" onclick="app.openDeleteAllMemberAppsModal()" title="Clear All Membership Records">
@@ -4451,7 +4453,7 @@
   </div>
 
   <!-- Owner Customer Profile & Details Modal -->
-  <div class="modal-backdrop" id="ownerCustomerDetailsModalBackdrop" onclick="app.closeCustomerDetailsModal()">
+  <div class="modal-backdrop hidden" id="ownerCustomerDetailsModalBackdrop" onclick="app.closeCustomerDetailsModal()">
     <div class="modal-card"
       style="max-width: 680px; width: 94%; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;"
       onclick="event.stopPropagation()">
@@ -4544,7 +4546,7 @@
   </div>
 
   <!-- Owner Customer Action Confirmation Modal -->
-  <div class="modal-backdrop" id="ownerCustomerConfirmModalBackdrop" onclick="app.closeCustomerConfirmModal()">
+  <div class="modal-backdrop hidden" id="ownerCustomerConfirmModalBackdrop" onclick="app.closeCustomerConfirmModal()">
     <div class="modal-card" style="max-width: 460px; width: 92%; text-align: center; padding: 1.5rem;"
       onclick="event.stopPropagation()">
       <div id="confirmModalIconBox" style="font-size: 3rem; margin-bottom: 0.75rem; color: #FF5252;">
@@ -4589,7 +4591,7 @@
   </div>
 
   <!-- Owner Display Generated Temporary Password Modal -->
-  <div class="modal-backdrop" id="ownerTempPasswordModalBackdrop" onclick="app.closeOwnerTempPasswordModal()">
+  <div class="modal-backdrop hidden" id="ownerTempPasswordModalBackdrop" onclick="app.closeOwnerTempPasswordModal()">
     <div class="modal-card" style="max-width: 460px; width: 92%; text-align: center; padding: 1.75rem;"
       onclick="event.stopPropagation()">
       <div style="font-size: 3rem; margin-bottom: 0.5rem; color: #4CAF50;">
@@ -4624,7 +4626,7 @@
   </div>
 
   <!-- Customer Forced Change Password Modal -->
-  <div class="modal-backdrop" id="forcedChangePasswordModalBackdrop" style="z-index: 10005;">
+  <div class="modal-backdrop hidden" id="forcedChangePasswordModalBackdrop" style="z-index: 10005;">
     <div class="modal-card" style="max-width: 440px; width: 92%; padding: 1.75rem;" onclick="event.stopPropagation()">
       <div style="text-align: center; margin-bottom: 1.25rem;">
         <div style="font-size: 2.8rem; color: var(--accent-gold); margin-bottom: 0.5rem;">
@@ -4700,7 +4702,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Smart Order Review & Rating Modal -->
-  <div class="modal-backdrop" id="orderReviewModalBackdrop" onclick="app.closeOrderReviewModal()">
+  <div class="modal-backdrop hidden" id="orderReviewModalBackdrop" onclick="app.closeOrderReviewModal()">
     <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 500px;">
       <div class="modal-header">
         <h3 style="color: var(--accent-gold); font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
@@ -4778,7 +4780,7 @@
   </div>
 
   <!-- Owner Reply to Customer Review Modal -->
-  <div class="modal-backdrop" id="ownerReviewReplyModalBackdrop" onclick="app.closeReviewReplyModal()">
+  <div class="modal-backdrop hidden" id="ownerReviewReplyModalBackdrop" onclick="app.closeReviewReplyModal()">
     <div class="modal-card" style="max-width: 520px;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <h3><i class="fa-solid fa-reply" style="color: var(--accent-gold);"></i> Reply to Customer Review</h3>
@@ -4809,7 +4811,7 @@
   </div>
 
   <!-- Hotel Owner Rejection Reason Modal -->
-  <div class="modal-backdrop" id="rejectOrderModalBackdrop" onclick="app.closeRejectOrderModal()">
+  <div class="modal-backdrop hidden" id="rejectOrderModalBackdrop" onclick="app.closeRejectOrderModal()">
     <div class="modal-card" style="max-width: 500px;" onclick="event.stopPropagation()">
       <div class="modal-header">
         <h3 style="color: #FF5252; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
@@ -4867,7 +4869,7 @@
   </div>
 
   <!-- Customer Edit / Modify Order Modal -->
-  <div class="modal-backdrop" id="editOrderModalBackdrop" onclick="app.closeEditOrderModal()">
+  <div class="modal-backdrop hidden" id="editOrderModalBackdrop" onclick="app.closeEditOrderModal()">
     <div class="modal-card" style="max-width: 520px; width: 92%; border: 1.5px solid var(--accent-gold);"
       onclick="event.stopPropagation()">
       <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
@@ -4926,7 +4928,7 @@
   </div>
 
   <!-- Customer Cancel Order Confirmation Modal -->
-  <div class="modal-backdrop" id="cancelOrderModalBackdrop" onclick="app.closeCancelOrderModal()">
+  <div class="modal-backdrop hidden" id="cancelOrderModalBackdrop" onclick="app.closeCancelOrderModal()">
     <div class="modal-card" style="max-width: 480px; width: 92%; border: 1.5px solid #E53935;"
       onclick="event.stopPropagation()">
       <div class="modal-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
@@ -4992,7 +4994,7 @@
       </div>
     </div>
     <!-- PWA Install Manual Instructions Modal (Fallback for unsupported browsers/devices) -->
-    <div class="modal-backdrop" id="pwaInstallModal" onclick="app.closePwaInstallModal()">
+    <div class="modal-backdrop hidden" id="pwaInstallModal" onclick="app.closePwaInstallModal()">
       <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 420px; text-align: center;">
         <div class="modal-header">
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -5048,8 +5050,10 @@
           </button>
         </div>
       </div>
+    </div>
+
     <!-- View Payment Proof Screenshot / QR Zoom Modal -->
-    <div class="modal-backdrop" id="modalViewPaymentProof" onclick="if(event.target === this) app.closeViewPaymentProofModal()">
+    <div class="modal-backdrop hidden" id="modalViewPaymentProof" onclick="if(event.target === this) app.closeViewPaymentProofModal()">
       <div class="modal-card" style="max-width: 650px; width: 92%; padding: 20px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 10px;">
           <h3 style="margin: 0; font-size: 1.15rem; color: var(--accent-gold, #FFD700);"><i class="fa-solid fa-image"></i> Payment Proof Screenshot</h3>
@@ -5086,7 +5090,7 @@
     </div>
 
     <!-- Reject Payment Proof Modal (Owner) -->
-    <div class="modal-backdrop" id="modalRejectMemberPayment" onclick="if(event.target === this) app.closeRejectPaymentModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999;">
+    <div class="modal-backdrop hidden" id="modalRejectMemberPayment" onclick="if(event.target === this) app.closeRejectPaymentModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999;">
       <div class="modal-card" style="max-width: 460px; width: 92%; padding: 20px; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 16px;" onclick="event.stopPropagation()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 10px;">
           <h3 style="margin: 0; font-size: 1.15rem; color: #EF5350;"><i class="fa-solid fa-circle-xmark"></i> Reject Payment Proof</h3>
@@ -5147,7 +5151,7 @@
     </div>
 
     <!-- Owner Food Member QR Verification Modal -->
-    <div class="modal-backdrop hidden" id="modalOwnerFoodMemberQrScanner" onclick="if(event.target === this) app.closeFoodMemberQrScannerModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);">
+    <div class="modal-backdrop hidden" id="modalOwnerFoodMemberQrScanner" onclick="if(event.target === this) app.closeFoodMemberQrScannerModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);">
       <div class="modal-card" style="max-width: 480px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 22px; background: var(--bg-surface-elevated, #1E1E2E); color: #FFF; border-radius: 18px; box-shadow: 0 12px 40px rgba(0,0,0,0.6);" onclick="event.stopPropagation()">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 12px;">
           <h3 style="margin: 0; font-size: 1.2rem; color: var(--accent-gold, #FFD700); display: flex; align-items: center; gap: 8px;">
@@ -5159,17 +5163,29 @@
         <!-- Input / Camera Form Container -->
         <div id="viewOwnerQrScannerInput" style="display: block;">
           <!-- Live Camera Video Viewfinder -->
-          <div style="position: relative; width: 100%; height: 210px; background: #000; border-radius: 14px; overflow: hidden; margin-bottom: 16px; border: 2px solid var(--accent-gold, #FFD700); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div style="position: relative; width: 100%; height: 230px; background: #000; border-radius: 14px; overflow: hidden; margin-bottom: 16px; border: 2px solid var(--accent-gold, #FFD700); display: flex; flex-direction: column; align-items: center; justify-content: center;">
             <video id="videoOwnerQrScan" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;"></video>
             
             <!-- Animated QR Scanner Target Frame -->
-            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 130px; height: 130px; border: 2px dashed #00E676; border-radius: 12px; box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.45); pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div id="qrScanTargetFrame" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 140px; height: 140px; border: 2px dashed #00E676; border-radius: 12px; box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.45); pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 5;">
               <span style="font-size: 0.72rem; color: #00E676; font-weight: 800; text-shadow: 0 1px 4px #000; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 6px;">Align QR Code</span>
             </div>
 
+            <!-- Permission Error Overlay Box -->
+            <div id="boxCameraPermissionError" style="display: none; position: absolute; inset: 0; background: rgba(20, 20, 30, 0.95); z-index: 10; flex-direction: column; align-items: center; justify-content: center; padding: 18px; text-align: center;">
+              <i class="fa-solid fa-camera-slash" style="font-size: 2.2rem; color: #EF5350; margin-bottom: 8px;"></i>
+              <div id="lblCameraErrorTitle" style="font-weight: 800; font-size: 0.95rem; color: #FFF; margin-bottom: 6px;">Camera Access Blocked</div>
+              <p id="lblCameraErrorMsg" style="font-size: 0.82rem; color: #AAA; margin: 0 0 12px 0; line-height: 1.4;">
+                Camera permission is required to scan a Premium Member Card.
+              </p>
+              <button type="button" id="btnRetryCameraAccess" onclick="app.startQrCameraScanner()" style="padding: 8px 16px; border-radius: 8px; background: linear-gradient(135deg, #FFD700, #FFA000); color: #1A1A2E; font-weight: 800; font-size: 0.84rem; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                <i class="fa-solid fa-rotate-right"></i> Try Again / Allow Camera Access
+              </button>
+            </div>
+
             <!-- Camera Status Indicator -->
-            <div id="lblQrCameraStatus" style="position: absolute; bottom: 8px; font-size: 0.78rem; color: #FFF; background: rgba(0,0,0,0.75); padding: 4px 12px; border-radius: 12px; display: flex; align-items: center; gap: 6px;">
-              <i class="fa-solid fa-camera"></i> 📷 Camera Scanner Active
+            <div id="lblQrCameraStatus" style="position: absolute; bottom: 8px; font-size: 0.78rem; color: #FFF; background: rgba(0,0,0,0.75); padding: 4px 12px; border-radius: 12px; display: flex; align-items: center; gap: 6px; z-index: 6;">
+              <i class="fa-solid fa-camera"></i> 📷 Initializing Camera...
             </div>
           </div>
 
@@ -5262,7 +5278,7 @@
     </div>
 
     <!-- 🛡️ Security Event Details Modal (Owner) -->
-    <div class="modal-backdrop hidden" id="modalSecurityEventDetails" onclick="if(event.target === this) app.closeSecurityEventDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+    <div class="modal-backdrop hidden" id="modalSecurityEventDetails" onclick="if(event.target === this) app.closeSecurityEventDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
       <div class="modal-card" style="max-width: 600px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
         <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
           <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
@@ -5295,7 +5311,7 @@
     </div>
 
     <!-- 💸 Customer Refund Details Modal -->
-    <div class="modal-backdrop hidden" id="modalCustomerRefundDetails" onclick="if(event.target === this) app.closeCustomerRefundDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+    <div class="modal-backdrop hidden" id="modalCustomerRefundDetails" onclick="if(event.target === this) app.closeCustomerRefundDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
       <div class="modal-card" style="max-width: 580px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
         <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
           <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
@@ -5317,7 +5333,7 @@
     </div>
 
     <!-- 🧾 Refund Receipt Printable Modal -->
-    <div class="modal-backdrop hidden" id="modalRefundReceipt" onclick="if(event.target === this) app.closeRefundReceiptModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+    <div class="modal-backdrop hidden" id="modalRefundReceipt" onclick="if(event.target === this) app.closeRefundReceiptModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
       <div class="modal-card" style="max-width: 480px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: #FFF; color: #111; border-radius: 16px; box-shadow: 0 12px 36px rgba(0,0,0,0.4);" onclick="event.stopPropagation()">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px dashed #DDD; padding-bottom: 1rem; margin-bottom: 1rem;">
           <div>
@@ -5343,7 +5359,7 @@
     </div>
 
     <!-- 👨‍💼 Owner Refund Details & Action Modal -->
-    <div class="modal-backdrop hidden" id="modalOwnerRefundDetails" onclick="if(event.target === this) app.closeOwnerRefundDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
+    <div class="modal-backdrop hidden" id="modalOwnerRefundDetails" onclick="if(event.target === this) app.closeOwnerRefundDetailsModal()" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.75);">
       <div class="modal-card" style="max-width: 620px; width: 92%; max-height: 90vh; overflow-y: auto; padding: 24px; background: var(--card-bg, #1E1E2E); color: #FFF; border-radius: 16px; border: 1px solid var(--border-color);" onclick="event.stopPropagation()">
         <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
           <h3 style="margin: 0; font-size: 1.25rem; color: #FFF; display: flex; align-items: center; gap: 8px;">
@@ -5439,7 +5455,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=30"></script>
+    <script src="/js/app.js?v=32"></script>
 </body>
 
 </html>

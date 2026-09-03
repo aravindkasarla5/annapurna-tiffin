@@ -1367,11 +1367,15 @@ h1, h2, h3, h4, h5, h6 {
   transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
-.modal-backdrop.open, .modal-backdrop.visible, .modal-backdrop.active {
+.modal-backdrop.open, .modal-backdrop.visible, .modal-backdrop.active,
+.modal-backdrop#modalOwnerFoodMemberQrScanner.open,
+.modal-backdrop#modalOwnerFoodMemberQrScanner.visible,
+.modal-backdrop#modalOwnerFoodMemberQrScanner.active {
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
   display: flex !important;
+  z-index: 9999999 !important;
 }
 
 .modal-card {
@@ -5479,11 +5483,15 @@ body.guest-mode #btnMobileMenuToggle {
   transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
-.modal-backdrop.open, .modal-backdrop.visible, .modal-backdrop.active {
+.modal-backdrop.open, .modal-backdrop.visible, .modal-backdrop.active,
+.modal-backdrop#modalOwnerFoodMemberQrScanner.open,
+.modal-backdrop#modalOwnerFoodMemberQrScanner.visible,
+.modal-backdrop#modalOwnerFoodMemberQrScanner.active {
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
   display: flex !important;
+  z-index: 9999999 !important;
 }
 
 .modal-card {
