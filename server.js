@@ -4972,6 +4972,22 @@ async function logMemberCardAudit({ customer_id, member_id, action, actor_role, 
   }
 }
 
+function parseDateComponents(dateInput) {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date) {
+    return new Date(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate());
+  }
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return new Date();
+  if (typeof dateInput === 'string' && dateInput.includes('T')) {
+    const parts = dateInput.split('T')[0].split('-');
+    if (parts.length === 3) {
+      return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    }
+  }
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 // =========================================================================
 // AUTOMATIC & IDEMPOTENT PREMIUM MEMBER CARD EXPIRY REMINDERS ENGINE
 // =========================================================================
@@ -5190,7 +5206,7 @@ async function calculateCustomerPremiumSavings(customerId) {
 
     if (nowMs < latestValidFrom.getTime()) {
       currentCardStatus = 'NOT_STARTED';
-    } else if (nowMs <= latestValidUntilEnd.getTime() && latestCard.status === 'ACTIVE') {
+    } else if (nowMs <= latestValidUntilEnd.getTime()) {
       isCurrentActive = true;
       currentCardStatus = 'ACTIVE';
       const todayStart = parseDateComponents(now);

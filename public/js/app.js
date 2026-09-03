@@ -1143,14 +1143,47 @@ class TiffinApp {
   // AUTHENTICATION & ROLE MANAGEMENT
   // =========================================================================
 
+  clearAuthFormInputs() {
+    const loginIdent = document.getElementById('loginIdentifier');
+    const loginMob = document.getElementById('loginMobile');
+    const loginPass = document.getElementById('loginPassword');
+
+    if (loginIdent) loginIdent.value = '';
+    if (loginMob) loginMob.value = '';
+    if (loginPass) loginPass.value = '';
+
+    const regName = document.getElementById('regName');
+    const regMobile = document.getElementById('regMobile');
+    const regEmail = document.getElementById('regEmail');
+    const regPassword = document.getElementById('regPassword');
+    const regConfirmPassword = document.getElementById('regConfirmPassword');
+    const regAddress = document.getElementById('regAddress');
+    const regReferralCode = document.getElementById('regReferralCode');
+
+    if (regName) regName.value = '';
+    if (regMobile) regMobile.value = '';
+    if (regEmail) regEmail.value = '';
+    if (regPassword) regPassword.value = '';
+    if (regConfirmPassword) regConfirmPassword.value = '';
+    if (regAddress) regAddress.value = '';
+    if (regReferralCode) regReferralCode.value = '';
+
+    const forgotIdent = document.getElementById('forgotIdentifier');
+    if (forgotIdent) forgotIdent.value = '';
+  }
+
   openAuthModal(mode = 'LOGIN') {
+    this.clearAuthFormInputs();
     this.authMode = mode;
     this.setAuthMode(mode);
     this.toggleAuthModal(true);
   }
 
   toggleAuthModal(open = true) {
-    document.getElementById('authModalBackdrop').classList.toggle('open', open);
+    document.getElementById('authModalBackdrop')?.classList.toggle('open', open);
+    if (!open) {
+      this.clearAuthFormInputs();
+    }
   }
 
   setAuthMode(mode) {
@@ -1236,6 +1269,8 @@ class TiffinApp {
         this.currentUser = json.user;
         this.authToken = json.token;
         this.currentRole = json.user.role;
+
+        this.clearAuthFormInputs();
 
         localStorage.setItem('tiffin_token', json.token);
         localStorage.setItem('tiffin_user', JSON.stringify(json.user));
@@ -1395,6 +1430,8 @@ class TiffinApp {
         this.currentUser = json.user;
         this.authToken = json.token;
         this.currentRole = json.user.role;
+
+        this.clearAuthFormInputs();
 
         localStorage.setItem('tiffin_token', json.token);
         localStorage.setItem('tiffin_user', JSON.stringify(json.user));
@@ -1770,6 +1807,7 @@ class TiffinApp {
   }
 
   logout() {
+    this.clearAuthFormInputs();
     if (this.closeFoodMemberQrScannerModal) {
       this.closeFoodMemberQrScannerModal();
     }
@@ -12294,9 +12332,9 @@ class TiffinApp {
     let lifetimeHTML = '';
     if (st.lifetime_orders > st.current_card_orders || st.lifetime_saved > st.current_card_saved) {
       lifetimeHTML = `
-        <div style="background: rgba(255, 255, 255, 0.03); border-top: 1px dashed rgba(255, 255, 255, 0.12); padding-top: 12px; margin-top: 14px; display: flex; justify-content: space-around; font-size: 0.88rem; color: #E0E0E0; flex-wrap: wrap; gap: 10px;">
-          <div>🏆 <strong>Lifetime Premium Orders:</strong> ${st.lifetime_orders}</div>
-          <div>🏆 <strong>Lifetime Total Saved:</strong> <strong style="color: #FFD700;">₹${st.lifetime_saved}</strong></div>
+        <div style="background: rgba(255, 255, 255, 0.04); border-top: 1px dashed rgba(255, 215, 0, 0.25); padding-top: 14px; margin-top: 16px; display: flex; justify-content: space-around; font-size: 0.9rem; color: #E0E0E0; flex-wrap: wrap; gap: 12px; border-radius: 10px;">
+          <div>🏆 <strong>Lifetime Premium Orders:</strong> <span style="color: #FFF; font-weight: 800; font-size: 1.05rem;">${st.lifetime_orders}</span></div>
+          <div>🏆 <strong>Lifetime Total Saved:</strong> <span style="color: #FFD700; font-weight: 800; font-size: 1.05rem;">₹${st.lifetime_saved}</span></div>
         </div>
       `;
     }
@@ -12305,15 +12343,24 @@ class TiffinApp {
       ? new Date(st.current_card_valid_until).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : '';
 
+    const titleText = isExpired ? 'PREMIUM MEMBERSHIP EXPIRED' : 'PREMIUM MEMBER';
+    const titleIcon = isExpired ? 'fa-solid fa-clock-rotate-left' : 'fa-solid fa-crown';
+    const badgeText = isExpired ? 'Membership Expired' : 'Keep enjoying your Premium benefits!';
+    const badgeStyle = isExpired 
+      ? 'color: #EF5350; background: rgba(239, 83, 80, 0.12); border: 1px solid rgba(239, 83, 80, 0.3);'
+      : 'color: #4CAF50; background: rgba(76, 175, 80, 0.12); border: 1px solid rgba(76, 175, 80, 0.3);';
+
+    const cardTitlePrefix = (st.lifetime_orders > st.current_card_orders || st.lifetime_saved > st.current_card_saved) ? 'Current Card ' : '';
+
     return `
       <div class="premium-savings-tracker-card" style="background: var(--bg-surface-elevated, #1E1E2E); border: 1px solid rgba(255, 215, 0, 0.35); border-radius: 18px; padding: 20px; margin-bottom: 24px; box-shadow: 0 8px 25px rgba(0,0,0,0.25); box-sizing: border-box; overflow: hidden;">
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px;">
-          <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #FFD700; display: flex; align-items: center; gap: 8px;">
-            <i class="fa-solid fa-piggy-bank"></i> 💰 Premium Savings Tracker
+          <h3 style="margin: 0; font-size: 1.2rem; font-weight: 800; color: #FFD700; display: flex; align-items: center; gap: 8px;">
+            <i class="${titleIcon}"></i> 🎟️ ${titleText}
           </h3>
-          <span style="font-size: 0.85rem; color: #4CAF50; background: rgba(76, 175, 80, 0.12); border: 1px solid rgba(76, 175, 80, 0.3); padding: 4px 12px; border-radius: 14px; font-weight: 600;">
-            Keep enjoying your Premium benefits!
+          <span style="font-size: 0.85rem; ${badgeStyle} padding: 4px 12px; border-radius: 14px; font-weight: 600;">
+            ${badgeText}
           </span>
         </div>
 
@@ -12322,26 +12369,26 @@ class TiffinApp {
           <!-- 🍽️ Premium Orders -->
           <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px 12px; text-align: center;">
             <div style="font-size: 1.6rem; margin-bottom: 4px;">🍽️</div>
-            <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Premium Orders</div>
+            <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${cardTitlePrefix}Premium Orders</div>
             <div style="font-size: 1.5rem; font-weight: 800; color: #FFF; margin-top: 2px;">${st.current_card_orders}</div>
           </div>
 
           <!-- 💰 Total Saved -->
           <div onclick="app.openPremiumSavingsBreakdownModal()" style="background: rgba(255, 215, 0, 0.06); border: 1px solid rgba(255, 215, 0, 0.4); border-radius: 14px; padding: 16px 12px; text-align: center; cursor: pointer; transition: transform 0.2s;" title="Click to view itemized savings breakdown">
             <div style="font-size: 1.6rem; margin-bottom: 4px;">💰</div>
-            <div style="font-size: 0.75rem; color: #FFD700; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">You Saved</div>
+            <div style="font-size: 0.75rem; color: #FFD700; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">${cardTitlePrefix}Total Saved</div>
             <div style="font-size: 1.5rem; font-weight: 800; color: #FFD700; margin-top: 2px;">₹${st.current_card_saved}</div>
             <div style="font-size: 0.7rem; color: #FFD700; margin-top: 4px; text-decoration: underline; font-weight: 600;">View Breakdown <i class="fa-solid fa-chevron-right" style="font-size: 0.6rem;"></i></div>
           </div>
 
-          <!-- 📅 Days Remaining -->
+          <!-- 📅 Days Remaining / Status -->
           <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 16px 12px; text-align: center;">
             <div style="font-size: 1.6rem; margin-bottom: 4px;">📅</div>
-            <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Days Remaining</div>
+            <div style="font-size: 0.75rem; color: #AAA; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">${!isExpired ? 'Days Remaining' : 'Status'}</div>
             <div style="font-size: 1.4rem; font-weight: 800; color: ${!isExpired ? '#4CAF50' : '#EF5350'}; margin-top: 2px;">
               ${!isExpired ? `${st.current_card_days_remaining} Days` : 'Expired'}
             </div>
-            ${formattedValidUntil ? `<div style="font-size: 0.7rem; color: #AAA; margin-top: 4px;">Until ${formattedValidUntil}</div>` : ''}
+            ${formattedValidUntil ? `<div style="font-size: 0.7rem; color: #AAA; margin-top: 4px;">Valid Until: ${formattedValidUntil}</div>` : ''}
           </div>
 
         </div>
@@ -12430,6 +12477,8 @@ class TiffinApp {
     // STATE 1: NO APPLICATION or EXPIRED (Allows purchase / repurchase)
     if (status === 'NO_APPLICATION') {
       container.innerHTML = `
+        ${trackerHTML}
+
         <div class="card" style="padding: 24px; border-radius: 16px; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
           <div style="text-align: center; margin-bottom: 24px;">
             <span style="background: rgba(255, 215, 0, 0.15); color: var(--accent-gold, #FFD700); padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -12475,6 +12524,8 @@ class TiffinApp {
       const isPayVerified = application && application.payment_status === 'VERIFIED';
 
       container.innerHTML = `
+        ${trackerHTML}
+
         <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
           
           <div style="width: 70px; height: 70px; background: ${isPayVerified ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 152, 0, 0.15)'}; color: ${isPayVerified ? '#4CAF50' : '#FB8C00'}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
@@ -12677,6 +12728,8 @@ class TiffinApp {
       const phone = this.settings?.contact_phone || '9392874900';
       const cleanPhone = phone.replace(/^\+91/, '').replace(/\s+/g, '');
       container.innerHTML = `
+        ${trackerHTML}
+
         <div class="card" style="padding: 28px; border-radius: 16px; text-align: center; background: var(--bg-surface-elevated, #1E1E2E); color: var(--text-main, #FFF); border: 1px solid var(--border-color, #333); box-shadow: 0 4px 20px rgba(0,0,0,0.15); box-sizing: border-box; overflow-wrap: break-word; word-break: break-word;">
           <div style="width: 70px; height: 70px; background: rgba(244, 67, 54, 0.15); color: #E53935; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; margin: 0 auto 20px auto;">
             ❌
