@@ -1026,7 +1026,7 @@ async function executeTransaction(fn) {
 async function getAllAddons(includeDisabled = false) {
   const sql = includeDisabled 
     ? `SELECT * FROM add_ons ORDER BY display_order ASC, created_at DESC;`
-    : `SELECT * FROM add_ons WHERE enabled = true ORDER BY display_order ASC, created_at DESC;`;
+    : `SELECT * FROM add_ons WHERE enabled = true AND available = true ORDER BY display_order ASC, created_at DESC;`;
   const res = await query(sql);
   return res.rows || [];
 }

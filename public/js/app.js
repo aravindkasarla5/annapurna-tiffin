@@ -254,6 +254,7 @@ class TiffinApp {
 
     await this.fetchSettings();
     await this.fetchMenu();
+    await this.fetchAvailableAddons();
     await this.fetchFaqs();
 
     if (this.currentUser) {
@@ -4439,6 +4440,7 @@ class TiffinApp {
     if (elCheckoutGrand) elCheckoutGrand.innerText = `₹${grandTotal}`;
 
     this.updatePhonePeAmountDisplay();
+    this.renderCustomerAddonsWidget();
     this.evaluateSmartCartOptimizer();
   }
 
@@ -16595,6 +16597,9 @@ class TiffinApp {
       });
     }
 
+    if (html.length > 0) {
+      html = `<div style="font-size: 0.78rem; font-weight: 700; color: #FFD54F; margin: 0.5rem 0 0.25rem 0; display: flex; align-items: center; gap: 6px;"><span>🎁</span> Bulk Savings Combo Offers</div>` + html;
+    }
     container.innerHTML = html;
   }
 
