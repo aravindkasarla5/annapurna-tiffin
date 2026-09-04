@@ -4,7 +4,7 @@
    CRITICAL: Never cache API requests, authentication, payments, or referrals!
    ========================================================================== */
 
-const CACHE_NAME = 'annapurna-tiffin-v108';
+const CACHE_NAME = 'annapurna-tiffin-v109';
 
 // Static Shell Assets to Pre-cache for Fast Loading & Offline Shell
 const STATIC_ASSETS = [
@@ -118,9 +118,9 @@ self.addEventListener('push', (event) => {
       options.body = payload.message || payload.body || options.body;
       options.icon = payload.icon || options.icon;
       options.badge = payload.badge || options.badge;
-      options.tag = payload.id || options.tag;
+      options.tag = payload.id || payload.tag || options.tag;
       options.data = payload;
-      if (!options.data.url) options.data.url = '/';
+      options.data.url = payload.action_url || payload.url || '/';
     } catch (err) {
       try {
         const rawText = event.data.text();
@@ -137,15 +137,23 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const notifData = event.notification.data || {};
+  const targetUrl = notifData.action_url || notifData.url || '/';
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url && 'focus' in client) {
+        if ('focus' in client) {
+          client.focus();
+          try {
+            if ('postMessage' in client) {
+              client.postMessage({ type: 'NOTIFICATION_CLICK', url: targetUrl, data: notifData });
+            }
+          } catch (mErr) { }
           if ('navigate' in client && targetUrl !== '/') {
             client.navigate(targetUrl);
           }
-          return client.focus();
+          return;
         }
       }
       if (clients.openWindow) {

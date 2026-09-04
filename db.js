@@ -261,6 +261,9 @@ async function initDatabase() {
       title VARCHAR(255) NOT NULL,
       message TEXT NOT NULL,
       type VARCHAR(50) DEFAULT 'INFO',
+      priority VARCHAR(50) DEFAULT 'NORMAL',
+      action_url VARCHAR(255),
+      related_order_id VARCHAR(100),
       is_read BOOLEAN DEFAULT false,
       date_time VARCHAR(100),
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -835,11 +838,17 @@ async function initDatabase() {
         await query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(100) DEFAULT 'ONLINE';`);
         await query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
+        await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'NORMAL';`);
+        await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS action_url VARCHAR(255);`);
+        await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_order_id VARCHAR(100);`);
       } catch (aErr) {
         console.warn('PostgreSQL DDL Notice:', aErr.message);
       }
     } else {
       const safeAlter = async (sql) => { try { await query(sql); } catch(e) {} };
+      await safeAlter(`ALTER TABLE notifications ADD COLUMN priority TEXT DEFAULT 'NORMAL';`);
+      await safeAlter(`ALTER TABLE notifications ADD COLUMN action_url TEXT;`);
+      await safeAlter(`ALTER TABLE notifications ADD COLUMN related_order_id TEXT;`);
       await safeAlter(`ALTER TABLE subscriptions ADD COLUMN payment_method TEXT DEFAULT 'ONLINE';`);
       await safeAlter(`ALTER TABLE subscriptions ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE subscriptions ADD COLUMN payment_screenshot TEXT;`);

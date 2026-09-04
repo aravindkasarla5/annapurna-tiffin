@@ -273,22 +273,23 @@ const heartbeatInterval = setInterval(() => {
 }, 30000);
 
 // Master Centralized Notification Engine Service (WebSocket + Web Push + PostgreSQL)
-async function createAndDispatchNotification({
-  target_role = 'CUSTOMER', // 'OWNER' or 'CUSTOMER'
-  customer_id = null,
-  title,
-  message,
-  type = 'ORDER', // 'ORDER', 'QUEUE', 'PAYMENT', 'PROMOTION', 'SYSTEM', 'SUPPORT', 'MENU', 'ACCOUNT'
-  priority = 'NORMAL',
-  action_url = null,
-  related_order_id = null
-}) {
+async function createAndDispatchNotification(notifData, dbClient = db) {
   try {
+    if (!notifData) return null;
+    const title = notifData.title || 'Notification';
+    const message = notifData.message || '';
     if (!title || !message) return null;
 
-    const notifId = 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
-    const dateTimeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-    const nowIso = new Date().toISOString();
+    const target_role = notifData.target_role || 'CUSTOMER';
+    const customer_id = notifData.customer_id || null;
+    const type = notifData.type || 'INFO';
+    const priority = notifData.priority || 'NORMAL';
+    const action_url = notifData.action_url || notifData.url || null;
+    const related_order_id = notifData.related_order_id || null;
+    const is_read = notifData.is_read || false;
+    const notifId = notifData.id || ('notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7));
+    const dateTimeStr = notifData.date_time || new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    const nowIso = notifData.created_at || new Date().toISOString();
 
     // Determine default action URL / deep link if not explicitly passed
     let finalUrl = action_url || '/';
@@ -307,12 +308,43 @@ async function createAndDispatchNotification({
       }
     }
 
+    const activeDb = dbClient || db;
+
+    // Deduplication check: Avoid duplicate notification records created within 5 seconds for the same target, title & customer
+    try {
+      let dupCheckSql = `SELECT id, title, message, date_time, created_at FROM notifications WHERE target_role = $1 AND title = $2`;
+      let dupParams = [target_role, title];
+      if (customer_id) {
+        dupCheckSql += ` AND customer_id = $3`;
+        dupParams.push(customer_id);
+      }
+      dupCheckSql += ` ORDER BY created_at DESC LIMIT 1;`;
+      const dupRes = await activeDb.query(dupCheckSql, dupParams);
+      if (dupRes.rows && dupRes.rows.length > 0) {
+        const lastNotif = dupRes.rows[0];
+        const ageMs = Date.now() - new Date(lastNotif.created_at || Date.now()).getTime();
+        if (ageMs < 5000) { // 5-second deduplication window
+          console.log(`[Notification Engine] Deduplicated duplicate notification for ${target_role} (${title}).`);
+          return lastNotif;
+        }
+      }
+    } catch (dErr) { }
+
     // 1. Save ONE single notification record in PostgreSQL source of truth
-    await db.query(
-      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
-      [notifId, target_role, customer_id || null, title, message, type, false, dateTimeStr, nowIso]
-    );
+    try {
+      await activeDb.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, priority, action_url, related_order_id, is_read, date_time, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+        [notifId, target_role, customer_id || null, title, message, type, priority, finalUrl, related_order_id || null, is_read, dateTimeStr, nowIso]
+      );
+    } catch (dbErr) {
+      // Fallback if priority/action_url columns haven't migrated yet
+      await activeDb.query(
+        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+        [notifId, target_role, customer_id || null, title, message, type, is_read, dateTimeStr, nowIso]
+      );
+    }
 
     const notifRecord = {
       id: notifId,
@@ -325,13 +357,16 @@ async function createAndDispatchNotification({
       action_url: finalUrl,
       url: finalUrl,
       related_order_id: related_order_id || null,
-      is_read: false,
+      is_read: Boolean(is_read),
       date_time: dateTimeStr,
       created_at: nowIso
     };
 
     // 2. Multi-channel dispatch across WebSocket (Instant In-App) & Web Push (Background/Closed App)
-    await dispatchRealTimeNotification(notifRecord);
+    // Non-blocking call to ensure fast HTTP response times
+    dispatchRealTimeNotification(notifRecord).catch(err => {
+      console.warn('[Central Notification Service] Non-blocking dispatch warning:', err.message);
+    });
 
     return notifRecord;
   } catch (err) {
@@ -397,10 +432,15 @@ async function dispatchRealTimeNotification(notif) {
       id: notif.id,
       title: notif.title || 'Annapurna Tiffin Center',
       message: notif.message || '',
+      body: notif.message || '',
       type: notif.type || 'INFO',
       priority: notif.priority || 'NORMAL',
       created_at: notif.created_at || notif.date_time || new Date().toISOString(),
-      url: notif.action_url || notif.url || '/'
+      url: notif.action_url || notif.url || '/',
+      action_url: notif.action_url || notif.url || '/',
+      related_order_id: notif.related_order_id || null,
+      icon: '/images/tiffin_logo.png',
+      badge: '/images/icon-192.png'
     });
 
     const pushUrgency = (notif.priority === 'HIGH' || notif.priority === 'CRITICAL') ? 'high' : 'normal';
@@ -540,53 +580,7 @@ app.post('/api/push/test-send', authenticateToken, async (req, res) => {
   }
 });
 
-// Helper function to create notification record in database and dispatch via WebSocket & Web Push
-async function createAndDispatchNotification(notifData, dbClient = db) {
-  try {
-    const id = notifData.id || ('notif_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
-    const target_role = notifData.target_role || 'CUSTOMER';
-    const customer_id = notifData.customer_id || null;
-    const title = notifData.title || 'Notification';
-    const message = notifData.message || '';
-    const type = notifData.type || 'INFO';
-    const is_read = notifData.is_read || false;
-    const date_time = notifData.date_time || new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-
-    // Deduplication check: Avoid duplicate notification records created within 5 seconds for the same target, title & order
-    try {
-      let dupCheckSql = `SELECT id, title, message, date_time FROM notifications WHERE target_role = $1 AND title = $2`;
-      let dupParams = [target_role, title];
-      if (customer_id) {
-        dupCheckSql += ` AND customer_id = $3`;
-        dupParams.push(customer_id);
-      }
-      dupCheckSql += ` ORDER BY created_at DESC LIMIT 1;`;
-      const dupRes = await dbClient.query(dupCheckSql, dupParams);
-      if (dupRes.rows && dupRes.rows.length > 0) {
-        const lastNotif = dupRes.rows[0];
-        const ageMs = Date.now() - new Date(lastNotif.created_at || Date.now()).getTime();
-        if (ageMs < 5000) { // 5-second deduplication window
-          console.log(`[Notification Engine] Deduplicated duplicate notification for ${target_role} (${title}).`);
-          return lastNotif;
-        }
-      }
-    } catch (dErr) {}
-
-    const notifObj = { id, target_role, customer_id, title, message, type, is_read, date_time };
-
-    await dbClient.query(
-      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-      [id, target_role, customer_id, title, message, type, is_read, date_time]
-    );
-
-    dispatchRealTimeNotification(notifObj);
-    return notifObj;
-  } catch (err) {
-    console.error('Error creating notification:', err);
-    return null;
-  }
-}
+// Master Notification Engine Service (defined above at line 276)
 
 // =========================================================================
 // SMART DUPLICATE PROTECTION & UTR DEDUPLICATION ENGINE
@@ -3097,23 +3091,26 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
 
     if ((order_type || '').toLowerCase() === 'delivery') {
       const addressId = req.body.address_id;
-      if (!addressId && !delivery_address) {
-        return res.status(400).json({ success: false, message: 'Please select a valid delivery address.' });
-      }
-
       let selectedAddressRecord = null;
-      if (addressId) {
+      let profileFallbackAddress = null;
+
+      // Priority 1: Customer explicitly selected delivery address
+      if (addressId && addressId !== 'profile_address') {
         const addrRes = await db.query(
           `SELECT * FROM customer_addresses WHERE id = $1 AND customer_id = $2;`,
           [addressId, req.user.id]
         );
-        if (!addrRes.rows || addrRes.rows.length === 0) {
+        if (addrRes.rows && addrRes.rows.length > 0) {
+          selectedAddressRecord = addrRes.rows[0];
+        } else {
           return res.status(400).json({ success: false, message: 'Selected delivery address not found.' });
         }
-        selectedAddressRecord = addrRes.rows[0];
-      } else if (req.user && req.user.id) {
+      }
+
+      // Priority 2: Customer default delivery address (if no address explicitly selected)
+      if (!selectedAddressRecord && !addressId) {
         const defaultAddrRes = await db.query(
-          `SELECT * FROM customer_addresses WHERE customer_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1;`,
+          `SELECT * FROM customer_addresses WHERE customer_id = $1 AND is_default = true LIMIT 1;`,
           [req.user.id]
         );
         if (defaultAddrRes.rows && defaultAddrRes.rows.length > 0) {
@@ -3121,28 +3118,70 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
         }
       }
 
-      if (selectedAddressRecord) {
-        const pincode = (selectedAddressRecord.pincode || '').trim();
-        const activeZonesRes = await db.query(`SELECT * FROM delivery_zones WHERE status = 'ACTIVE';`);
-        let matchedZone = null;
+      // Priority 3: Fallback to Customer Profile Delivery Address (if no selected/default address)
+      if (!selectedAddressRecord) {
+        const userRes = await db.query(`SELECT id, name, mobile, address FROM users WHERE id = $1;`, [req.user.id]);
+        const uProfile = userRes.rows[0];
+        const profAddr = (uProfile && uProfile.address) ? uProfile.address.trim() : '';
 
-        for (const z of (activeZonesRes.rows || [])) {
-          let pinList = [];
-          try {
-            pinList = typeof z.pincodes === 'string' ? JSON.parse(z.pincodes) : (z.pincodes || []);
-          } catch (e) {
-            pinList = [];
-          }
-          if (Array.isArray(pinList) && pinList.map(p => String(p).trim()).includes(pincode)) {
-            matchedZone = z;
-            break;
-          }
+        if (profAddr) {
+          const pinMatch = profAddr.match(/\b\d{6}\b/);
+          const extractedPin = pinMatch ? pinMatch[0] : '';
+          profileFallbackAddress = {
+            id: 'profile_address',
+            address_type: 'Profile Address',
+            full_name: uProfile.name || req.user.name,
+            mobile_number: uProfile.mobile || req.user.mobile,
+            address_line1: profAddr,
+            address_line2: '',
+            area: '',
+            city: '',
+            state: '',
+            pincode: extractedPin,
+            landmark: '',
+            delivery_instructions: '',
+            is_profile_fallback: true
+          };
         }
+      }
 
-        if (!matchedZone) {
+      const finalAddrObj = selectedAddressRecord || profileFallbackAddress;
+
+      // Priority 4: If no address exists anywhere, require customer to add an address
+      if (!finalAddrObj) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please add a delivery address before placing your order.'
+        });
+      }
+
+      // Run Delivery Zone Compatibility Check on finalAddrObj
+      const pincode = (finalAddrObj.pincode || '').trim();
+      const activeZonesRes = await db.query(`SELECT * FROM delivery_zones WHERE status = 'ACTIVE';`);
+      let matchedZone = null;
+
+      for (const z of (activeZonesRes.rows || [])) {
+        let pinList = [];
+        try {
+          pinList = typeof z.pincodes === 'string' ? JSON.parse(z.pincodes) : (z.pincodes || []);
+        } catch (e) {
+          pinList = [];
+        }
+        if (Array.isArray(pinList) && pincode && pinList.map(p => String(p).trim()).includes(pincode)) {
+          matchedZone = z;
+          break;
+        }
+      }
+
+      if (activeZonesRes.rows && activeZonesRes.rows.length > 0 && !matchedZone) {
+        if (!pincode && activeZonesRes.rows.length === 1) {
+          matchedZone = activeZonesRes.rows[0];
+        } else {
           return res.status(400).json({ success: false, message: 'Sorry, delivery is currently unavailable at this location.' });
         }
+      }
 
+      if (matchedZone) {
         const minOrder = Number(matchedZone.min_order_amount || 0);
         if (grand_total < minOrder) {
           return res.status(400).json({ success: false, message: `Minimum order for this delivery zone is ₹${minOrder}.` });
@@ -3151,23 +3190,28 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
         deliveryFeeAmount = Number(matchedZone.delivery_fee || 0);
         deliveryZoneId = matchedZone.id;
         deliveryZoneName = matchedZone.zone_name;
+      }
 
-        deliveryAddressSnapshotJson = JSON.stringify({
-          address_id: selectedAddressRecord.id,
-          address_type: selectedAddressRecord.address_type,
-          full_name: selectedAddressRecord.full_name,
-          mobile_number: selectedAddressRecord.mobile_number,
-          address_line1: selectedAddressRecord.address_line1,
-          address_line2: selectedAddressRecord.address_line2 || '',
-          area: selectedAddressRecord.area,
-          city: selectedAddressRecord.city,
-          state: selectedAddressRecord.state,
-          pincode: selectedAddressRecord.pincode,
-          landmark: selectedAddressRecord.landmark || '',
-          delivery_instructions: selectedAddressRecord.delivery_instructions || ''
-        });
+      deliveryAddressSnapshotJson = JSON.stringify({
+        address_id: finalAddrObj.id,
+        address_type: finalAddrObj.address_type,
+        full_name: finalAddrObj.full_name,
+        mobile_number: finalAddrObj.mobile_number,
+        address_line1: finalAddrObj.address_line1,
+        address_line2: finalAddrObj.address_line2 || '',
+        area: finalAddrObj.area || '',
+        city: finalAddrObj.city || '',
+        state: finalAddrObj.state || '',
+        pincode: finalAddrObj.pincode || '',
+        landmark: finalAddrObj.landmark || '',
+        delivery_instructions: finalAddrObj.delivery_instructions || '',
+        source: finalAddrObj.id === 'profile_address' ? 'Profile Delivery Address' : (finalAddrObj.is_default ? 'Default Address' : 'Saved Address')
+      });
 
-        finalDeliveryAddressText = `${selectedAddressRecord.full_name} (${selectedAddressRecord.mobile_number}), ${selectedAddressRecord.address_line1}${selectedAddressRecord.address_line2 ? ', ' + selectedAddressRecord.address_line2 : ''}, ${selectedAddressRecord.area}, ${selectedAddressRecord.city}, ${selectedAddressRecord.state} - ${selectedAddressRecord.pincode}${selectedAddressRecord.landmark ? ' (Landmark: ' + selectedAddressRecord.landmark + ')' : ''}`;
+      if (finalAddrObj.id === 'profile_address') {
+        finalDeliveryAddressText = `${finalAddrObj.full_name} (${finalAddrObj.mobile_number}), ${finalAddrObj.address_line1}`;
+      } else {
+        finalDeliveryAddressText = `${finalAddrObj.full_name} (${finalAddrObj.mobile_number}), ${finalAddrObj.address_line1}${finalAddrObj.address_line2 ? ', ' + finalAddrObj.address_line2 : ''}, ${finalAddrObj.area}, ${finalAddrObj.city}, ${finalAddrObj.state} - ${finalAddrObj.pincode}${finalAddrObj.landmark ? ' (Landmark: ' + finalAddrObj.landmark + ')' : ''}`;
       }
 
       grand_total += deliveryFeeAmount;
@@ -6636,22 +6680,15 @@ app.post('/api/owner/customers/:id/reset-password', authenticateToken, async (re
     console.log(`[AUDIT EVENT] Customer password reset by Owner: Customer ID ${customer.id} (${customer.name}, ${customer.mobile}) by Owner ${req.user.name} at ${new Date().toISOString()}`);
 
     try {
-      const nowStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-      const resetNotif = {
-        id: 'ntf_' + Date.now(),
+      await createAndDispatchNotification({
         target_role: 'OWNER',
         customer_id: id,
         title: 'Customer Password Reset',
         message: `Password manually reset by Owner for customer ${customer.name} (${customer.mobile}).`,
         type: 'INFO',
-        is_read: false,
-        date_time: nowStr
-      };
-      await db.query(
-        `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-        [resetNotif.id, resetNotif.target_role, resetNotif.customer_id, resetNotif.title, resetNotif.message, resetNotif.type, resetNotif.is_read, resetNotif.date_time]
-      );
-      dispatchRealTimeNotification(resetNotif);
+        priority: 'NORMAL',
+        action_url: '/#secOwnerSupport'
+      });
     } catch (nErr) {
       // Non-blocking audit log catch
     }
@@ -6734,22 +6771,15 @@ app.post('/api/support/tickets', authenticateToken, async (req, res) => {
     );
 
     // Notify Owner
-    const tktNotif = {
-      id: 'notif_' + Date.now(),
+    await createAndDispatchNotification({
       target_role: 'OWNER',
       customer_id: req.user.id,
       title: 'New Support Ticket',
       message: `Ticket #${ticketNum} created by ${req.user.name}: "${subject}"`,
       type: 'SUPPORT',
-      is_read: false,
-      date_time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-    };
-    await db.query(
-      `INSERT INTO notifications (id, target_role, customer_id, title, message, type, is_read, date_time)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
-      [tktNotif.id, tktNotif.target_role, tktNotif.customer_id, tktNotif.title, tktNotif.message, tktNotif.type, tktNotif.is_read, tktNotif.date_time]
-    );
-    dispatchRealTimeNotification(tktNotif);
+      priority: 'HIGH',
+      action_url: '/#secOwnerSupport'
+    });
 
     const createdRes = await db.query('SELECT * FROM support_tickets WHERE id = $1;', [ticketId]);
     res.json({ success: true, data: createdRes.rows[0], message: `Support ticket #${ticketNum} created successfully.` });
@@ -12078,7 +12108,13 @@ app.post('/api/delivery-zones/check-pincode', async (req, res) => {
     const { pincode, address_id } = req.body;
     let targetPin = (pincode || '').trim();
 
-    if (address_id) {
+    if (address_id === 'profile_address' && req.user) {
+      const uRes = await db.query(`SELECT address FROM users WHERE id = $1;`, [req.user.id]);
+      if (uRes.rows && uRes.rows[0] && uRes.rows[0].address) {
+        const pinMatch = uRes.rows[0].address.match(/\b\d{6}\b/);
+        if (pinMatch) targetPin = pinMatch[0];
+      }
+    } else if (address_id) {
       const addrRes = await db.query(`SELECT pincode FROM customer_addresses WHERE id = $1;`, [address_id]);
       if (addrRes.rows && addrRes.rows.length > 0) {
         targetPin = (addrRes.rows[0].pincode || '').trim();

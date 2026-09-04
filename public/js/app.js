@@ -223,7 +223,8 @@ class TiffinApp {
         this.activeView = this.currentRole === 'OWNER' ? 'secOwnerDashboard' : 'secCustomerHome';
         
         // Deep-link routing via URL hash (e.g. from notification clicks or shortcuts)
-        const hashView = window.location.hash ? window.location.hash.replace('#', '') : '';
+        const rawHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+        const hashView = rawHash.split('?')[0];
         if (hashView && document.getElementById(hashView)) {
           this.activeView = hashView;
         }
@@ -238,7 +239,8 @@ class TiffinApp {
 
     // Bind hashchange event listener for notification deep links
     window.addEventListener('hashchange', () => {
-      const targetHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+      const rawHash = window.location.hash ? window.location.hash.replace('#', '') : '';
+      const targetHash = rawHash.split('?')[0];
       if (targetHash && document.getElementById(targetHash)) {
         this.switchView(targetHash);
       }
@@ -429,6 +431,21 @@ class TiffinApp {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') syncOnFocus();
       });
+
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+            const targetUrl = event.data.url || '';
+            if (targetUrl.includes('#')) {
+              const rawHash = targetUrl.substring(targetUrl.indexOf('#') + 1);
+              const targetView = rawHash.split('?')[0];
+              if (targetView && document.getElementById(targetView)) {
+                this.switchView(targetView);
+              }
+            }
+          }
+        });
+      }
     }
 
     try {
@@ -19436,38 +19453,105 @@ class TiffinApp {
     try {
       const res = await this.fetchWithAuth(`${API_BASE}/addresses`);
       const json = await res.json();
+      const savedAddresses = (json.success && Array.isArray(json.addresses)) ? json.addresses : [];
 
-      if (!json.success || !json.addresses || json.addresses.length === 0) {
+      this.checkoutSavedAddresses = [...savedAddresses];
+
+      // Check for default saved address (Priority 2)
+      const defaultAddr = savedAddresses.find(a => a.is_default);
+
+      // Check for Profile Delivery Address (Priority 3 fallback)
+      const profileAddrStr = (this.currentUser && this.currentUser.address) ? this.currentUser.address.trim() : '';
+
+      let profileVirtualAddr = null;
+      if (profileAddrStr) {
+        const pinMatch = profileAddrStr.match(/\b\d{6}\b/);
+        profileVirtualAddr = {
+          id: 'profile_address',
+          address_type: 'Profile Address',
+          full_name: this.currentUser.name || 'Customer',
+          mobile_number: this.currentUser.mobile || '',
+          address_line1: profileAddrStr,
+          area: '',
+          city: '',
+          state: '',
+          pincode: pinMatch ? pinMatch[0] : '',
+          is_profile_fallback: true
+        };
+        // Add virtual profile address object into list for lookup
+        this.checkoutSavedAddresses.push(profileVirtualAddr);
+      }
+
+      // Determine initial selection according to strict priority rules:
+      // 1. Explicitly selected address ID (if already chosen)
+      // 2. Default saved address (is_default: true)
+      // 3. Profile Delivery Address (if no default address exists)
+      // 4. Saved non-default address (if no profile address)
+      // 5. No address exists anywhere
+      let initialSelectedId = null;
+
+      if (this.selectedDeliveryAddressId && this.checkoutSavedAddresses.some(a => a.id === this.selectedDeliveryAddressId)) {
+        initialSelectedId = this.selectedDeliveryAddressId;
+      } else if (defaultAddr) {
+        initialSelectedId = defaultAddr.id;
+      } else if (profileVirtualAddr) {
+        initialSelectedId = 'profile_address';
+      } else if (savedAddresses.length > 0) {
+        initialSelectedId = savedAddresses[0].id;
+      }
+
+      if (!initialSelectedId) {
+        // Priority 4: No address exists anywhere!
+        this.selectedDeliveryAddressId = null;
         container.innerHTML = `
-          <div style="background: rgba(255,255,255,0.04); border: 1px dashed var(--border-color); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
-            <span style="font-size: 0.82rem; color: var(--text-muted);"><i class="fa-solid fa-location-dot" style="color: #FF5722;"></i> No saved addresses found</span>
-            <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 4px 10px; font-size: 0.78rem;">
-              <i class="fa-solid fa-plus"></i> Add Address
-            </button>
+          <div style="background: rgba(255,87,34,0.08); border: 1.5px dashed var(--accent-orange, #FF5722); border-radius: 12px; padding: 12px 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 0.85rem; color: #FFD54F; font-weight: 700;">
+                <i class="fa-solid fa-triangle-exclamation" style="color: #FF7043;"></i> Please add a delivery address before placing your order.
+              </span>
+              <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 4px 12px; font-size: 0.78rem; border-color: #FF7043; color: #FFF;">
+                <i class="fa-solid fa-plus"></i> Add Address
+              </button>
+            </div>
           </div>
         `;
+        const inputAddr = document.getElementById('ordDeliveryAddress');
+        if (inputAddr) inputAddr.value = '';
         return;
       }
 
-      this.checkoutSavedAddresses = json.addresses;
-      let defaultAddr = json.addresses.find(a => a.is_default) || json.addresses[0];
-      this.selectedDeliveryAddressId = defaultAddr.id;
+      this.selectedDeliveryAddressId = initialSelectedId;
+
+      // Render options list including saved addresses and profile fallback (if present)
+      let displayOptions = [...savedAddresses];
+      if (profileVirtualAddr) {
+        displayOptions.push(profileVirtualAddr);
+      }
 
       container.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 8px;">
-          ${json.addresses.map(a => {
-            const isChecked = a.id === defaultAddr.id;
-            const icon = a.address_type === 'Work' ? '💼' : a.address_type === 'Other' ? '📍' : '🏠';
+          ${displayOptions.map(a => {
+            const isChecked = a.id === initialSelectedId;
+            const isProfile = a.id === 'profile_address';
+            const icon = isProfile ? '📍' : (a.address_type === 'Work' ? '💼' : a.address_type === 'Other' ? '📍' : '🏠');
+            const labelTitle = isProfile
+              ? `Profile Delivery Address (Fallback)`
+              : `${escapeHtml(a.address_type || 'Home')} - ${escapeHtml(a.full_name)}`;
+            const labelSub = isProfile
+              ? escapeHtml(a.address_line1)
+              : `${escapeHtml(a.address_line1)}, ${escapeHtml(a.area || '')}, ${escapeHtml(a.city || '')} - <strong>${escapeHtml(a.pincode || '')}</strong>`;
+            
             return `
               <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: ${isChecked ? 'rgba(255, 87, 34, 0.12)' : 'rgba(255,255,255,0.04)'}; border: 1.5px solid ${isChecked ? '#FF5722' : 'var(--border-color)'}; border-radius: 12px; cursor: pointer; transition: all 0.15s ease;">
                 <input type="radio" name="radCheckoutAddress" value="${a.id}" ${isChecked ? 'checked' : ''} onchange="app.selectCheckoutAddress('${a.id}')" style="margin-top: 3px;">
                 <div style="flex: 1; font-size: 0.82rem;">
-                  <div style="font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 6px;">
-                    <span>${icon} ${escapeHtml(a.address_type || 'Home')} - ${escapeHtml(a.full_name)}</span>
-                    ${a.is_default ? `<span style="font-size: 0.7rem; color: #FF7043;">⭐ Default</span>` : ''}
+                  <div style="font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span>${icon} ${labelTitle}</span>
+                    ${a.is_default ? `<span style="font-size: 0.7rem; color: #FF7043; background: rgba(255, 112, 67, 0.15); padding: 1px 6px; border-radius: 6px;">⭐ Default</span>` : ''}
+                    ${isProfile ? `<span style="font-size: 0.7rem; color: #FFD54F; background: rgba(255, 213, 79, 0.15); padding: 1px 6px; border-radius: 6px;">Source: Profile Delivery Address</span>` : ''}
                   </div>
                   <div style="color: #DDD; margin-top: 2px;">
-                    ${escapeHtml(a.address_line1)}, ${escapeHtml(a.area)}, ${escapeHtml(a.city)} - <strong>${escapeHtml(a.pincode)}</strong>
+                    ${labelSub}
                   </div>
                 </div>
               </label>
@@ -19481,7 +19565,7 @@ class TiffinApp {
         </div>
       `;
 
-      this.selectCheckoutAddress(defaultAddr.id);
+      this.selectCheckoutAddress(initialSelectedId);
     } catch (err) {
       console.error('Load checkout saved addresses error:', err);
     }
@@ -19496,14 +19580,18 @@ class TiffinApp {
 
     const inputAddr = document.getElementById('ordDeliveryAddress');
     if (inputAddr) {
-      inputAddr.value = `${addr.full_name} (${addr.mobile_number}), ${addr.address_line1}${addr.address_line2 ? ', ' + addr.address_line2 : ''}, ${addr.area}, ${addr.city}, ${addr.state} - ${addr.pincode}${addr.landmark ? ' (Landmark: ' + addr.landmark + ')' : ''}`;
+      if (addr.id === 'profile_address') {
+        inputAddr.value = `${addr.full_name} (${addr.mobile_number}), ${addr.address_line1}`;
+      } else {
+        inputAddr.value = `${addr.full_name} (${addr.mobile_number}), ${addr.address_line1}${addr.address_line2 ? ', ' + addr.address_line2 : ''}, ${addr.area || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}${addr.landmark ? ' (Landmark: ' + addr.landmark + ')' : ''}`;
+      }
     }
 
     try {
       const res = await fetch(`${API_BASE}/delivery-zones/check-pincode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address_id: addressId, pincode: addr.pincode })
+        body: JSON.stringify({ address_id: addressId, pincode: addr.pincode || '' })
       });
       const json = await res.json();
 
