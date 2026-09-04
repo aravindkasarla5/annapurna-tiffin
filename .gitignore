@@ -32,4 +32,7 @@ local_postgres.db
 public/images/qr_uploads/*
 !public/images/qr_uploads/.gitkeep
 
+# Local scratch and backup files
+scratch/
+postgres_backup.*
 

@@ -326,6 +326,13 @@ class TiffinApp {
             if (this.activeView === 'secQueueProgress') this.fetchQueueProgress();
             if (this.activeView === 'secCustomerOrders') this.fetchOrders();
             if (this.activeView === 'secOwnerOrders') this.renderOrders();
+          } else if (msg && msg.type === 'MEAL_PASS_REDEEMED') {
+            if (this.currentUser && msg.customerId === this.currentUser.id) {
+              this.showToast(`🎫 Meal pass redeemed! Remaining meals: ${msg.remainingMeals}`, 'success');
+              if (this.activeView === 'secCustomerSubscriptions') this.renderCustomerSubscriptions();
+              if (this.activeView === 'secCustomerMealPasses') this.renderCustomerMealPasses();
+            }
+            if (this.activeView === 'secOwnerSubscribers') this.renderOwnerSubscribersHub();
           }
         } catch (err) {
           console.error('[Real-Time WS] Message parse error:', err);
@@ -2250,6 +2257,10 @@ class TiffinApp {
           desktopNav.innerHTML = `
             <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.switchView('secCustomerHome')"><i class="fa-solid fa-house"></i> Customer Home</a>
             <a class="nav-item ${this.activeView === 'secCustomerHome' ? 'active' : ''}" onclick="app.scrollToMenu()"><i class="fa-solid fa-utensils"></i> Today's Menu</a>
+            <a class="nav-item ${this.activeView === 'secCustomerAddresses' ? 'active' : ''}" onclick="app.switchView('secCustomerAddresses')"><i class="fa-solid fa-location-dot" style="color: #FF5722;"></i> 📍 My Addresses</a>
+            <a class="nav-item ${this.activeView === 'secCustomerMealPlans' ? 'active' : ''}" onclick="app.switchView('secCustomerMealPlans')"><i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> 🧺 Meal Plans</a>
+            <a class="nav-item ${this.activeView === 'secCustomerSubscriptions' ? 'active' : ''}" onclick="app.switchView('secCustomerSubscriptions')"><i class="fa-solid fa-calendar-check" style="color: #4CAF50;"></i> 🧺 My Subscriptions</a>
+            <a class="nav-item ${this.activeView === 'secCustomerMealPasses' ? 'active' : ''}" onclick="app.switchView('secCustomerMealPasses')"><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> 🎫 My Meal Passes</a>
             <a class="nav-item ${this.activeView === 'secCustomerMemberCard' ? 'active' : ''}" onclick="app.switchView('secCustomerMemberCard')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 🍽️ Member Card</a>
             <a class="nav-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.switchView('secCustomerFavorites')"><i class="fa-solid fa-heart" style="color: #E53935;"></i> My Favorites ❤️</a>
             <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
@@ -2265,6 +2276,10 @@ class TiffinApp {
           const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read && n.target_role === 'OWNER').length;
           desktopNav.innerHTML = `
             <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
+            <a class="nav-item ${this.activeView === 'secOwnerDeliveryZones' ? 'active' : ''}" onclick="app.switchView('secOwnerDeliveryZones')"><i class="fa-solid fa-map-location-dot" style="color: #4CAF50;"></i> 🗺️ Delivery Zones</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSubscriptionPlans' ? 'active' : ''}" onclick="app.switchView('secOwnerSubscriptionPlans')"><i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> 🧺 Subscription Plans</a>
+            <a class="nav-item ${this.activeView === 'secOwnerMealPassScanner' ? 'active' : ''}" onclick="app.switchView('secOwnerMealPassScanner')"><i class="fa-solid fa-qrcode" style="color: #00E676;"></i> 🎫 Meal Pass Scanner</a>
+            <a class="nav-item ${this.activeView === 'secOwnerSubscribers' ? 'active' : ''}" onclick="app.switchView('secOwnerSubscribers')"><i class="fa-solid fa-users" style="color: #40C4FF;"></i> 👥 Subscribers</a>
             <a class="nav-item ${this.activeView === 'secOwnerVoting' ? 'active' : ''}" onclick="app.switchView('secOwnerVoting')">🗳️ Menu Voting</a>
             <a class="nav-item ${this.activeView === 'secOwnerSecurity' ? 'active' : ''}" onclick="app.switchView('secOwnerSecurity')"><i class="fa-solid fa-shield-halved" style="color: #40C4FF;"></i> 🛡️ Security Center</a>
             <a class="nav-item ${this.activeView === 'secOwnerRefunds' ? 'active' : ''}" onclick="app.switchView('secOwnerRefunds')">💸 Refunds</a>
@@ -3141,6 +3156,9 @@ class TiffinApp {
     if (this.closeFoodMemberQrScannerModal) {
       this.closeFoodMemberQrScannerModal();
     }
+    if (this.stopMealPassScanner) {
+      this.stopMealPassScanner();
+    }
 
     // Skip redundant re-rendering if already on target view
     if (this.activeView === viewId && document.getElementById(viewId) && !document.getElementById(viewId).classList.contains('hidden')) {
@@ -3224,6 +3242,14 @@ class TiffinApp {
       this.renderCustomerProfile();
     }
     if (this.activeView === 'secCustomerVoting') this.loadCustomerVoting();
+    if (this.activeView === 'secCustomerMealPlans') this.renderCustomerMealPlans();
+    if (this.activeView === 'secCustomerSubscriptions') this.renderCustomerSubscriptions();
+    if (this.activeView === 'secCustomerMealPasses') this.renderCustomerMealPasses();
+    if (this.activeView === 'secCustomerAddresses') this.loadCustomerAddresses();
+    if (this.activeView === 'secOwnerSubscriptionPlans') this.renderOwnerSubscriptionPlans();
+    if (this.activeView === 'secOwnerMealPassScanner') this.startMealPassScanner();
+    if (this.activeView === 'secOwnerSubscribers') this.renderOwnerSubscribersHub();
+    if (this.activeView === 'secOwnerDeliveryZones') this.loadOwnerDeliveryZones();
     if (this.activeView === 'secOwnerDashboard') {
       this.fetchStats();
       this.renderOrders();
@@ -4359,20 +4385,25 @@ class TiffinApp {
     const type = document.getElementById('ordType')?.value;
     const label = document.getElementById('ordDeliveryAddressLabel');
     const input = document.getElementById('ordDeliveryAddress');
+    const savedContainer = document.getElementById('savedAddressesCheckoutContainer');
     if (!label || !input) return;
 
     if (type === 'Dine-in') {
       label.innerHTML = `<i class="fa-solid fa-utensils" style="color: var(--primary);"></i> Table Number / Dining Area <span style="color: var(--primary);">*</span>`;
       input.placeholder = "e.g. Table No. 4, Ground Floor AC Section...";
+      if (savedContainer) savedContainer.innerHTML = '';
+      this.selectedDeliveryAddressId = null;
+      this.currentDeliveryFee = 0;
     } else if (type === 'Takeaway') {
       label.innerHTML = `<i class="fa-solid fa-box" style="color: var(--primary);"></i> Pickup Notes / Time <span style="color: var(--primary);">*</span>`;
       input.placeholder = "e.g. Self pickup at counter around 8:00 PM...";
+      if (savedContainer) savedContainer.innerHTML = '';
+      this.selectedDeliveryAddressId = null;
+      this.currentDeliveryFee = 0;
     } else {
-      label.innerHTML = `<i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Delivery Address / Location Details <span style="color: var(--primary);">*</span>`;
+      label.innerHTML = `<i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Select Saved Delivery Address <span style="color: var(--primary);">*</span>`;
       input.placeholder = "House/Flat No, Building, Street, Landmark, Area details...";
-      if (!input.value && this.currentUser && this.currentUser.address) {
-        input.value = this.currentUser.address;
-      }
+      this.loadCheckoutSavedAddresses();
     }
   }
 
@@ -5295,6 +5326,7 @@ class TiffinApp {
       customer_name: name,
       customer_mobile: mobile,
       order_type: orderType,
+      address_id: this.selectedDeliveryAddressId || null,
       delivery_address: deliveryAddress || (orderType === 'Delivery' ? (this.currentUser ? this.currentUser.address : 'Home Delivery') : 'Counter Pickup'),
       notes: notes,
       payment_method: payMethodName,
@@ -7503,12 +7535,22 @@ class TiffinApp {
     const isPreparing = order.order_status === 'Preparing';
     const isReady = order.order_status === 'Ready';
     const isKitchenPremium = Boolean(order.is_premium_member || (order.food_member_discount && Number(order.food_member_discount) > 0));
+    const isSubscriptionOrder = Boolean(
+      (order.payment_method || '').toUpperCase().includes('SUB') ||
+      (order.notes || '').toUpperCase().includes('SUB') ||
+      (order.order_number || '').startsWith('SUB-')
+    );
 
     return `
-      <div class="order-card ${isKitchenPremium ? 'card-order-premium' : ''}" ${isOwnerView ? `data-order-card-id="${order.id}"` : ''}>
+      <div class="order-card ${isSubscriptionOrder ? 'card-order-subscription' : (isKitchenPremium ? 'card-order-premium' : '')}" ${isOwnerView ? `data-order-card-id="${order.id}"` : ''}>
         <div class="order-card-header">
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <span class="order-num-badge">#${order.order_number}</span>
+            ${isSubscriptionOrder ? `
+              <span class="badge-subscription-order">
+                🧺 SUBSCRIPTION MEAL
+              </span>
+            ` : ''}
             ${isKitchenPremium ? `
               <span class="badge-premium-member">
                 ⭐ PREMIUM MEMBER
@@ -8346,17 +8388,19 @@ class TiffinApp {
     const isPaid = (p.payment_status || '').includes('Paid') || (p.payment_status || '').includes('Verified') || (p.payment_status || '').includes('Cash Received');
     const isPending = (p.payment_status || '').includes('Pending') || (p.payment_status || '').includes('Verification');
     const isUPI = (p.payment_method || '').includes('UPI') || (p.payment_method || '').includes('Online');
+    const isSubscription = (p.order_number || '').startsWith('SUB-') || (p.payment_method || '').toUpperCase().includes('SUB');
 
     const statusBg = isPaid ? 'rgba(76, 175, 80, 0.15)' : isPending ? 'rgba(234, 162, 33, 0.15)' : 'rgba(229, 57, 53, 0.15)';
     const statusBorder = isPaid ? '#4CAF50' : isPending ? '#EAA221' : '#E53935';
     const statusColor = isPaid ? '#4CAF50' : isPending ? '#FFB74D' : '#FF5252';
 
     return `
-      <tr style="border-bottom: 1px solid var(--border-color); transition: background 0.2s ease;">
+      <tr class="${isSubscription ? 'table-row-subscription' : ''}" style="border-bottom: 1px solid var(--border-color); transition: background 0.2s ease;">
         <!-- 1. Order ID Column (OWNER SIDE: Order ID, Customer Name, Date & Time) -->
         <td style="padding: 14px 16px; vertical-align: middle;">
-          <div style="font-weight: 800; font-size: 0.95rem; color: var(--accent-gold);">
-            <i class="fa-solid fa-receipt"></i> #${p.order_number}
+          <div style="font-weight: 800; font-size: 0.95rem; color: var(--accent-gold); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <span><i class="fa-solid fa-receipt"></i> #${p.order_number}</span>
+            ${isSubscription ? `<span class="badge-subscription-order" style="font-size: 0.7rem; padding: 2px 7px;">🧺 SUBSCRIPTION PLAN</span>` : ''}
           </div>
           <div style="font-size: 0.82rem; color: #FFF; font-weight: 600; margin-top: 3px;">
             <i class="fa-solid fa-user" style="color: var(--primary);"></i> ${p.customer_name || 'Customer'}
@@ -17349,6 +17393,1537 @@ class TiffinApp {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-square-check"></i> 🗳️ Vote Now';
       }
+    }
+  }
+
+  /* ============================================================
+     🧺 SUBSCRIPTION MEAL PLANS + 🎫 DIGITAL MEAL PASS MODULE
+     ============================================================ */
+
+  // ------------------------------------------------------------
+  // CUSTOMER MEAL PLANS GALLERY & PURCHASE FLOW
+  // ------------------------------------------------------------
+  async renderCustomerMealPlans() {
+    const grid = document.getElementById('customerMealPlansGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading meal plans...</p></div>';
+
+    try {
+      const res = await fetch(`${API_BASE}/subscription-plans`);
+      const json = await res.json();
+
+      if (!json.success || !json.plans || json.plans.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><i class="fa-solid fa-basket-shopping fa-3x" style="color: var(--border-color); margin-bottom: 12px;"></i><p>No active subscription plans available at the moment.</p></div>';
+        return;
+      }
+
+      grid.innerHTML = json.plans.map(plan => `
+        <div style="background: var(--bg-surface-elevated); border: 2px solid rgba(255, 152, 0, 0.3); border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
+          <div style="position: absolute; top: 0; right: 0; background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-size: 0.72rem; font-weight: 800; padding: 4px 14px; border-bottom-left-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+            ${escapeHtml(plan.meal_type || 'Breakfast')}
+          </div>
+
+          <div>
+            <h3 style="font-size: 1.25rem; font-weight: 800; color: #FFF; margin: 0 0 10px 0;">🥣 ${escapeHtml(plan.name)}</h3>
+            
+            <div style="display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;">
+              <span style="background: rgba(255,255,255,0.08); color: var(--accent-gold); padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.85rem;">
+                <i class="fa-solid fa-calendar-days"></i> ${plan.duration_days} Days
+              </span>
+              <span style="background: rgba(76, 175, 80, 0.15); color: #81C784; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.85rem;">
+                <i class="fa-solid fa-utensils"></i> ${plan.included_meals} Meals
+              </span>
+            </div>
+
+            <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 16px;">
+              ${escapeHtml(plan.description || 'Prepaid meal passes for delicious South Indian tiffins.')}
+            </p>
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+              <span style="font-size: 0.85rem; color: var(--text-muted);">Package Price:</span>
+              <span style="font-size: 1.6rem; font-weight: 900; color: var(--accent-gold);">₹${parseFloat(plan.price).toLocaleString('en-IN')}</span>
+            </div>
+
+            <button type="button" class="btn-primary-block" onclick="app.subscribeToPlan('${plan.id}')" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800;">
+              <i class="fa-solid fa-bolt"></i> Subscribe Now
+            </button>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      console.error('Render customer meal plans error:', err);
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load meal plans. Please try again.</div>';
+    }
+  }
+
+  async subscribeToPlan(planId) {
+    if (!this.currentUser) {
+      this.showToast('Please login or register to subscribe to a meal plan.', 'info');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
+
+    try {
+      this.showToast('Initiating plan checkout...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan_id: planId })
+      });
+      const json = await res.json();
+
+      if (!json.success || !json.subscription) {
+        this.showToast(json.message || 'Failed to initiate plan purchase.', 'error');
+        return;
+      }
+
+      const sub = json.subscription;
+
+      // Auto-Confirm / Prompt for UPI UTR payment confirmation
+      const confirmRes = await this.fetchWithAuth(`${API_BASE}/subscriptions/confirm-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscription_id: sub.id, utr_number: 'PAY_' + Date.now() })
+      });
+      const confirmJson = await confirmRes.json();
+
+      if (confirmJson.success) {
+        this.showToast('🎉 Subscription purchased & activated successfully!', 'success');
+        this.switchView('secCustomerSubscriptions');
+      } else {
+        this.showToast(confirmJson.message || 'Payment confirmation pending.', 'warning');
+        this.switchView('secCustomerSubscriptions');
+      }
+    } catch (err) {
+      console.error('Subscribe to plan error:', err);
+      this.showToast('Error initiating subscription. Please try again.', 'error');
+    }
+  }
+
+  // ------------------------------------------------------------
+  // CUSTOMER SUBSCRIPTIONS DASHBOARD & PASSES
+  // ------------------------------------------------------------
+  async renderCustomerSubscriptions() {
+    const container = document.getElementById('customerSubscriptionsContainer');
+    if (!container) return;
+
+    const searchVal = (document.getElementById('txtSearchMySubscriptions')?.value || '').trim();
+    const statusVal = document.getElementById('selFilterMySubStatus')?.value || 'ALL';
+
+    container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading your subscriptions...</p></div>';
+
+    try {
+      const queryParams = new URLSearchParams({ q: searchVal, status: statusVal });
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/my-subscriptions?${queryParams.toString()}`);
+      const json = await res.json();
+
+      if (!json.success || !json.subscriptions || json.subscriptions.length === 0) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><i class="fa-solid fa-calendar-xmark fa-3x" style="color: var(--border-color); margin-bottom: 12px;"></i><p>No subscriptions found. Browse Meal Plans to purchase a subscription!</p><button type="button" class="btn-primary-block" onclick="app.switchView(\'secCustomerMealPlans\')" style="width: auto; margin: 15px auto 0 auto;"><i class="fa-solid fa-basket-shopping"></i> Browse Meal Plans</button></div>';
+        return;
+      }
+
+      container.innerHTML = json.subscriptions.map(sub => {
+        const isActive = sub.status === 'ACTIVE';
+        const statusBadge = isActive
+          ? '<span style="background: rgba(76, 175, 80, 0.15); color: #81C784; border: 1px solid #4CAF50; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-circle-check"></i> ACTIVE</span>'
+          : `<span style="background: rgba(255, 82, 82, 0.15); color: #FF5252; border: 1px solid #FF5252; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">${escapeHtml(sub.status)}</span>`;
+
+        const expiryFormatted = sub.expiry_date
+          ? new Date(sub.expiry_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          : 'N/A';
+
+        return `
+          <div style="background: var(--bg-surface-elevated); border: 1px solid ${isActive ? 'var(--accent-gold)' : 'var(--border-color)'}; border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <h3 style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">🥣 ${escapeHtml(sub.plan_name)}</h3>
+                <span style="font-size: 0.78rem; color: var(--text-muted); font-family: monospace;">ID: ${escapeHtml(sub.subscription_id)}</span>
+              </div>
+              ${statusBadge}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 10px; margin-bottom: 14px; text-align: center;">
+              <div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Total</div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: #FFF;">${sub.total_meals}</div>
+              </div>
+              <div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Used</div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: #FF9800;">${sub.used_meals}</div>
+              </div>
+              <div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Remaining</div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: #4CAF50;">${sub.remaining_meals}</div>
+              </div>
+            </div>
+
+            <div style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px; display: flex; justify-content: space-between;">
+              <span>Valid Until: <strong style="color: #FFF;">${expiryFormatted}</strong></span>
+              ${isActive ? `<span style="color: var(--accent-gold); font-weight: 700;"><i class="fa-solid fa-clock"></i> ${sub.days_remaining} Days Left</span>` : ''}
+            </div>
+
+            <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold);">
+              <i class="fa-solid fa-qrcode"></i> View Meal Passes (${sub.remaining_meals} Available)
+            </button>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error('Render customer subscriptions error:', err);
+      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load your subscriptions.</div>';
+    }
+  }
+
+  setCustomerPassTab(status) {
+    this.customerMealPassTab = status;
+    document.querySelectorAll('#secCustomerMealPasses .tab-pill').forEach(btn => btn.classList.remove('active'));
+    const targetBtn = document.getElementById(status === 'AVAILABLE' ? 'btnPassTabAvailable' : status === 'USED' ? 'btnPassTabUsed' : 'btnPassTabExpired');
+    if (targetBtn) targetBtn.classList.add('active');
+    this.renderCustomerMealPasses();
+  }
+
+  viewSubscriptionPasses(subId) {
+    this.filterSubIdForPasses = subId;
+    this.switchView('secCustomerMealPasses');
+  }
+
+  async renderCustomerMealPasses() {
+    const grid = document.getElementById('customerMealPassesGrid');
+    if (!grid) return;
+
+    const statusTab = this.customerMealPassTab || 'AVAILABLE';
+    const subIdFilter = this.filterSubIdForPasses || '';
+
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading meal passes...</p></div>';
+
+    try {
+      const queryParams = new URLSearchParams({ status: statusTab });
+      if (subIdFilter) queryParams.append('subscription_id', subIdFilter);
+
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/my-passes?${queryParams.toString()}`);
+      const json = await res.json();
+
+      if (!json.success || !json.passes || json.passes.length === 0) {
+        grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><i class="fa-solid fa-qrcode fa-3x" style="color: var(--border-color); margin-bottom: 12px;"></i><p>No ${statusTab.toLowerCase()} meal passes found.</p></div>`;
+        return;
+      }
+
+      grid.innerHTML = json.passes.map(pass => {
+        const isAvailable = pass.status === 'AVAILABLE';
+        const isUsed = pass.status === 'USED';
+
+        const redeemedFormatted = pass.redeemed_at
+          ? new Date(pass.redeemed_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+          : 'N/A';
+
+        return `
+          <div style="background: var(--bg-surface-elevated); border: 1px solid ${isAvailable ? '#4CAF50' : 'var(--border-color)'}; border-radius: 16px; padding: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); text-align: center; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-size: 0.95rem; font-weight: 800; color: #FFF;">🎫 Pass #${pass.meal_number}</span>
+              ${isAvailable
+                ? '<span style="background: rgba(76, 175, 80, 0.15); color: #81C784; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">🟢 AVAILABLE</span>'
+                : (isUsed
+                  ? '<span style="background: rgba(255, 152, 0, 0.15); color: #FF9800; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">✓ USED</span>'
+                  : '<span style="background: rgba(255, 82, 82, 0.15); color: #FF5252; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">🔴 EXPIRED</span>')
+              }
+            </div>
+
+            <div style="font-size: 0.85rem; color: var(--accent-gold); font-weight: 700; margin-bottom: 6px;">
+              ${escapeHtml(pass.plan_name)}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace; margin-bottom: 12px;">
+              ${escapeHtml(pass.sub_formatted_id)}
+            </div>
+
+            ${isAvailable ? `
+              <button type="button" class="btn-primary-block" onclick="app.showMealPassQrModal('${pass.secure_token}', ${pass.meal_number}, '${escapeHtml(pass.plan_name)}')" style="background: linear-gradient(135deg, #00E676, #00B0FF); color: #1A1A2E; font-weight: 800;">
+                <i class="fa-solid fa-qrcode"></i> Show QR Code
+              </button>
+            ` : `
+              <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px;">
+                ${isUsed ? `Redeemed: <br><strong style="color: #FFF;">${redeemedFormatted}</strong>` : 'Expired'}
+              </div>
+            `}
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error('Render customer meal passes error:', err);
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load meal passes.</div>';
+    }
+  }
+
+  showMealPassQrModal(secureToken, mealNumber, planName) {
+    const modalContent = document.getElementById('showMealPassQrModalContent');
+    if (!modalContent) return;
+
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(secureToken)}`;
+
+    modalContent.innerHTML = `
+      <div style="margin-bottom: 15px;">
+        <h3 style="font-size: 1.2rem; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">🎫 Meal Pass #${mealNumber}</h3>
+        <p style="font-size: 0.85rem; color: var(--accent-gold); margin: 0;">${escapeHtml(planName)}</p>
+      </div>
+
+      <div style="background: #FFF; padding: 15px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.3); margin-bottom: 15px;">
+        <img src="${qrUrl}" alt="Meal Pass QR Code" style="width: 200px; height: 200px; display: block;">
+      </div>
+
+      <div style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace; word-break: break-all; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 8px;">
+        Token: ${escapeHtml(secureToken)}
+      </div>
+
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px;">
+        Show this QR code to the shop owner to collect your fresh tiffin meal. Pass can be redeemed only ONCE.
+      </p>
+
+      <button type="button" class="btn-secondary-outline" onclick="app.toggleMealPassQrModal(false)" style="width: 100%;">
+        Close
+      </button>
+    `;
+
+    this.toggleMealPassQrModal(true);
+  }
+
+  toggleMealPassQrModal(show) {
+    const backdrop = document.getElementById('modalShowMealPassQrBackdrop');
+    if (backdrop) backdrop.classList.toggle('hidden', !show);
+  }
+
+  // ------------------------------------------------------------
+  // OWNER SUBSCRIPTION PLAN MANAGEMENT
+  // ------------------------------------------------------------
+  async renderOwnerSubscriptionPlans() {
+    const grid = document.getElementById('ownerSubscriptionPlansGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading subscription plans...</p></div>';
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscription-plans`);
+      const json = await res.json();
+
+      if (!json.success || !json.plans || json.plans.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><i class="fa-solid fa-basket-shopping fa-3x" style="color: var(--border-color); margin-bottom: 12px;"></i><p>No subscription plans created yet. Click "Add Subscription Plan" above!</p></div>';
+        return;
+      }
+
+      grid.innerHTML = json.plans.map(plan => `
+        <div style="background: var(--bg-surface-elevated); border: 1px solid ${plan.is_active ? '#FF9800' : 'var(--border-color)'}; border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin: 0;">🥣 ${escapeHtml(plan.name)}</h3>
+              <span style="background: ${plan.is_active ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 82, 82, 0.15)'}; color: ${plan.is_active ? '#81C784' : '#FF5252'}; border: 1px solid ${plan.is_active ? '#4CAF50' : '#FF5252'}; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">
+                ${plan.is_active ? '🟢 ACTIVE' : '🔴 INACTIVE'}
+              </span>
+            </div>
+
+            <div style="font-size: 0.85rem; color: var(--accent-gold); margin-bottom: 8px; font-weight: 700;">
+              Meal Type: ${escapeHtml(plan.meal_type)}
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+              <span style="font-size: 0.8rem; color: var(--text-muted);"><i class="fa-solid fa-calendar-days"></i> ${plan.duration_days} Days</span>
+              <span style="font-size: 0.8rem; color: var(--text-muted);"><i class="fa-solid fa-utensils"></i> ${plan.included_meals} Meals</span>
+            </div>
+
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 14px;">
+              ${escapeHtml(plan.description || 'No description provided.')}
+            </p>
+          </div>
+
+          <div>
+            <div style="font-size: 1.4rem; font-weight: 900; color: var(--accent-gold); margin-bottom: 14px; text-align: right;">
+              ₹${parseFloat(plan.price).toLocaleString('en-IN')}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="btn-secondary-outline" onclick="app.editOwnerSubscriptionPlan('${plan.id}', '${escapeHtml(plan.name)}', '${escapeHtml(plan.meal_type)}', ${plan.duration_days}, ${plan.included_meals}, ${plan.price}, '${escapeHtml(plan.description || '')}', ${plan.is_active})">
+                <i class="fa-solid fa-pen"></i> Edit
+              </button>
+
+              <button type="button" class="btn-secondary-outline" onclick="app.toggleOwnerPlanStatus('${plan.id}', ${!plan.is_active})" style="border-color: ${plan.is_active ? '#FF5252' : '#4CAF50'}; color: ${plan.is_active ? '#FF5252' : '#81C784'};">
+                <i class="fa-solid ${plan.is_active ? 'fa-ban' : 'fa-check'}"></i> ${plan.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      console.error('Render owner subscription plans error:', err);
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load subscription plans.</div>';
+    }
+  }
+
+  openSubscriptionPlanModal() {
+    document.getElementById('lblSubPlanModalTitle').innerHTML = '<i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> Add Subscription Plan';
+    document.getElementById('txtSubPlanId').value = '';
+    document.getElementById('txtSubPlanName').value = '';
+    document.getElementById('selSubPlanMealType').value = 'Breakfast';
+    document.getElementById('numSubPlanDuration').value = '30';
+    document.getElementById('numSubPlanMeals').value = '30';
+    document.getElementById('numSubPlanPrice').value = '1499';
+    document.getElementById('txtSubPlanDesc').value = '';
+    document.getElementById('selSubPlanActive').value = 'true';
+    this.toggleSubPlanModal(true);
+  }
+
+  editOwnerSubscriptionPlan(id, name, mealType, duration, meals, price, desc, isActive) {
+    document.getElementById('lblSubPlanModalTitle').innerHTML = '<i class="fa-solid fa-pen" style="color: #FF9800;"></i> Edit Subscription Plan';
+    document.getElementById('txtSubPlanId').value = id;
+    document.getElementById('txtSubPlanName').value = name;
+    document.getElementById('selSubPlanMealType').value = mealType || 'Breakfast';
+    document.getElementById('numSubPlanDuration').value = duration;
+    document.getElementById('numSubPlanMeals').value = meals;
+    document.getElementById('numSubPlanPrice').value = price;
+    document.getElementById('txtSubPlanDesc').value = desc || '';
+    document.getElementById('selSubPlanActive').value = isActive ? 'true' : 'false';
+    this.toggleSubPlanModal(true);
+  }
+
+  toggleSubPlanModal(show) {
+    const backdrop = document.getElementById('modalSubPlanBackdrop');
+    if (backdrop) backdrop.classList.toggle('hidden', !show);
+  }
+
+  async saveOwnerSubscriptionPlan(e) {
+    e.preventDefault();
+
+    const id = document.getElementById('txtSubPlanId').value;
+    const name = document.getElementById('txtSubPlanName').value;
+    const meal_type = document.getElementById('selSubPlanMealType').value;
+    const duration_days = document.getElementById('numSubPlanDuration').value;
+    const included_meals = document.getElementById('numSubPlanMeals').value;
+    const price = document.getElementById('numSubPlanPrice').value;
+    const description = document.getElementById('txtSubPlanDesc').value;
+    const is_active = document.getElementById('selSubPlanActive').value === 'true';
+
+    const url = id ? `${API_BASE}/owner/subscription-plans/${id}` : `${API_BASE}/owner/subscription-plans`;
+    const method = id ? 'PUT' : 'POST';
+
+    try {
+      const res = await this.fetchWithAuth(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, meal_type, duration_days, included_meals, price, description, is_active })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Plan saved successfully!', 'success');
+        this.toggleSubPlanModal(false);
+        this.renderOwnerSubscriptionPlans();
+      } else {
+        this.showToast(json.message || 'Failed to save plan.', 'error');
+      }
+    } catch (err) {
+      console.error('Save owner subscription plan error:', err);
+      this.showToast('Network error saving plan.', 'error');
+    }
+  }
+
+  async toggleOwnerPlanStatus(id, isActive) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscription-plans/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: isActive })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message, 'success');
+        this.renderOwnerSubscriptionPlans();
+      } else {
+        this.showToast(json.message || 'Failed to toggle status.', 'error');
+      }
+    } catch (err) {
+      console.error('Toggle plan status error:', err);
+      this.showToast('Error updating plan status.', 'error');
+    }
+  }
+
+  // ------------------------------------------------------------
+  // OWNER CAMERA SCANNER & REDEMPTION FLOW
+  // ------------------------------------------------------------
+  async startMealPassScanner() {
+    const video = document.getElementById('videoMealPassScan');
+    const badge = document.getElementById('scannerStatusBadge');
+    const btnStart = document.getElementById('btnStartPassCamera');
+    const btnStop = document.getElementById('btnStopPassCamera');
+
+    if (!video) return;
+    this.stopMealPassScanner();
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (badge) badge.innerHTML = '<span style="color: #FF5252;"><i class="fa-solid fa-triangle-exclamation"></i> Camera not supported or HTTPS required</span>';
+      this.showToast('Camera scanning requires HTTPS or a supported browser.', 'warning');
+      return;
+    }
+
+    try {
+      if (badge) badge.innerHTML = '<span style="color: var(--accent-gold);"><i class="fa-solid fa-spinner fa-spin"></i> Requesting camera access...</span>';
+
+      const constraints = [
+        { video: { facingMode: { ideal: 'environment' } } },
+        { video: { facingMode: 'environment' } },
+        { video: true }
+      ];
+
+      let stream = null;
+      for (const constraint of constraints) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraint);
+          if (stream) break;
+        } catch (e) {}
+      }
+
+      if (!stream) {
+        throw new Error('Camera access permission denied or camera in use.');
+      }
+
+      this.mealPassCameraStream = stream;
+      video.srcObject = stream;
+      await video.play();
+
+      if (badge) badge.innerHTML = '<span style="color: #00E676;"><i class="fa-solid fa-video"></i> Camera Active - Scanning...</span>';
+      if (btnStart) btnStart.style.display = 'none';
+      if (btnStop) btnStop.style.display = 'inline-block';
+
+      this.isMealPassScanProcessing = false;
+      this.scanMealPassLoop();
+    } catch (err) {
+      console.error('Start camera scanner error:', err);
+      if (badge) badge.innerHTML = '<span style="color: #FF5252;"><i class="fa-solid fa-video-slash"></i> Camera permission required to scan meal pass</span>';
+      if (btnStart) btnStart.style.display = 'inline-block';
+      if (btnStop) btnStop.style.display = 'none';
+      this.showToast('Camera permission required to scan meal pass.', 'error');
+    }
+  }
+
+  stopMealPassScanner() {
+    if (this.mealPassCameraStream) {
+      this.mealPassCameraStream.getTracks().forEach(track => track.stop());
+      this.mealPassCameraStream = null;
+    }
+
+    const video = document.getElementById('videoMealPassScan');
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+    }
+
+    const badge = document.getElementById('scannerStatusBadge');
+    const btnStart = document.getElementById('btnStartPassCamera');
+    const btnStop = document.getElementById('btnStopPassCamera');
+
+    if (badge) badge.innerHTML = '<span style="color: #FFF;"><i class="fa-solid fa-video"></i> Scanner Ready</span>';
+    if (btnStart) btnStart.style.display = 'inline-block';
+    if (btnStop) btnStop.style.display = 'none';
+  }
+
+  scanMealPassLoop() {
+    const video = document.getElementById('videoMealPassScan');
+    const canvas = document.getElementById('canvasMealPassScan');
+
+    if (!video || !this.mealPassCameraStream || video.paused || video.ended) return;
+
+    if (video.readyState === video.HAVE_ENOUGH_DATA && !this.isMealPassScanProcessing) {
+      if (!canvas) return;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      if (window.jsQR) {
+        const code = window.jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data && code.data.trim()) {
+          this.isMealPassScanProcessing = true;
+          this.handleScannedMealPassToken(code.data.trim());
+          return;
+        }
+      }
+    }
+
+    requestAnimationFrame(() => this.scanMealPassLoop());
+  }
+
+  manualVerifyMealPass() {
+    const input = document.getElementById('txtManualPassToken');
+    const token = (input?.value || '').trim();
+    if (!token) {
+      this.showToast('Please enter a meal pass token.', 'warning');
+      return;
+    }
+    this.handleScannedMealPassToken(token);
+  }
+
+  async handleScannedMealPassToken(token) {
+    try {
+      this.showToast('Verifying scanned meal pass...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/verify-pass`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+
+      const json = await res.json();
+      this.displayVerifyMealPassModal(json, token);
+    } catch (err) {
+      console.error('Verify pass error:', err);
+      this.displayVerifyMealPassModal({ success: false, code: 'NETWORK_ERROR', message: 'Unable to verify meal pass. Please check your internet connection.' }, token);
+    }
+  }
+
+  displayVerifyMealPassModal(res, token) {
+    const modalContent = document.getElementById('verifyPassModalContent');
+    if (!modalContent) return;
+
+    if (res.success && res.verified) {
+      modalContent.innerHTML = `
+        <div style="background: rgba(76, 175, 80, 0.15); border: 2px solid #4CAF50; border-radius: 16px; padding: 15px; margin-bottom: 16px;">
+          <h2 style="font-size: 1.3rem; font-weight: 900; color: #81C784; margin: 0 0 6px 0;">✅ MEAL PASS VERIFIED</h2>
+          <span style="font-size: 0.8rem; color: #FFF; font-weight: 700;">Status: 🟢 AVAILABLE</span>
+        </div>
+
+        <div style="text-align: left; background: rgba(0,0,0,0.25); border-radius: 14px; padding: 15px; margin-bottom: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.88rem;">
+          <div>
+            <span style="color: var(--text-muted); display: block; font-size: 0.75rem;">Customer:</span>
+            <strong style="color: #FFF;">${escapeHtml(res.customer_name)}</strong>
+          </div>
+          <div>
+            <span style="color: var(--text-muted); display: block; font-size: 0.75rem;">Mobile:</span>
+            <strong style="color: #FFF;">${escapeHtml(res.customer_mobile)}</strong>
+          </div>
+          <div>
+            <span style="color: var(--text-muted); display: block; font-size: 0.75rem;">Plan:</span>
+            <strong style="color: var(--accent-gold);">${escapeHtml(res.plan_name)}</strong>
+          </div>
+          <div>
+            <span style="color: var(--text-muted); display: block; font-size: 0.75rem;">Subscription ID:</span>
+            <strong style="color: #FFF; font-family: monospace;">${escapeHtml(res.subscription_id)}</strong>
+          </div>
+          <div>
+            <span style="color: var(--text-muted); display: block; font-size: 0.75rem;">Meal Pass #:</span>
+            <strong style="color: #4CAF50;">Pass #${res.meal_number}</strong>
+          </div>
+          <div>
+            <span style="color: var(--text-muted); display: block; font-size: 0.75rem;">Remaining Meals:</span>
+            <strong style="color: #40C4FF;">${res.remaining_meals} Meals</strong>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn-primary-block" onclick="app.confirmRedeemMealPass('${escapeHtml(token)}')" style="background: linear-gradient(135deg, #4CAF50, #2E7D32); color: #FFF; font-weight: 800; flex: 1;">
+            <i class="fa-solid fa-check-double"></i> REDEEM MEAL
+          </button>
+          <button type="button" class="btn-secondary-outline" onclick="app.toggleVerifyPassModal(false)" style="flex: 1;">
+            Cancel
+          </button>
+        </div>
+      `;
+    } else {
+      const code = res.code || 'ERROR';
+      let title = '❌ INVALID MEAL PASS';
+      let message = res.message || 'Invalid meal pass.';
+
+      if (code === 'ALREADY_USED') {
+        title = '❌ ALREADY USED';
+        message = `This meal pass ${res.pass_number || ''} has already been redeemed on <strong>${res.redeemed_at || 'earlier date'}</strong>.<br>No second meal deduction allowed.`;
+      } else if (code === 'EXPIRED') {
+        title = '🔴 SUBSCRIPTION EXPIRED';
+        message = 'This subscription has expired and passes cannot be redeemed.';
+      } else if (code === 'NO_MEALS') {
+        title = '❌ NO MEALS REMAINING';
+        message = 'Zero meals remaining on this customer subscription.';
+      }
+
+      modalContent.innerHTML = `
+        <div style="background: rgba(255, 82, 82, 0.15); border: 2px solid #FF5252; border-radius: 16px; padding: 15px; margin-bottom: 16px;">
+          <h2 style="font-size: 1.3rem; font-weight: 900; color: #FF5252; margin: 0 0 6px 0;">${title}</h2>
+          <p style="font-size: 0.88rem; color: #FFF; margin: 0;">${message}</p>
+        </div>
+
+        <button type="button" class="btn-secondary-outline" onclick="app.toggleVerifyPassModal(false)" style="width: 100%;">
+          Close & Resume Scanning
+        </button>
+      `;
+    }
+
+    this.toggleVerifyPassModal(true);
+  }
+
+  toggleVerifyPassModal(show) {
+    const backdrop = document.getElementById('modalVerifyMealPassBackdrop');
+    if (backdrop) backdrop.classList.toggle('hidden', !show);
+    if (!show) {
+      this.isMealPassScanProcessing = false;
+      if (this.activeView === 'secOwnerMealPassScanner' && this.mealPassCameraStream) {
+        requestAnimationFrame(() => this.scanMealPassLoop());
+      }
+    }
+  }
+
+  async confirmRedeemMealPass(token) {
+    if (!confirm('Redeem this meal pass now?')) return;
+
+    try {
+      this.showToast('Processing meal redemption...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/redeem-pass`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+
+      const json = await res.json();
+
+      if (json.success && json.redemption) {
+        const red = json.redemption;
+        this.showToast(`✅ Meal Pass #${red.pass_number} Redeemed Successfully! Remaining: ${red.remaining_meals}`, 'success');
+
+        const modalContent = document.getElementById('verifyPassModalContent');
+        if (modalContent) {
+          modalContent.innerHTML = `
+            <div style="background: rgba(76, 175, 80, 0.2); border: 2px solid #4CAF50; border-radius: 16px; padding: 20px; margin-bottom: 16px;">
+              <i class="fa-solid fa-circle-check fa-3x" style="color: #4CAF50; margin-bottom: 10px;"></i>
+              <h2 style="font-size: 1.4rem; font-weight: 900; color: #81C784; margin: 0 0 6px 0;">MEAL REDEEMED!</h2>
+              <p style="font-size: 0.9rem; color: #FFF; margin: 0;">Pass #${red.pass_number} for ${escapeHtml(red.customer_name)}</p>
+              <div style="font-size: 1.1rem; font-weight: 800; color: var(--accent-gold); margin-top: 10px;">
+                Remaining Meals: ${red.remaining_meals}
+              </div>
+            </div>
+
+            <button type="button" class="btn-primary-block" onclick="app.toggleVerifyPassModal(false)" style="background: #4CAF50; color: #FFF;">
+              Done & Scan Next
+            </button>
+          `;
+        }
+      } else {
+        this.showToast(json.message || 'Redemption failed.', 'error');
+        this.toggleVerifyPassModal(false);
+      }
+    } catch (err) {
+      console.error('Redeem pass error:', err);
+      this.showToast('Error redeeming meal pass.', 'error');
+      this.toggleVerifyPassModal(false);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // OWNER SUBSCRIBERS HUB (SEARCH, FILTER, SORT, PAGINATION)
+  // ------------------------------------------------------------
+  setOwnerSubscribersTab(tab) {
+    this.ownerSubscribersTab = tab;
+    document.getElementById('btnOwnerSubTabSubscribers')?.classList.toggle('active', tab === 'SUBSCRIBERS');
+    document.getElementById('btnOwnerSubTabPasses')?.classList.toggle('active', tab === 'PASSES');
+    document.getElementById('btnOwnerSubTabRedemptions')?.classList.toggle('active', tab === 'REDEMPTIONS');
+    this.renderOwnerSubscribersHub();
+  }
+
+  triggerOwnerSubSearch() {
+    this.renderOwnerSubscribersHub(1);
+  }
+
+  clearOwnerSubFilters() {
+    const searchInput = document.getElementById('txtOwnerSubSearch');
+    const statusSelect = document.getElementById('selOwnerSubStatusFilter');
+    const expirySelect = document.getElementById('selOwnerSubExpiryFilter');
+    const sortSelect = document.getElementById('selOwnerSubSort');
+
+    if (searchInput) searchInput.value = '';
+    if (statusSelect) statusSelect.value = 'ALL';
+    if (expirySelect) expirySelect.value = 'ALL';
+    if (sortSelect) sortSelect.value = 'newest';
+
+    this.renderOwnerSubscribersHub(1);
+  }
+
+  async renderOwnerSubscribersHub(page = 1) {
+    const container = document.getElementById('ownerSubscribersContentContainer');
+    if (!container) return;
+
+    const tab = this.ownerSubscribersTab || 'SUBSCRIBERS';
+    const q = (document.getElementById('txtOwnerSubSearch')?.value || '').trim();
+    const status = document.getElementById('selOwnerSubStatusFilter')?.value || 'ALL';
+    const expiry = document.getElementById('selOwnerSubExpiryFilter')?.value || 'ALL';
+    const sort = document.getElementById('selOwnerSubSort')?.value || 'newest';
+
+    container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading data...</p></div>';
+
+    try {
+      if (tab === 'SUBSCRIBERS') {
+        const queryParams = new URLSearchParams({ q, status, expiry, sort, page: page.toString(), limit: '15' });
+        const res = await this.fetchWithAuth(`${API_BASE}/owner/subscribers?${queryParams.toString()}`);
+        const json = await res.json();
+
+        if (!json.success || !json.subscribers || json.subscribers.length === 0) {
+          container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><i class="fa-solid fa-users-slash fa-3x" style="color: var(--border-color); margin-bottom: 12px;"></i><p>No subscribers found matching your search/filters.</p></div>';
+          return;
+        }
+
+        const pagination = json.pagination || {};
+
+        container.innerHTML = `
+          <div style="overflow-x: auto; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 16px; margin-bottom: 15px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+              <thead>
+                <tr style="background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border-color); color: var(--accent-gold);">
+                  <th style="padding: 12px;">Customer</th>
+                  <th style="padding: 12px;">Subscription ID</th>
+                  <th style="padding: 12px;">Plan</th>
+                  <th style="padding: 12px;">Start / Expiry</th>
+                  <th style="padding: 12px;">Total/Used/Remaining</th>
+                  <th style="padding: 12px;">Price</th>
+                  <th style="padding: 12px;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${json.subscribers.map(sub => {
+                  const isActive = sub.status === 'ACTIVE';
+                  const expiryStr = sub.expiry_date ? new Date(sub.expiry_date).toLocaleDateString('en-IN') : 'N/A';
+                  const startStr = sub.start_date ? new Date(sub.start_date).toLocaleDateString('en-IN') : 'N/A';
+
+                  return `
+                    <tr class="table-row-subscription" style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                      <td style="padding: 12px;">
+                        <strong style="color: #FFF;">${escapeHtml(sub.customer_name)}</strong><br>
+                        <span style="font-size: 0.78rem; color: var(--text-muted);">${escapeHtml(sub.customer_mobile)}</span>
+                      </td>
+                      <td style="padding: 12px; font-family: monospace; color: var(--accent-gold); font-weight: 700;">
+                        ${escapeHtml(sub.subscription_id)}
+                      </td>
+                      <td style="padding: 12px; color: #FFF; font-weight: 700;">
+                        ${escapeHtml(sub.plan_name)}
+                      </td>
+                      <td style="padding: 12px; color: var(--text-muted); font-size: 0.8rem;">
+                        ${startStr} &rarr; <strong style="color: #FFF;">${expiryStr}</strong>
+                      </td>
+                      <td style="padding: 12px;">
+                        <span style="color: #FFF;">${sub.total_meals}</span> /
+                        <span style="color: #FF9800;">${sub.used_meals}</span> /
+                        <strong style="color: #4CAF50;">${sub.remaining_meals} Rem</strong>
+                      </td>
+                      <td style="padding: 12px; font-weight: 800; color: #FFF;">
+                        ₹${parseFloat(sub.purchase_price).toLocaleString('en-IN')}
+                      </td>
+                      <td style="padding: 12px;">
+                        <span style="background: ${isActive ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 82, 82, 0.15)'}; color: ${isActive ? '#81C784' : '#FF5252'}; border: 1px solid ${isActive ? '#4CAF50' : '#FF5252'}; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.72rem;">
+                          ${escapeHtml(sub.status)}
+                        </span>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <span style="font-size: 0.82rem; color: var(--text-muted);">
+              Showing Page ${pagination.page} of ${pagination.total_pages} (${pagination.total} records)
+            </span>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-secondary-outline" onclick="app.renderOwnerSubscribersHub(${pagination.page - 1})" ${pagination.page <= 1 ? 'disabled' : ''} style="padding: 4px 12px; font-size: 0.8rem;">
+                Previous
+              </button>
+              <button type="button" class="btn-secondary-outline" onclick="app.renderOwnerSubscribersHub(${pagination.page + 1})" ${pagination.page >= pagination.total_pages ? 'disabled' : ''} style="padding: 4px 12px; font-size: 0.8rem;">
+                Next
+              </button>
+            </div>
+          </div>
+        `;
+      } else if (tab === 'PASSES') {
+        const queryParams = new URLSearchParams({ q, status, page: page.toString(), limit: '20' });
+        const res = await this.fetchWithAuth(`${API_BASE}/owner/subscription-passes?${queryParams.toString()}`);
+        const json = await res.json();
+
+        if (!json.success || !json.passes || json.passes.length === 0) {
+          container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><p>No meal passes found.</p></div>';
+          return;
+        }
+
+        const pagination = json.pagination || {};
+
+        container.innerHTML = `
+          <div style="overflow-x: auto; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 16px; margin-bottom: 15px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+              <thead>
+                <tr style="background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border-color); color: var(--accent-gold);">
+                  <th style="padding: 12px;">Pass ID</th>
+                  <th style="padding: 12px;">Customer</th>
+                  <th style="padding: 12px;">Subscription ID</th>
+                  <th style="padding: 12px;">Meal #</th>
+                  <th style="padding: 12px;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${json.passes.map(p => `
+                  <tr class="table-row-subscription" style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                    <td style="padding: 12px; font-family: monospace; color: #FFF; font-weight: 700;">${escapeHtml(p.pass_id)}</td>
+                    <td style="padding: 12px;"><strong style="color: #FFF;">${escapeHtml(p.customer_name)}</strong> (${escapeHtml(p.customer_mobile)})</td>
+                    <td style="padding: 12px; font-family: monospace; color: var(--accent-gold);">${escapeHtml(p.sub_formatted_id)}</td>
+                    <td style="padding: 12px; color: #FFF; font-weight: 700;">Pass #${p.meal_number}</td>
+                    <td style="padding: 12px;">
+                      <span style="background: ${p.status === 'AVAILABLE' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 152, 0, 0.15)'}; color: ${p.status === 'AVAILABLE' ? '#81C784' : '#FF9800'}; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.72rem;">
+                        ${escapeHtml(p.status)}
+                      </span>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <span style="font-size: 0.82rem; color: var(--text-muted);">Page ${pagination.page} of ${pagination.total_pages} (${pagination.total} total passes)</span>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-secondary-outline" onclick="app.renderOwnerSubscribersHub(${pagination.page - 1})" ${pagination.page <= 1 ? 'disabled' : ''} style="padding: 4px 12px; font-size: 0.8rem;">Previous</button>
+              <button type="button" class="btn-secondary-outline" onclick="app.renderOwnerSubscribersHub(${pagination.page + 1})" ${pagination.page >= pagination.total_pages ? 'disabled' : ''} style="padding: 4px 12px; font-size: 0.8rem;">Next</button>
+            </div>
+          </div>
+        `;
+      } else if (tab === 'REDEMPTIONS') {
+        const queryParams = new URLSearchParams({ q, page: page.toString(), limit: '20' });
+        const res = await this.fetchWithAuth(`${API_BASE}/owner/subscription-redemptions?${queryParams.toString()}`);
+        const json = await res.json();
+
+        if (!json.success || !json.redemptions || json.redemptions.length === 0) {
+          container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><p>No redemption audit history found.</p></div>';
+          return;
+        }
+
+        const pagination = json.pagination || {};
+
+        container.innerHTML = `
+          <div style="overflow-x: auto; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 16px; margin-bottom: 15px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+              <thead>
+                <tr style="background: rgba(0,0,0,0.3); border-bottom: 1px solid var(--border-color); color: var(--accent-gold);">
+                  <th style="padding: 12px;">Redemption Ref</th>
+                  <th style="padding: 12px;">Customer</th>
+                  <th style="padding: 12px;">Plan</th>
+                  <th style="padding: 12px;">Meal #</th>
+                  <th style="padding: 12px;">Redeemed At</th>
+                  <th style="padding: 12px;">Redeemed By</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${json.redemptions.map(r => {
+                  const dateStr = r.redeemed_at ? new Date(r.redeemed_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A';
+                  return `
+                    <tr class="table-row-subscription" style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                      <td style="padding: 12px; font-family: monospace; color: #4CAF50; font-weight: 700;">${escapeHtml(r.redemption_reference)}</td>
+                      <td style="padding: 12px;"><strong style="color: #FFF;">${escapeHtml(r.customer_name)}</strong> (${escapeHtml(r.customer_mobile)})</td>
+                      <td style="padding: 12px; color: #FFF; font-weight: 700;">${escapeHtml(r.plan_name)}</td>
+                      <td style="padding: 12px; color: var(--accent-gold); font-weight: 700;">Pass #${r.meal_number}</td>
+                      <td style="padding: 12px; color: var(--text-muted); font-size: 0.8rem;">${dateStr}</td>
+                      <td style="padding: 12px; color: #FFF;">${escapeHtml(r.redeemed_by || 'Owner')}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <span style="font-size: 0.82rem; color: var(--text-muted);">Page ${pagination.page} of ${pagination.total_pages} (${pagination.total} total redemptions)</span>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn-secondary-outline" onclick="app.renderOwnerSubscribersHub(${pagination.page - 1})" ${pagination.page <= 1 ? 'disabled' : ''} style="padding: 4px 12px; font-size: 0.8rem;">Previous</button>
+              <button type="button" class="btn-secondary-outline" onclick="app.renderOwnerSubscribersHub(${pagination.page + 1})" ${pagination.page >= pagination.total_pages ? 'disabled' : ''} style="padding: 4px 12px; font-size: 0.8rem;">Next</button>
+            </div>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('Render owner subscribers hub error:', err);
+      container.innerHTML = '<div style="text-align: center; color: #FF5252; padding: 30px;">Failed to load data.</div>';
+    }
+  }
+
+  /* ============================================================
+     📍 CUSTOMER DELIVERY ADDRESS & 🗺️ DELIVERY ZONE MANAGEMENT
+     ============================================================ */
+
+  // ------------------------------------------------------------
+  // CUSTOMER ADDRESSES ENGINE
+  // ------------------------------------------------------------
+  async loadCustomerAddresses() {
+    const grid = document.getElementById('customerAddressesGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading saved addresses...</p></div>';
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/addresses`);
+      const json = await res.json();
+
+      if (!json.success || !json.addresses || json.addresses.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px; border: 1px dashed var(--border-color);">
+            <i class="fa-solid fa-location-dot fa-3x" style="color: #FF5722; margin-bottom: 12px;"></i>
+            <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 6px;">📍 No Saved Addresses</h3>
+            <p style="font-size: 0.88rem; max-width: 400px; margin: 0 auto 16px auto;">Add an address to make delivery ordering faster and seamless.</p>
+            <button type="button" class="btn-primary-block" onclick="app.openAddressModal()" style="width: auto; padding: 8px 18px; margin: 0 auto; background: linear-gradient(135deg, #FF5722, #E64A19);">
+              <i class="fa-solid fa-plus"></i> Add Address
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      this.savedAddresses = json.addresses;
+
+      grid.innerHTML = json.addresses.map(addr => {
+        const isDefault = Boolean(addr.is_default);
+        const icon = addr.address_type === 'Work' ? '💼' : addr.address_type === 'Other' ? '📍' : '🏠';
+
+        return `
+          <div class="address-card ${isDefault ? 'is-default' : ''}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+              <span class="badge-address-type">
+                ${icon} ${escapeHtml(addr.address_type || 'Home')}
+              </span>
+              ${isDefault ? `
+                <span style="background: rgba(255, 87, 34, 0.15); color: #FF7043; border: 1px solid #FF5722; padding: 2px 8px; border-radius: 10px; font-weight: 800; font-size: 0.72rem;">
+                  ⭐ Default Address
+                </span>
+              ` : ''}
+            </div>
+
+            <div style="font-weight: 800; color: #FFF; font-size: 1rem; margin-bottom: 4px;">
+              ${escapeHtml(addr.full_name)}
+            </div>
+
+            <div style="font-size: 0.83rem; color: var(--accent-gold); font-weight: 700; margin-bottom: 8px;">
+              <i class="fa-solid fa-phone"></i> ${escapeHtml(addr.mobile_number)}
+            </div>
+
+            <div style="font-size: 0.85rem; color: #DDD; line-height: 1.4; margin-bottom: 10px;">
+              ${escapeHtml(addr.address_line1)}${addr.address_line2 ? ', ' + escapeHtml(addr.address_line2) : ''}<br>
+              ${escapeHtml(addr.area)}, ${escapeHtml(addr.city)}<br>
+              ${escapeHtml(addr.state)} - <strong style="color: #FFF;">${escapeHtml(addr.pincode)}</strong>
+              ${addr.landmark ? `<div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;"><i class="fa-solid fa-compass"></i> Landmark: "${escapeHtml(addr.landmark)}"</div>` : ''}
+              ${addr.delivery_instructions ? `<div style="font-size: 0.78rem; color: #81C784; margin-top: 2px;"><i class="fa-solid fa-clipboard-list"></i> Note: "${escapeHtml(addr.delivery_instructions)}"</div>` : ''}
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+              <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal('${addr.id}')" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 700;">
+                <i class="fa-solid fa-pen"></i> Edit
+              </button>
+
+              <button type="button" class="btn-secondary-outline" onclick="app.deleteCustomerAddress('${addr.id}')" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 700; color: #FF5252; border-color: rgba(255, 82, 82, 0.4);">
+                <i class="fa-solid fa-trash-can"></i> Delete
+              </button>
+
+              ${!isDefault ? `
+                <button type="button" class="btn-secondary-outline" onclick="app.setCustomerDefaultAddress('${addr.id}')" style="padding: 4px 12px; font-size: 0.78rem; font-weight: 700; color: var(--accent-gold); border-color: rgba(255, 193, 7, 0.4); margin-left: auto;">
+                  ⭐ Make Default
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error('Load customer addresses error:', err);
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load saved addresses.</div>';
+    }
+  }
+
+  toggleAddressModal(show = true) {
+    const backdrop = document.getElementById('modalAddressBackdrop');
+    if (backdrop) backdrop.classList.toggle('open', show);
+  }
+
+  openAddressModal(addressId = null) {
+    document.getElementById('txtAddrId').value = addressId || '';
+    document.getElementById('lblAddressModalTitle').innerHTML = addressId ? `<i class="fa-solid fa-pen" style="color: #FF5722;"></i> Edit Address` : `<i class="fa-solid fa-location-dot" style="color: #FF5722;"></i> Add New Address`;
+
+    if (addressId && this.savedAddresses) {
+      const addr = this.savedAddresses.find(a => a.id === addressId);
+      if (addr) {
+        const typeRad = document.querySelector(`input[name="radAddrType"][value="${addr.address_type}"]`);
+        if (typeRad) typeRad.checked = true;
+        document.getElementById('txtAddrFullName').value = addr.full_name || '';
+        document.getElementById('txtAddrMobile').value = addr.mobile_number || '';
+        document.getElementById('txtAddrLine1').value = addr.address_line1 || '';
+        document.getElementById('txtAddrLine2').value = addr.address_line2 || '';
+        document.getElementById('txtAddrArea').value = addr.area || '';
+        document.getElementById('txtAddrCity').value = addr.city || '';
+        document.getElementById('txtAddrState').value = addr.state || '';
+        document.getElementById('txtAddrPincode').value = addr.pincode || '';
+        document.getElementById('txtAddrLandmark').value = addr.landmark || '';
+        document.getElementById('txtAddrInstructions').value = addr.delivery_instructions || '';
+        document.getElementById('chkAddrIsDefault').checked = Boolean(addr.is_default);
+      }
+    } else {
+      const defaultTypeRad = document.querySelector('input[name="radAddrType"][value="Home"]');
+      if (defaultTypeRad) defaultTypeRad.checked = true;
+      document.getElementById('txtAddrFullName').value = this.currentUser ? this.currentUser.name || '' : '';
+      document.getElementById('txtAddrMobile').value = this.currentUser ? this.currentUser.mobile || '' : '';
+      document.getElementById('txtAddrLine1').value = '';
+      document.getElementById('txtAddrLine2').value = '';
+      document.getElementById('txtAddrArea').value = 'Nandigama';
+      document.getElementById('txtAddrCity').value = 'Nandigama';
+      document.getElementById('txtAddrState').value = 'Andhra Pradesh';
+      document.getElementById('txtAddrPincode').value = '521185';
+      document.getElementById('txtAddrLandmark').value = '';
+      document.getElementById('txtAddrInstructions').value = '';
+      document.getElementById('chkAddrIsDefault').checked = false;
+    }
+
+    this.toggleAddressModal(true);
+  }
+
+  async saveCustomerAddress(e) {
+    if (e) e.preventDefault();
+
+    const id = document.getElementById('txtAddrId').value.trim();
+    const typeRad = document.querySelector('input[name="radAddrType"]:checked');
+    const type = typeRad ? typeRad.value : 'Home';
+    const fullName = document.getElementById('txtAddrFullName').value.trim();
+    const mobile = document.getElementById('txtAddrMobile').value.trim();
+    const line1 = document.getElementById('txtAddrLine1').value.trim();
+    const line2 = document.getElementById('txtAddrLine2').value.trim();
+    const area = document.getElementById('txtAddrArea').value.trim();
+    const city = document.getElementById('txtAddrCity').value.trim();
+    const state = document.getElementById('txtAddrState').value.trim();
+    const pincode = document.getElementById('txtAddrPincode').value.trim();
+    const landmark = document.getElementById('txtAddrLandmark').value.trim();
+    const instructions = document.getElementById('txtAddrInstructions').value.trim();
+    const isDefault = document.getElementById('chkAddrIsDefault').checked;
+
+    if (!fullName || !mobile || !line1 || !area || !city || !state || !pincode) {
+      this.showToast('Please fill all required address fields.', 'error');
+      return;
+    }
+
+    const pinRegex = /^[1-9][0-9]{5}$/;
+    if (!pinRegex.test(pincode)) {
+      this.showToast('Please enter a valid 6-digit Indian PIN code.', 'error');
+      return;
+    }
+
+    const payload = {
+      address_type: type,
+      full_name: fullName,
+      mobile_number: mobile,
+      address_line1: line1,
+      address_line2: line2,
+      area: area,
+      city: city,
+      state: state,
+      pincode: pincode,
+      landmark: landmark,
+      delivery_instructions: instructions,
+      is_default: isDefault
+    };
+
+    try {
+      const url = id ? `${API_BASE}/addresses/${id}` : `${API_BASE}/addresses`;
+      const method = id ? 'PUT' : 'POST';
+
+      const res = await this.fetchWithAuth(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Address saved successfully.', 'success');
+        this.toggleAddressModal(false);
+        this.loadCustomerAddresses();
+        if (document.getElementById('ordType')?.value === 'Delivery') {
+          this.loadCheckoutSavedAddresses();
+        }
+      } else {
+        this.showToast(json.message || 'Failed to save address.', 'error');
+      }
+    } catch (err) {
+      console.error('Save address error:', err);
+      this.showToast('Network error saving address.', 'error');
+    }
+  }
+
+  async deleteCustomerAddress(id) {
+    if (!confirm('Are you sure you want to delete this delivery address?')) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/addresses/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('Address deleted successfully.', 'success');
+        this.loadCustomerAddresses();
+        if (document.getElementById('ordType')?.value === 'Delivery') {
+          this.loadCheckoutSavedAddresses();
+        }
+      } else {
+        this.showToast(json.message || 'Failed to delete address.', 'error');
+      }
+    } catch (err) {
+      console.error('Delete address error:', err);
+      this.showToast('Network error deleting address.', 'error');
+    }
+  }
+
+  async setCustomerDefaultAddress(id) {
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/addresses/${id}/set-default`, { method: 'PATCH' });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || '⭐ Default address updated.', 'success');
+        this.loadCustomerAddresses();
+      } else {
+        this.showToast(json.message || 'Failed to update default address.', 'error');
+      }
+    } catch (err) {
+      console.error('Set default address error:', err);
+      this.showToast('Network error setting default address.', 'error');
+    }
+  }
+
+  // ------------------------------------------------------------
+  // OWNER DELIVERY ZONES ENGINE
+  // ------------------------------------------------------------
+  async loadOwnerDeliveryZones() {
+    const container = document.getElementById('ownerDeliveryZonesContainer');
+    if (!container) return;
+
+    const q = (document.getElementById('txtOwnerZoneSearch')?.value || '').trim();
+    const status = document.getElementById('selOwnerZoneStatusFilter')?.value || 'ALL';
+
+    container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading delivery zones...</p></div>';
+
+    try {
+      const queryParams = new URLSearchParams({ q, status });
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/delivery-zones?${queryParams.toString()}`);
+      const json = await res.json();
+
+      if (!json.success || !json.zones || json.zones.length === 0) {
+        container.innerHTML = `
+          <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px; border: 1px dashed var(--border-color);">
+            <i class="fa-solid fa-map-location-dot fa-3x" style="color: #4CAF50; margin-bottom: 12px;"></i>
+            <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 6px;">🗺️ No Delivery Zones Found</h3>
+            <p style="font-size: 0.88rem; max-width: 400px; margin: 0 auto 16px auto;">Create a delivery zone to enable delivery orders for specific PIN codes.</p>
+            <button type="button" class="btn-primary-block" onclick="app.openDeliveryZoneModal()" style="width: auto; padding: 8px 18px; margin: 0 auto; background: linear-gradient(135deg, #4CAF50, #2E7D32);">
+              <i class="fa-solid fa-plus"></i> Add Delivery Zone
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      this.ownerDeliveryZones = json.zones;
+
+      container.innerHTML = json.zones.map(z => {
+        const isActive = z.status === 'ACTIVE';
+        let pinList = [];
+        try {
+          pinList = typeof z.pincodes === 'string' ? JSON.parse(z.pincodes) : (z.pincodes || []);
+        } catch (e) {
+          pinList = [];
+        }
+
+        return `
+          <div class="zone-card ${isActive ? 'active-zone' : ''}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+              <h3 style="font-size: 1.1rem; font-weight: 800; color: #FFF; margin: 0;">🗺️ ${escapeHtml(z.zone_name)}</h3>
+              <span style="background: ${isActive ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 82, 82, 0.15)'}; color: ${isActive ? '#81C784' : '#FF5252'}; border: 1px solid ${isActive ? '#4CAF50' : '#FF5252'}; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 0.72rem;">
+                ${isActive ? '🟢 Active' : '🔴 Inactive'}
+              </span>
+            </div>
+
+            ${z.description ? `<p style="font-size: 0.82rem; color: var(--text-muted); margin: 0 0 10px 0;">${escapeHtml(z.description)}</p>` : ''}
+
+            <div style="display: flex; gap: 14px; margin-bottom: 12px; flex-wrap: wrap;">
+              <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 12px;">
+                <span style="font-size: 0.74rem; color: var(--text-muted); display: block;">Delivery Fee</span>
+                <strong style="font-size: 1.05rem; color: var(--accent-gold);">₹${parseFloat(z.delivery_fee).toFixed(0)}</strong>
+              </div>
+
+              <div style="background: rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 12px;">
+                <span style="font-size: 0.74rem; color: var(--text-muted); display: block;">Min Order</span>
+                <strong style="font-size: 1.05rem; color: #FFF;">₹${parseFloat(z.min_order_amount || 0).toFixed(0)}</strong>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+              <span style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 4px; font-weight: 700;">Assigned PIN Codes:</span>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                ${pinList.map(p => `<span class="pincode-tag"><i class="fa-solid fa-location-pin"></i> ${escapeHtml(p)}</span>`).join('')}
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px; flex-wrap: wrap;">
+              <button type="button" class="btn-secondary-outline" onclick="app.openDeliveryZoneModal('${z.id}')" style="padding: 5px 12px; font-size: 0.78rem; font-weight: 700;">
+                <i class="fa-solid fa-pen"></i> Edit
+              </button>
+
+              <button type="button" class="btn-secondary-outline" onclick="app.toggleOwnerZoneStatus('${z.id}', '${z.status}')" style="padding: 5px 12px; font-size: 0.78rem; font-weight: 700; color: ${isActive ? '#FFB74D' : '#81C784'}; border-color: ${isActive ? 'rgba(255, 183, 77, 0.4)' : 'rgba(129, 199, 132, 0.4)'};">
+                ${isActive ? '🔴 Deactivate' : '🟢 Activate'}
+              </button>
+
+              <button type="button" class="btn-secondary-outline" onclick="app.deleteOwnerDeliveryZone('${z.id}')" style="padding: 5px 12px; font-size: 0.78rem; font-weight: 700; color: #FF5252; border-color: rgba(255, 82, 82, 0.4); margin-left: auto;">
+                <i class="fa-solid fa-trash-can"></i> Delete
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error('Load owner delivery zones error:', err);
+      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load delivery zones.</div>';
+    }
+  }
+
+  toggleDeliveryZoneModal(show = true) {
+    const backdrop = document.getElementById('modalDeliveryZoneBackdrop');
+    if (backdrop) backdrop.classList.toggle('open', show);
+  }
+
+  openDeliveryZoneModal(zoneId = null) {
+    document.getElementById('txtZoneId').value = zoneId || '';
+    document.getElementById('lblZoneModalTitle').innerHTML = zoneId ? `<i class="fa-solid fa-pen" style="color: #4CAF50;"></i> Edit Delivery Zone` : `<i class="fa-solid fa-map-location-dot" style="color: #4CAF50;"></i> Add Delivery Zone`;
+
+    if (zoneId && this.ownerDeliveryZones) {
+      const z = this.ownerDeliveryZones.find(x => x.id === zoneId);
+      if (z) {
+        let pinList = [];
+        try {
+          pinList = typeof z.pincodes === 'string' ? JSON.parse(z.pincodes) : (z.pincodes || []);
+        } catch (e) {
+          pinList = [];
+        }
+        document.getElementById('txtZoneName').value = z.zone_name || '';
+        document.getElementById('txtZonePincodes').value = pinList.join(', ');
+        document.getElementById('numZoneFee').value = z.delivery_fee || 0;
+        document.getElementById('numZoneMinOrder').value = z.min_order_amount || 0;
+        document.getElementById('txtZoneDesc').value = z.description || '';
+        document.getElementById('selZoneStatus').value = z.status || 'ACTIVE';
+      }
+    } else {
+      document.getElementById('txtZoneName').value = '';
+      document.getElementById('txtZonePincodes').value = '521185, 521186';
+      document.getElementById('numZoneFee').value = 20;
+      document.getElementById('numZoneMinOrder').value = 100;
+      document.getElementById('txtZoneDesc').value = '';
+      document.getElementById('selZoneStatus').value = 'ACTIVE';
+    }
+
+    this.toggleDeliveryZoneModal(true);
+  }
+
+  async saveOwnerDeliveryZone(e) {
+    if (e) e.preventDefault();
+
+    const id = document.getElementById('txtZoneId').value.trim();
+    const zoneName = document.getElementById('txtZoneName').value.trim();
+    const pincodesStr = document.getElementById('txtZonePincodes').value.trim();
+    const fee = parseFloat(document.getElementById('numZoneFee').value || '0') || 0;
+    const minOrder = parseFloat(document.getElementById('numZoneMinOrder').value || '0') || 0;
+    const desc = document.getElementById('txtZoneDesc').value.trim();
+    const status = document.getElementById('selZoneStatus').value;
+
+    if (!zoneName || !pincodesStr) {
+      this.showToast('Zone Name and PIN codes are required.', 'error');
+      return;
+    }
+
+    const rawPins = pincodesStr.split(',').map(s => s.trim());
+    const validPins = rawPins.filter(p => /^[1-9][0-9]{5}$/.test(p));
+
+    if (validPins.length === 0) {
+      this.showToast('Please enter at least one valid 6-digit Indian PIN code.', 'error');
+      return;
+    }
+
+    const payload = {
+      zone_name: zoneName,
+      pincodes: validPins,
+      delivery_fee: fee,
+      min_order_amount: minOrder,
+      description: desc,
+      status: status
+    };
+
+    try {
+      const url = id ? `${API_BASE}/owner/delivery-zones/${id}` : `${API_BASE}/owner/delivery-zones`;
+      const method = id ? 'PUT' : 'POST';
+
+      const res = await this.fetchWithAuth(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Delivery zone saved successfully.', 'success');
+        this.toggleDeliveryZoneModal(false);
+        this.loadOwnerDeliveryZones();
+      } else {
+        this.showToast(json.message || 'Failed to save delivery zone.', 'error');
+      }
+    } catch (err) {
+      console.error('Save delivery zone error:', err);
+      this.showToast('Network error saving delivery zone.', 'error');
+    }
+  }
+
+  async toggleOwnerZoneStatus(id, currentStatus) {
+    const newStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/delivery-zones/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast(json.message || 'Status updated.', 'success');
+        this.loadOwnerDeliveryZones();
+      } else {
+        this.showToast(json.message || 'Failed to update zone status.', 'error');
+      }
+    } catch (err) {
+      console.error('Toggle zone status error:', err);
+      this.showToast('Network error updating zone status.', 'error');
+    }
+  }
+
+  async deleteOwnerDeliveryZone(id) {
+    if (!confirm('Are you sure you want to delete this delivery zone?')) return;
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/delivery-zones/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('Delivery zone deleted.', 'success');
+        this.loadOwnerDeliveryZones();
+      } else {
+        this.showToast(json.message || 'Failed to delete delivery zone.', 'error');
+      }
+    } catch (err) {
+      console.error('Delete delivery zone error:', err);
+      this.showToast('Network error deleting delivery zone.', 'error');
+    }
+  }
+
+  // ------------------------------------------------------------
+  // CHECKOUT SAVED ADDRESS SELECTOR INTEGRATION
+  // ------------------------------------------------------------
+  async loadCheckoutSavedAddresses() {
+    const container = document.getElementById('savedAddressesCheckoutContainer');
+    if (!container) return;
+
+    if (!this.currentUser) {
+      container.innerHTML = '';
+      return;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/addresses`);
+      const json = await res.json();
+
+      if (!json.success || !json.addresses || json.addresses.length === 0) {
+        container.innerHTML = `
+          <div style="background: rgba(255,255,255,0.04); border: 1px dashed var(--border-color); border-radius: 12px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.82rem; color: var(--text-muted);"><i class="fa-solid fa-location-dot" style="color: #FF5722;"></i> No saved addresses found</span>
+            <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 4px 10px; font-size: 0.78rem;">
+              <i class="fa-solid fa-plus"></i> Add Address
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      this.checkoutSavedAddresses = json.addresses;
+      let defaultAddr = json.addresses.find(a => a.is_default) || json.addresses[0];
+      this.selectedDeliveryAddressId = defaultAddr.id;
+
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${json.addresses.map(a => {
+            const isChecked = a.id === defaultAddr.id;
+            const icon = a.address_type === 'Work' ? '💼' : a.address_type === 'Other' ? '📍' : '🏠';
+            return `
+              <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: ${isChecked ? 'rgba(255, 87, 34, 0.12)' : 'rgba(255,255,255,0.04)'}; border: 1.5px solid ${isChecked ? '#FF5722' : 'var(--border-color)'}; border-radius: 12px; cursor: pointer; transition: all 0.15s ease;">
+                <input type="radio" name="radCheckoutAddress" value="${a.id}" ${isChecked ? 'checked' : ''} onchange="app.selectCheckoutAddress('${a.id}')" style="margin-top: 3px;">
+                <div style="flex: 1; font-size: 0.82rem;">
+                  <div style="font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 6px;">
+                    <span>${icon} ${escapeHtml(a.address_type || 'Home')} - ${escapeHtml(a.full_name)}</span>
+                    ${a.is_default ? `<span style="font-size: 0.7rem; color: #FF7043;">⭐ Default</span>` : ''}
+                  </div>
+                  <div style="color: #DDD; margin-top: 2px;">
+                    ${escapeHtml(a.address_line1)}, ${escapeHtml(a.area)}, ${escapeHtml(a.city)} - <strong>${escapeHtml(a.pincode)}</strong>
+                  </div>
+                </div>
+              </label>
+            `;
+          }).join('')}
+          <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+            <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 4px 12px; font-size: 0.78rem; color: #FF7043; border-color: rgba(255, 87, 34, 0.4);">
+              <i class="fa-solid fa-plus"></i> Add New Address
+            </button>
+          </div>
+        </div>
+      `;
+
+      this.selectCheckoutAddress(defaultAddr.id);
+    } catch (err) {
+      console.error('Load checkout saved addresses error:', err);
+    }
+  }
+
+  async selectCheckoutAddress(addressId) {
+    this.selectedDeliveryAddressId = addressId;
+    if (!this.checkoutSavedAddresses) return;
+
+    const addr = this.checkoutSavedAddresses.find(a => a.id === addressId);
+    if (!addr) return;
+
+    const inputAddr = document.getElementById('ordDeliveryAddress');
+    if (inputAddr) {
+      inputAddr.value = `${addr.full_name} (${addr.mobile_number}), ${addr.address_line1}${addr.address_line2 ? ', ' + addr.address_line2 : ''}, ${addr.area}, ${addr.city}, ${addr.state} - ${addr.pincode}${addr.landmark ? ' (Landmark: ' + addr.landmark + ')' : ''}`;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/delivery-zones/check-pincode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address_id: addressId, pincode: addr.pincode })
+      });
+      const json = await res.json();
+
+      const btnSubmit = document.getElementById('btnCheckoutSubmit');
+
+      if (json.success && json.available && json.zone) {
+        this.selectedDeliveryZone = json.zone;
+        this.currentDeliveryFee = Number(json.delivery_fee || 0);
+        this.showToast(`🗺️ Delivery Zone: ${json.zone.zone_name} (Fee: ₹${json.delivery_fee})`, 'info');
+        if (btnSubmit) btnSubmit.disabled = false;
+      } else {
+        this.selectedDeliveryZone = null;
+        this.currentDeliveryFee = 0;
+        this.showToast(json.message || '🚫 Delivery unavailable at this location.', 'error');
+      }
+
+      if (typeof this.updateCheckoutTotalDisplay === 'function') {
+        this.updateCheckoutTotalDisplay();
+      }
+    } catch (err) {
+      console.error('Pincode check error:', err);
     }
   }
 }

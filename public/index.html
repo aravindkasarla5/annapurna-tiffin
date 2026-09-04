@@ -3161,6 +3161,458 @@
       </div>
     </section>
 
+    <!-- ============================================================ -->
+    <!-- 🧺 CUSTOMER SECTION: MEAL PLANS GALLERY (secCustomerMealPlans) -->
+    <!-- ============================================================ -->
+    <section id="secCustomerMealPlans" class="view-section hidden">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> Subscription Meal Plans</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Save money with 7-Day, 15-Day & 30-Day prepaid meal pass plans.</p>
+        </div>
+      </div>
+
+      <div id="customerMealPlansGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem;">
+        <!-- Dynamically rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- 🧺 CUSTOMER SECTION: MY SUBSCRIPTIONS (secCustomerSubscriptions) -->
+    <!-- ============================================================ -->
+    <section id="secCustomerSubscriptions" class="view-section hidden">
+      <div class="section-header" style="flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-calendar-check" style="color: #4CAF50;"></i> My Subscriptions</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">View active and historical meal plan subscriptions.</p>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; width: 100%; max-width: 420px;">
+          <input type="text" id="txtSearchMySubscriptions" class="form-control" placeholder="Search by plan or SUB ID..." oninput="app.renderCustomerSubscriptions()" style="flex: 1; padding: 8px 12px; font-size: 0.85rem;">
+          <select id="selFilterMySubStatus" class="form-control" onchange="app.renderCustomerSubscriptions()" style="width: auto; padding: 8px 12px; font-size: 0.85rem;">
+            <option value="ALL">All Status</option>
+            <option value="ACTIVE">Active</option>
+            <option value="EXPIRED">Expired</option>
+            <option value="PENDING_PAYMENT">Pending</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="customerSubscriptionsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem;">
+        <!-- Dynamically rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- 🎫 CUSTOMER SECTION: MY MEAL PASSES (secCustomerMealPasses) -->
+    <!-- ============================================================ -->
+    <section id="secCustomerMealPasses" class="view-section hidden">
+      <div class="section-header" style="flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> My Meal Passes</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Show your QR code pass to shop owner when collecting food.</p>
+        </div>
+        <div class="tab-pills-row" style="display: flex; gap: 8px;">
+          <button type="button" class="tab-pill active" id="btnPassTabAvailable" onclick="app.setCustomerPassTab('AVAILABLE')">🟢 Available</button>
+          <button type="button" class="tab-pill" id="btnPassTabUsed" onclick="app.setCustomerPassTab('USED')">✓ Used</button>
+          <button type="button" class="tab-pill" id="btnPassTabExpired" onclick="app.setCustomerPassTab('EXPIRED')">🔴 Expired</button>
+        </div>
+      </div>
+
+      <div id="customerMealPassesGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem;">
+        <!-- Dynamically rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- 🧺 OWNER SECTION: SUBSCRIPTION PLANS MANAGER (secOwnerSubscriptionPlans) -->
+    <!-- ============================================================ -->
+    <section id="secOwnerSubscriptionPlans" class="view-section hidden">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> Owner Subscription Plans</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Create, edit, activate, or deactivate subscription meal packages.</p>
+        </div>
+        <button class="btn-primary-block" onclick="app.openSubscriptionPlanModal()" style="width: auto; padding: 10px 20px;">
+          <i class="fa-solid fa-plus"></i> Add Subscription Plan
+        </button>
+      </div>
+
+      <div id="ownerSubscriptionPlansGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem;">
+        <!-- Dynamically rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- 🎫 OWNER SECTION: MEAL PASS SCANNER (secOwnerMealPassScanner) -->
+    <!-- ============================================================ -->
+    <section id="secOwnerMealPassScanner" class="view-section hidden">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-qrcode" style="color: #00E676;"></i> Meal Pass Scanner</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Scan customer meal pass QR code to verify & redeem food.</p>
+        </div>
+      </div>
+
+      <div style="max-width: 520px; margin: 0 auto; background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: 20px; padding: 20px; text-align: center;">
+        <div id="scannerStatusBadge" style="display: inline-block; padding: 6px 16px; border-radius: 20px; background: rgba(255, 255, 255, 0.1); color: #FFF; font-weight: 700; font-size: 0.88rem; margin-bottom: 15px;">
+          <i class="fa-solid fa-video"></i> Scanner Ready
+        </div>
+
+        <div style="position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 14px; overflow: hidden; border: 2px solid var(--accent-gold); margin-bottom: 15px;">
+          <video id="videoMealPassScan" style="width: 100%; height: 100%; object-fit: cover;" playsinline muted></video>
+          <canvas id="canvasMealPassScan" style="display: none;"></canvas>
+          <div style="position: absolute; inset: 0; border: 3px dashed rgba(255,215,0,0.6); margin: 30px; border-radius: 12px; pointer-events: none; box-shadow: 0 0 0 2000px rgba(0,0,0,0.4);"></div>
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <button type="button" class="btn-primary-block" id="btnStartPassCamera" onclick="app.startMealPassScanner()" style="width: auto; padding: 10px 24px; background: linear-gradient(135deg, #00E676, #00B0FF); color: #1A1A2E;">
+            <i class="fa-solid fa-camera"></i> Start Camera Scanner
+          </button>
+          <button type="button" class="btn-secondary-outline" id="btnStopPassCamera" onclick="app.stopMealPassScanner()" style="width: auto; padding: 10px 20px; display: none;">
+            <i class="fa-solid fa-video-slash"></i> Stop Camera
+          </button>
+        </div>
+
+        <div style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Or Enter Pass Token Manually:</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="txtManualPassToken" class="form-control" placeholder="e.g. MP_TOK_9f8a..." style="flex: 1; font-size: 0.88rem;">
+            <button type="button" class="btn-primary-block" onclick="app.manualVerifyMealPass()" style="width: auto; padding: 8px 16px;">
+              Verify
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- 👥 OWNER SECTION: SUBSCRIBERS MANAGEMENT & HISTORY (secOwnerSubscribers) -->
+    <!-- ============================================================ -->
+    <section id="secOwnerSubscribers" class="view-section hidden">
+      <div class="section-header" style="flex-wrap: wrap; gap: 10px; margin-bottom: 1rem;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-users" style="color: #40C4FF;"></i> Subscribers & Redemptions Hub</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Manage all customer subscriptions, search, filter, and track redemptions.</p>
+        </div>
+      </div>
+
+      <!-- Tab Switch: Subscribers vs Redemptions -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 1rem;">
+        <div class="tab-pills-row">
+          <button type="button" class="tab-pill active" id="btnOwnerSubTabSubscribers" onclick="app.setOwnerSubscribersTab('SUBSCRIBERS')">👥 Subscribers</button>
+          <button type="button" class="tab-pill" id="btnOwnerSubTabPasses" onclick="app.setOwnerSubscribersTab('PASSES')">🎫 All Meal Passes</button>
+          <button type="button" class="tab-pill" id="btnOwnerSubTabRedemptions" onclick="app.setOwnerSubscribersTab('REDEMPTIONS')">📊 Redemption History</button>
+        </div>
+      </div>
+
+      <!-- Search & Filters Toolbar -->
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; margin-bottom: 1.25rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: center;">
+          <!-- Search Bar -->
+          <div style="grid-column: span 2;">
+            <input type="text" id="txtOwnerSubSearch" class="form-control" placeholder="Search by Customer, Mobile, SUB ID, Plan Name..." oninput="app.triggerOwnerSubSearch()" style="font-size: 0.88rem;">
+          </div>
+          <!-- Status Filter -->
+          <div>
+            <select id="selOwnerSubStatusFilter" class="form-control" onchange="app.triggerOwnerSubSearch()" style="font-size: 0.88rem;">
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="EXPIRED">Expired</option>
+              <option value="PENDING_PAYMENT">Pending Payment</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </div>
+          <!-- Expiry Filter -->
+          <div>
+            <select id="selOwnerSubExpiryFilter" class="form-control" onchange="app.triggerOwnerSubSearch()" style="font-size: 0.88rem;">
+              <option value="ALL">All Expiry</option>
+              <option value="EXPIRING_SOON">Expiring Soon (≤ 3 Days)</option>
+              <option value="EXPIRED">Expired</option>
+            </select>
+          </div>
+          <!-- Sort Options -->
+          <div>
+            <select id="selOwnerSubSort" class="form-control" onchange="app.triggerOwnerSubSearch()" style="font-size: 0.88rem;">
+              <option value="newest">Sort: Newest First</option>
+              <option value="oldest">Sort: Oldest First</option>
+              <option value="expiry_soonest">Sort: Expiry Soonest</option>
+              <option value="expiry_latest">Sort: Expiry Latest</option>
+              <option value="most_meals">Sort: Most Meals Remaining</option>
+              <option value="least_meals">Sort: Least Meals Remaining</option>
+              <option value="highest_price">Sort: Highest Price</option>
+              <option value="lowest_price">Sort: Lowest Price</option>
+            </select>
+          </div>
+          <!-- Clear Filters -->
+          <div>
+            <button type="button" class="btn-secondary-outline" onclick="app.clearOwnerSubFilters()" style="width: 100%; padding: 8px; font-size: 0.82rem;">
+              <i class="fa-solid fa-filter-circle-xmark"></i> Clear Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subscribers Container -->
+      <div id="ownerSubscribersContentContainer">
+        <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- 📍 CUSTOMER SECTION: MY ADDRESSES (secCustomerAddresses) -->
+    <!-- ============================================================ -->
+    <section id="secCustomerAddresses" class="view-section hidden">
+      <div class="section-header" style="flex-wrap: wrap; gap: 10px; margin-bottom: 1rem;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-location-dot" style="color: #FF5722;"></i> My Delivery Addresses</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Manage your saved delivery locations for quick & seamless ordering.</p>
+        </div>
+        <button type="button" class="btn-primary-block" onclick="app.openAddressModal()" style="width: auto; padding: 10px 18px; font-size: 0.88rem; background: linear-gradient(135deg, #FF5722, #E64A19);">
+          <i class="fa-solid fa-plus"></i> Add New Address
+        </button>
+      </div>
+
+      <!-- Address Cards Grid -->
+      <div id="customerAddressesGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
+        <!-- Rendered dynamically by JavaScript -->
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- 🗺️ OWNER SECTION: DELIVERY ZONES MANAGER (secOwnerDeliveryZones) -->
+    <!-- ============================================================ -->
+    <section id="secOwnerDeliveryZones" class="view-section hidden">
+      <div class="section-header" style="flex-wrap: wrap; gap: 10px; margin-bottom: 1rem;">
+        <div>
+          <h2 class="section-title"><i class="fa-solid fa-map-location-dot" style="color: #4CAF50;"></i> Delivery Zone Management</h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">Configure PIN codes, set delivery fees, minimum order values & active zones.</p>
+        </div>
+        <button type="button" class="btn-primary-block" onclick="app.openDeliveryZoneModal()" style="width: auto; padding: 10px 18px; font-size: 0.88rem; background: linear-gradient(135deg, #4CAF50, #2E7D32);">
+          <i class="fa-solid fa-plus"></i> Add Delivery Zone
+        </button>
+      </div>
+
+      <!-- Search & Filters Toolbar for Delivery Zones -->
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 14px; padding: 14px; margin-bottom: 1.25rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: center;">
+          <div style="grid-column: span 2;">
+            <input type="text" id="txtOwnerZoneSearch" class="form-control" placeholder="Search by Zone Name, PIN code, Area..." oninput="app.loadOwnerDeliveryZones()" style="font-size: 0.88rem;">
+          </div>
+          <div>
+            <select id="selOwnerZoneStatusFilter" class="form-control" onchange="app.loadOwnerDeliveryZones()" style="font-size: 0.88rem;">
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active Zones</option>
+              <option value="INACTIVE">Inactive Zones</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delivery Zones Cards Container -->
+      <div id="ownerDeliveryZonesContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+        <!-- Rendered dynamically by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Modal for Customer Add/Edit Delivery Address -->
+    <div class="modal-backdrop" id="modalAddressBackdrop" onclick="app.toggleAddressModal(false)">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 520px;">
+        <div class="modal-header">
+          <h3 id="lblAddressModalTitle"><i class="fa-solid fa-location-dot" style="color: #FF5722;"></i> Add New Address</h3>
+          <button type="button" class="icon-btn" onclick="app.toggleAddressModal(false)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form onsubmit="app.saveCustomerAddress(event)">
+          <input type="hidden" id="txtAddrId">
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Address Type *</label>
+            <div style="display: flex; gap: 10px; margin-top: 4px;">
+              <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1.5px solid var(--border-color); border-radius: 10px; cursor: pointer; font-size: 0.85rem; font-weight: 700; background: rgba(255,255,255,0.04);">
+                <input type="radio" name="radAddrType" value="Home" checked> 🏠 Home
+              </label>
+              <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1.5px solid var(--border-color); border-radius: 10px; cursor: pointer; font-size: 0.85rem; font-weight: 700; background: rgba(255,255,255,0.04);">
+                <input type="radio" name="radAddrType" value="Work"> 💼 Work
+              </label>
+              <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1.5px solid var(--border-color); border-radius: 10px; cursor: pointer; font-size: 0.85rem; font-weight: 700; background: rgba(255,255,255,0.04);">
+                <input type="radio" name="radAddrType" value="Other"> 📍 Other
+              </label>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0.85rem;">
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Full Name *</label>
+              <input type="text" id="txtAddrFullName" class="form-control" placeholder="Recipient Name" required>
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Mobile Number *</label>
+              <input type="tel" id="txtAddrMobile" class="form-control" placeholder="10-digit mobile" required>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Address Line 1 (House/Flat No, Street) *</label>
+            <input type="text" id="txtAddrLine1" class="form-control" placeholder="Door No, Building Name, Street" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Address Line 2 (Optional)</label>
+            <input type="text" id="txtAddrLine2" class="form-control" placeholder="Apartment / Cross Street">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0.85rem;">
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Area / Locality *</label>
+              <input type="text" id="txtAddrArea" class="form-control" placeholder="e.g. Main Road Colony" required>
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">City *</label>
+              <input type="text" id="txtAddrCity" class="form-control" placeholder="e.g. Nandigama" required>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0.85rem;">
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">State *</label>
+              <input type="text" id="txtAddrState" class="form-control" placeholder="Andhra Pradesh" required>
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">PIN Code *</label>
+              <input type="text" id="txtAddrPincode" class="form-control" maxlength="6" placeholder="6-digit PIN (e.g. 521185)" required>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Landmark (Optional)</label>
+            <input type="text" id="txtAddrLandmark" class="form-control" placeholder="e.g. Near Main Bus Stand">
+          </div>
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Delivery Instructions (Optional)</label>
+            <input type="text" id="txtAddrInstructions" class="form-control" placeholder="e.g. Please call on arrival, leave at door">
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; font-weight: 700; color: var(--accent-gold);">
+              <input type="checkbox" id="chkAddrIsDefault"> ⭐ Set as Default Address
+            </label>
+          </div>
+          <button type="submit" class="btn-primary-block" style="background: linear-gradient(135deg, #FF5722, #E64A19); color: #FFF;">
+            <i class="fa-solid fa-check"></i> Save Address
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal for Owner Add/Edit Delivery Zone -->
+    <div class="modal-backdrop" id="modalDeliveryZoneBackdrop" onclick="app.toggleDeliveryZoneModal(false)">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3 id="lblZoneModalTitle"><i class="fa-solid fa-map-location-dot" style="color: #4CAF50;"></i> Add Delivery Zone</h3>
+          <button type="button" class="icon-btn" onclick="app.toggleDeliveryZoneModal(false)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form onsubmit="app.saveOwnerDeliveryZone(event)">
+          <input type="hidden" id="txtZoneId">
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Zone Name *</label>
+            <input type="text" id="txtZoneName" class="form-control" placeholder="e.g. Zone A - Local Town" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Assigned PIN Codes (Comma-separated) *</label>
+            <input type="text" id="txtZonePincodes" class="form-control" placeholder="e.g. 521185, 521186" required>
+            <small style="color: var(--text-muted); font-size: 0.76rem;">Each PIN code must be a 6-digit Indian PIN code and cannot belong to another active zone.</small>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0.85rem;">
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Delivery Fee (₹) *</label>
+              <input type="number" id="numZoneFee" min="0" step="1" class="form-control" value="20" required>
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Min Order Amount (₹)</label>
+              <input type="number" id="numZoneMinOrder" min="0" step="1" class="form-control" value="100" placeholder="0 = No Min">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Zone Description</label>
+            <textarea id="txtZoneDesc" class="form-control" rows="2" placeholder="e.g. Covers main road, SBI colony, and central market area."></textarea>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Status</label>
+            <select id="selZoneStatus" class="form-control">
+              <option value="ACTIVE">🟢 Active (Accept Delivery Orders)</option>
+              <option value="INACTIVE">🔴 Inactive (Disable Delivery Orders)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-primary-block" style="background: linear-gradient(135deg, #4CAF50, #2E7D32); color: #FFF;">
+            <i class="fa-solid fa-check"></i> Save Delivery Zone
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal for Owner Add/Edit Subscription Plan -->
+    <div class="modal-backdrop" id="modalSubPlanBackdrop" onclick="app.toggleSubPlanModal(false)">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 500px;">
+        <div class="modal-header">
+          <h3 id="lblSubPlanModalTitle"><i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> Add Subscription Plan</h3>
+          <button type="button" class="icon-btn" onclick="app.toggleSubPlanModal(false)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form onsubmit="app.saveOwnerSubscriptionPlan(event)">
+          <input type="hidden" id="txtSubPlanId">
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Plan Name *</label>
+            <input type="text" id="txtSubPlanName" class="form-control" placeholder="e.g. Monthly Breakfast Plan" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Meal Type</label>
+            <select id="selSubPlanMealType" class="form-control">
+              <option value="Breakfast">Breakfast</option>
+              <option value="Lunch">Lunch</option>
+              <option value="Dinner">Dinner</option>
+              <option value="All Meals">All Meals</option>
+            </select>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Duration (Days) *</label>
+              <input type="number" id="numSubPlanDuration" min="1" class="form-control" value="30" required>
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Included Meals *</label>
+              <input type="number" id="numSubPlanMeals" min="1" class="form-control" value="30" required>
+            </div>
+            <div class="form-group">
+              <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Price (₹) *</label>
+              <input type="number" id="numSubPlanPrice" min="0" step="1" class="form-control" value="1499" required>
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Description</label>
+            <textarea id="txtSubPlanDesc" class="form-control" rows="2" placeholder="Plan details, timings & inclusions..."></textarea>
+          </div>
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label style="font-weight: 700; font-size: 0.85rem; color: #FFF;">Status</label>
+            <select id="selSubPlanActive" class="form-control">
+              <option value="true">🟢 Active (Available for Customer Purchase)</option>
+              <option value="false">🔴 Inactive (Hidden from Customer)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn-primary-block" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF;">
+            <i class="fa-solid fa-check"></i> Save Subscription Plan
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal for Owner Meal Pass Verification Result -->
+    <div class="modal-backdrop" id="modalVerifyMealPassBackdrop" onclick="app.toggleVerifyPassModal(false)">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 460px; text-align: center;">
+        <div id="verifyPassModalContent">
+          <!-- Populated dynamically by JavaScript -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for Customer View Meal Pass QR -->
+    <div class="modal-backdrop" id="modalShowMealPassQrBackdrop" onclick="app.toggleMealPassQrModal(false)">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 400px; text-align: center;">
+        <div id="showMealPassQrModalContent">
+          <!-- Populated dynamically by JavaScript -->
+        </div>
+      </div>
+    </div>
+
     <!-- Modal for Creating/Editing Smart Cart Offer -->
     <div class="modal-backdrop" id="modalSmartOfferBackdrop" onclick="app.toggleSmartOfferModal(false)">
       <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 480px;">
@@ -3368,6 +3820,7 @@
           <div class="form-group" id="ordDeliveryAddressGroup">
             <label id="ordDeliveryAddressLabel"><i class="fa-solid fa-location-dot" style="color: var(--primary);"></i>
               Delivery Address / Location Details <span style="color: var(--primary);">*</span></label>
+            <div id="savedAddressesCheckoutContainer" style="margin-bottom: 10px;"></div>
             <textarea class="form-control" id="ordDeliveryAddress" rows="2"
               placeholder="House/Flat No, Building, Street, Landmark, Area details..." required></textarea>
           </div>

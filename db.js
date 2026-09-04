@@ -557,6 +557,101 @@ async function initDatabase() {
       selected_option_id VARCHAR(100),
       customer_id VARCHAR(100),
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS subscription_plans (
+      id VARCHAR(100) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      meal_type VARCHAR(100) NOT NULL DEFAULT 'Breakfast',
+      duration_days INT NOT NULL,
+      included_meals INT NOT NULL,
+      price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      description TEXT,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS subscriptions (
+      id VARCHAR(100) PRIMARY KEY,
+      subscription_id VARCHAR(100) NOT NULL UNIQUE,
+      customer_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+      customer_name VARCHAR(255),
+      customer_mobile VARCHAR(50),
+      plan_id VARCHAR(100) REFERENCES subscription_plans(id) ON DELETE SET NULL,
+      plan_name VARCHAR(255) NOT NULL,
+      meal_type VARCHAR(100) DEFAULT 'Breakfast',
+      duration_days INT NOT NULL,
+      total_meals INT NOT NULL,
+      used_meals INT NOT NULL DEFAULT 0,
+      purchase_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      start_date TIMESTAMPTZ,
+      expiry_date TIMESTAMPTZ,
+      payment_reference VARCHAR(100),
+      payment_status VARCHAR(50) DEFAULT 'PENDING',
+      status VARCHAR(50) DEFAULT 'PENDING_PAYMENT',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS subscription_meal_passes (
+      id VARCHAR(100) PRIMARY KEY,
+      pass_id VARCHAR(100) NOT NULL UNIQUE,
+      subscription_id VARCHAR(100) NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+      customer_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
+      meal_number INT NOT NULL,
+      secure_token VARCHAR(255) NOT NULL UNIQUE,
+      status VARCHAR(50) DEFAULT 'AVAILABLE',
+      redeemed_at TIMESTAMPTZ,
+      redemption_id VARCHAR(100),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS subscription_redemptions (
+      id VARCHAR(100) PRIMARY KEY,
+      redemption_reference VARCHAR(100) NOT NULL UNIQUE,
+      meal_pass_id VARCHAR(100) REFERENCES subscription_meal_passes(id) ON DELETE SET NULL,
+      subscription_id VARCHAR(100) REFERENCES subscriptions(id) ON DELETE SET NULL,
+      customer_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+      customer_name VARCHAR(255),
+      customer_mobile VARCHAR(50),
+      plan_name VARCHAR(255),
+      meal_number INT,
+      redeemed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      redeemed_by VARCHAR(100),
+      status VARCHAR(50) DEFAULT 'SUCCESS'
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS customer_addresses (
+      id VARCHAR(100) PRIMARY KEY,
+      customer_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      address_type VARCHAR(50) NOT NULL DEFAULT 'Home',
+      full_name VARCHAR(255) NOT NULL,
+      mobile_number VARCHAR(50) NOT NULL,
+      address_line1 TEXT NOT NULL,
+      address_line2 TEXT,
+      area VARCHAR(255) NOT NULL,
+      city VARCHAR(255) NOT NULL,
+      state VARCHAR(255) NOT NULL,
+      pincode VARCHAR(20) NOT NULL,
+      landmark TEXT,
+      delivery_instructions TEXT,
+      is_default BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS delivery_zones (
+      id VARCHAR(100) PRIMARY KEY,
+      zone_name VARCHAR(255) NOT NULL,
+      description TEXT,
+      pincodes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      delivery_fee NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+      min_order_amount NUMERIC(10, 2) DEFAULT 0.00,
+      max_order_amount NUMERIC(10, 2),
+      status VARCHAR(50) DEFAULT 'ACTIVE',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`
   ];
 
@@ -631,6 +726,39 @@ async function initDatabase() {
     if (!memberCounterRes.rows || memberCounterRes.rows.length === 0) {
       await query(`INSERT INTO counters (name, current_value) VALUES ('member_counter', 100001);`);
     }
+    const subSeqRes = await query(`SELECT current_value FROM counters WHERE name = 'subscription_seq';`);
+    if (!subSeqRes.rows || subSeqRes.rows.length === 0) {
+      await query(`INSERT INTO counters (name, current_value) VALUES ('subscription_seq', 1001);`);
+    }
+    const passSeqRes = await query(`SELECT current_value FROM counters WHERE name = 'mealpass_seq';`);
+    if (!passSeqRes.rows || passSeqRes.rows.length === 0) {
+      await query(`INSERT INTO counters (name, current_value) VALUES ('mealpass_seq', 1001);`);
+    }
+    const redSeqRes = await query(`SELECT current_value FROM counters WHERE name = 'redemption_seq';`);
+    if (!redSeqRes.rows || redSeqRes.rows.length === 0) {
+      await query(`INSERT INTO counters (name, current_value) VALUES ('redemption_seq', 1001);`);
+    }
+
+    // Seed default subscription plans if table is empty
+    const plansCheck = await query(`SELECT COUNT(*) as cnt FROM subscription_plans;`);
+    const planCount = parseInt(plansCheck.rows[0]?.cnt || '0', 10);
+    if (planCount === 0) {
+      await query(`INSERT INTO subscription_plans (id, name, meal_type, duration_days, included_meals, price, description, is_active) VALUES
+        ('plan_7d_breakfast', 'Weekly Breakfast Plan', 'Breakfast', 7, 7, 399.00, '7 Days wholesome fresh South Indian breakfast meal passes.', true),
+        ('plan_15d_breakfast', 'Half-Month Breakfast Plan', 'Breakfast', 15, 15, 749.00, '15 Days daily delicious hot tiffin breakfast meal passes.', true),
+        ('plan_30d_breakfast', 'Monthly Breakfast Plan', 'Breakfast', 30, 30, 1499.00, '30 Days complete monthly breakfast subscription with maximum savings.', true);
+      `);
+    }
+    // Seed default delivery zones if table is empty
+    const zonesCheck = await query(`SELECT COUNT(*) as cnt FROM delivery_zones;`);
+    const zoneCount = parseInt(zonesCheck.rows[0]?.cnt || '0', 10);
+    if (zoneCount === 0) {
+      await query(`INSERT INTO delivery_zones (id, zone_name, description, pincodes, delivery_fee, min_order_amount, status) VALUES
+        ('zone_default_a', 'Nandigama Town - Zone A', 'Primary local delivery zone covering central main road and local colonies.', '["521185", "521186"]', 20.00, 100.00, 'ACTIVE'),
+        ('zone_default_b', 'Nandigama Outskirts - Zone B', 'Extended delivery zone covering surrounding areas and highway junctions.', '["521187", "521188"]', 35.00, 150.00, 'ACTIVE');
+      `);
+    }
+
     // PostgreSQL/SQLite schema column migration adjustments
     if (usePg) {
       try {
@@ -638,6 +766,10 @@ async function initDatabase() {
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejection_reason TEXT;`);
         await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address_json TEXT;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC(10, 2) DEFAULT 0.00;`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_zone_id VARCHAR(100);`);
+        await query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_zone_name VARCHAR(255);`);
         await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255) DEFAULT '';`);
         await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_account VARCHAR(100) DEFAULT '';`);
         await query(`ALTER TABLE settings ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR(50) DEFAULT '';`);
@@ -690,6 +822,10 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE orders ADD COLUMN cancellation_reason TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN rejection_reason TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN cancelled_at TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN delivery_address_json TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN delivery_fee NUMERIC(10, 2) DEFAULT 0.00;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN delivery_zone_id TEXT;`);
+      await safeAlter(`ALTER TABLE orders ADD COLUMN delivery_zone_name TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN utr_number TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN payment_screenshot TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN screenshot_url TEXT;`);

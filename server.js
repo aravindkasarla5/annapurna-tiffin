@@ -3088,6 +3088,91 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
 
     grand_total += addonsTotal;
 
+    // Process Delivery Zone & Address Snapshot if Order Type is Delivery
+    let deliveryFeeAmount = 0.00;
+    let deliveryZoneId = null;
+    let deliveryZoneName = null;
+    let deliveryAddressSnapshotJson = null;
+    let finalDeliveryAddressText = delivery_address || '';
+
+    if ((order_type || '').toLowerCase() === 'delivery') {
+      const addressId = req.body.address_id;
+      if (!addressId && !delivery_address) {
+        return res.status(400).json({ success: false, message: 'Please select a valid delivery address.' });
+      }
+
+      let selectedAddressRecord = null;
+      if (addressId) {
+        const addrRes = await db.query(
+          `SELECT * FROM customer_addresses WHERE id = $1 AND customer_id = $2;`,
+          [addressId, req.user.id]
+        );
+        if (!addrRes.rows || addrRes.rows.length === 0) {
+          return res.status(400).json({ success: false, message: 'Selected delivery address not found.' });
+        }
+        selectedAddressRecord = addrRes.rows[0];
+      } else if (req.user && req.user.id) {
+        const defaultAddrRes = await db.query(
+          `SELECT * FROM customer_addresses WHERE customer_id = $1 ORDER BY is_default DESC, created_at DESC LIMIT 1;`,
+          [req.user.id]
+        );
+        if (defaultAddrRes.rows && defaultAddrRes.rows.length > 0) {
+          selectedAddressRecord = defaultAddrRes.rows[0];
+        }
+      }
+
+      if (selectedAddressRecord) {
+        const pincode = (selectedAddressRecord.pincode || '').trim();
+        const activeZonesRes = await db.query(`SELECT * FROM delivery_zones WHERE status = 'ACTIVE';`);
+        let matchedZone = null;
+
+        for (const z of (activeZonesRes.rows || [])) {
+          let pinList = [];
+          try {
+            pinList = typeof z.pincodes === 'string' ? JSON.parse(z.pincodes) : (z.pincodes || []);
+          } catch (e) {
+            pinList = [];
+          }
+          if (Array.isArray(pinList) && pinList.map(p => String(p).trim()).includes(pincode)) {
+            matchedZone = z;
+            break;
+          }
+        }
+
+        if (!matchedZone) {
+          return res.status(400).json({ success: false, message: 'Sorry, delivery is currently unavailable at this location.' });
+        }
+
+        const minOrder = Number(matchedZone.min_order_amount || 0);
+        if (grand_total < minOrder) {
+          return res.status(400).json({ success: false, message: `Minimum order for this delivery zone is ₹${minOrder}.` });
+        }
+
+        deliveryFeeAmount = Number(matchedZone.delivery_fee || 0);
+        deliveryZoneId = matchedZone.id;
+        deliveryZoneName = matchedZone.zone_name;
+
+        deliveryAddressSnapshotJson = JSON.stringify({
+          address_id: selectedAddressRecord.id,
+          address_type: selectedAddressRecord.address_type,
+          full_name: selectedAddressRecord.full_name,
+          mobile_number: selectedAddressRecord.mobile_number,
+          address_line1: selectedAddressRecord.address_line1,
+          address_line2: selectedAddressRecord.address_line2 || '',
+          area: selectedAddressRecord.area,
+          city: selectedAddressRecord.city,
+          state: selectedAddressRecord.state,
+          pincode: selectedAddressRecord.pincode,
+          landmark: selectedAddressRecord.landmark || '',
+          delivery_instructions: selectedAddressRecord.delivery_instructions || ''
+        });
+
+        finalDeliveryAddressText = `${selectedAddressRecord.full_name} (${selectedAddressRecord.mobile_number}), ${selectedAddressRecord.address_line1}${selectedAddressRecord.address_line2 ? ', ' + selectedAddressRecord.address_line2 : ''}, ${selectedAddressRecord.area}, ${selectedAddressRecord.city}, ${selectedAddressRecord.state} - ${selectedAddressRecord.pincode}${selectedAddressRecord.landmark ? ' (Landmark: ' + selectedAddressRecord.landmark + ')' : ''}`;
+      }
+
+      grand_total += deliveryFeeAmount;
+    }
+
     const newOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
     let createdOrder = null;
 
@@ -3227,16 +3312,18 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
           order_type, delivery_address, notes, total_amount, used_wallet_amount, 
           net_amount, payment_method, payment_status, order_status, items, add_ons,
           utr_number, payment_screenshot, screenshot_url, pickup_pin, pickup_pin_verified,
-          food_member_discount, is_express_delivery, is_premium_member, preparation_minutes, estimated_ready_at, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27);`,
+          food_member_discount, is_express_delivery, is_premium_member, preparation_minutes, estimated_ready_at,
+          delivery_address_json, delivery_fee, delivery_zone_id, delivery_zone_name, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31);`,
         [
           newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
-          order_type || 'Takeaway', delivery_address || null, notes || null,
+          order_type || 'Takeaway', finalDeliveryAddressText || null, notes || null,
           grand_total, walletDeducted, netAmount, finalPayMethod,
           finalPayStatus, 'Received', JSON.stringify(formattedItems), JSON.stringify(formattedAddons),
           cleanUtr, savedScreenshotUrl, savedScreenshotUrl, pickupPin, false,
           foodMemberDiscount, isExpressDelivery ? 1 : 0, isPremiumMember ? 1 : 0,
-          initialPrepMins, estimatedReadyAt, nowIso
+          initialPrepMins, estimatedReadyAt,
+          deliveryAddressSnapshotJson, deliveryFeeAmount, deliveryZoneId, deliveryZoneName, nowIso
         ]
       );
 
@@ -10128,6 +10215,1477 @@ app.post(['/api/food-member/owner/reapprove/:id', '/api/food-member/owner/applic
   } catch (err) {
     console.error('POST reapprove error:', err);
     res.status(500).json({ success: false, message: 'Failed to re-approve card.' });
+  }
+});
+
+/* ============================================================
+   🧺 SUBSCRIPTION MEAL PLANS + 🎫 DIGITAL MEAL PASS MODULE
+   ============================================================ */
+
+// Helper middleware for owner check
+function requireOwnerOrKitchen(req, res, next) {
+  if (!req.user || (req.user.role !== 'OWNER' && req.user.role !== 'KITCHEN')) {
+    return res.status(403).json({ success: false, message: "Access denied. Owner or Kitchen privileges required." });
+  }
+  next();
+}
+
+function requireOwnerOnly(req, res, next) {
+  if (!req.user || req.user.role !== 'OWNER') {
+    return res.status(403).json({ success: false, message: "Access denied. Owner privileges required." });
+  }
+  next();
+}
+
+// ------------------------------------------------------------
+// PART A & B: OWNER SUBSCRIPTION PLAN MANAGEMENT
+// ------------------------------------------------------------
+
+// GET /api/owner/subscription-plans - List all plans for Owner
+app.get('/api/owner/subscription-plans', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const plansRes = await db.query('SELECT * FROM subscription_plans ORDER BY duration_days ASC, created_at DESC;');
+    res.json({ success: true, plans: plansRes.rows || [] });
+  } catch (err) {
+    console.error('Error fetching owner subscription plans:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch subscription plans.' });
+  }
+});
+
+// POST /api/owner/subscription-plans - Create new Subscription Plan
+app.post('/api/owner/subscription-plans', authenticateToken, requireOwnerOnly, async (req, res) => {
+  try {
+    const { name, meal_type = 'Breakfast', duration_days, included_meals, price, description = '', is_active = true } = req.body;
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Plan name is required.' });
+    }
+    const parsedDuration = parseInt(duration_days, 10);
+    if (isNaN(parsedDuration) || parsedDuration <= 0) {
+      return res.status(400).json({ success: false, message: 'Duration must be a positive whole number of days.' });
+    }
+    const parsedMeals = parseInt(included_meals, 10);
+    if (isNaN(parsedMeals) || parsedMeals <= 0) {
+      return res.status(400).json({ success: false, message: 'Included meals must be a positive whole number.' });
+    }
+    const parsedPrice = parseFloat(price);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return res.status(400).json({ success: false, message: 'Price must be a valid non-negative amount.' });
+    }
+
+    const planId = 'plan_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `INSERT INTO subscription_plans (id, name, meal_type, duration_days, included_meals, price, description, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+      [planId, name.trim(), meal_type.trim(), parsedDuration, parsedMeals, parsedPrice, (description || '').trim(), is_active !== false, nowIso, nowIso]
+    );
+
+    const createdRes = await db.query('SELECT * FROM subscription_plans WHERE id = $1;', [planId]);
+    res.json({ success: true, message: 'Subscription plan created successfully.', plan: createdRes.rows[0] });
+  } catch (err) {
+    console.error('Error creating subscription plan:', err);
+    res.status(500).json({ success: false, message: 'Failed to create subscription plan.' });
+  }
+});
+
+// PUT /api/owner/subscription-plans/:id - Update Subscription Plan
+app.put('/api/owner/subscription-plans/:id', authenticateToken, requireOwnerOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, meal_type, duration_days, included_meals, price, description, is_active } = req.body;
+
+    const existingRes = await db.query('SELECT * FROM subscription_plans WHERE id = $1;', [id]);
+    if (!existingRes.rows || existingRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Subscription plan not found.' });
+    }
+
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Plan name is required.' });
+    }
+    const parsedDuration = parseInt(duration_days, 10);
+    if (isNaN(parsedDuration) || parsedDuration <= 0) {
+      return res.status(400).json({ success: false, message: 'Duration must be a positive whole number of days.' });
+    }
+    const parsedMeals = parseInt(included_meals, 10);
+    if (isNaN(parsedMeals) || parsedMeals <= 0) {
+      return res.status(400).json({ success: false, message: 'Included meals must be a positive whole number.' });
+    }
+    const parsedPrice = parseFloat(price);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return res.status(400).json({ success: false, message: 'Price must be a valid non-negative amount.' });
+    }
+
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `UPDATE subscription_plans
+       SET name = $1, meal_type = $2, duration_days = $3, included_meals = $4, price = $5, description = $6, is_active = $7, updated_at = $8
+       WHERE id = $9;`,
+      [name.trim(), (meal_type || 'Breakfast').trim(), parsedDuration, parsedMeals, parsedPrice, (description || '').trim(), is_active !== false, nowIso, id]
+    );
+
+    const updatedRes = await db.query('SELECT * FROM subscription_plans WHERE id = $1;', [id]);
+    res.json({ success: true, message: 'Subscription plan updated successfully.', plan: updatedRes.rows[0] });
+  } catch (err) {
+    console.error('Error updating subscription plan:', err);
+    res.status(500).json({ success: false, message: 'Failed to update subscription plan.' });
+  }
+});
+
+// PATCH /api/owner/subscription-plans/:id/status - Activate / Deactivate Plan
+app.patch('/api/owner/subscription-plans/:id/status', authenticateToken, requireOwnerOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    const existingRes = await db.query('SELECT * FROM subscription_plans WHERE id = $1;', [id]);
+    if (!existingRes.rows || existingRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Subscription plan not found.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    await db.query('UPDATE subscription_plans SET is_active = $1, updated_at = $2 WHERE id = $3;', [!!is_active, nowIso, id]);
+
+    res.json({ success: true, message: `Subscription plan ${is_active ? 'activated' : 'deactivated'} successfully.` });
+  } catch (err) {
+    console.error('Error toggling plan status:', err);
+    res.status(500).json({ success: false, message: 'Failed to update plan status.' });
+  }
+});
+
+// ------------------------------------------------------------
+// PART C, D, E, F, G, H, I, J: CUSTOMER MEAL PLANS & PURCHASE
+// ------------------------------------------------------------
+
+// GET /api/subscription-plans - Customer view active plans
+app.get('/api/subscription-plans', async (req, res) => {
+  try {
+    const plansRes = await db.query('SELECT * FROM subscription_plans WHERE is_active = true ORDER BY duration_days ASC, price ASC;');
+    res.json({ success: true, plans: plansRes.rows || [] });
+  } catch (err) {
+    console.error('Error fetching customer meal plans:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch meal plans.' });
+  }
+});
+
+// POST /api/subscriptions/purchase - Initiate Subscription Purchase
+// PART E: SERVER-SIDE AUTHORITATIVE PRICE RECOVERY
+app.post('/api/subscriptions/purchase', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { plan_id, payment_method = 'UPI (QR Pay)' } = req.body;
+
+    if (!plan_id) {
+      return res.status(400).json({ success: false, message: 'Plan ID is required.' });
+    }
+
+    // Server-side authoritative lookup
+    const planRes = await db.query('SELECT * FROM subscription_plans WHERE id = $1;', [plan_id]);
+    if (!planRes.rows || planRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Selected subscription plan does not exist.' });
+    }
+    const plan = planRes.rows[0];
+    if (!plan.is_active) {
+      return res.status(400).json({ success: false, message: 'This plan is currently inactive and unavailable for new purchases.' });
+    }
+
+    // Idempotency check: check if user has an existing PENDING_PAYMENT for this exact plan in the last 5 minutes
+    const pendingRes = await db.query(
+      `SELECT * FROM subscriptions WHERE customer_id = $1 AND plan_id = $2 AND status = 'PENDING_PAYMENT' ORDER BY created_at DESC LIMIT 1;`,
+      [customerId, plan.id]
+    );
+
+    let sub;
+    if (pendingRes.rows && pendingRes.rows.length > 0) {
+      sub = pendingRes.rows[0];
+    } else {
+      const seqNum = await db.getNextCounter('subscription_seq');
+      const subFormattedId = 'SUB-' + String(seqNum).padStart(6, '0');
+      const dbId = 'sub_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+      const payRef = 'PAY_SUB_' + seqNum + '_' + Date.now();
+      const nowIso = new Date().toISOString();
+
+      await db.query(
+        `INSERT INTO subscriptions (
+          id, subscription_id, customer_id, customer_name, customer_mobile, plan_id, plan_name,
+          meal_type, duration_days, total_meals, used_meals, purchase_price, payment_reference,
+          payment_status, status, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, 'PENDING', 'PENDING_PAYMENT', $13, $14);`,
+        [
+          dbId, subFormattedId, customerId, req.user.name, req.user.mobile, plan.id, plan.name,
+          plan.meal_type, plan.duration_days, plan.included_meals, plan.price, payRef,
+          nowIso, nowIso
+        ]
+      );
+
+      // Record in main payments table for owner awareness
+      const payId = 'pay_sub_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+      await db.query(
+        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending Verification', $9, $10);`,
+        [
+          payId, subFormattedId, dbId, customerId, req.user.name, req.user.mobile,
+          plan.price, payment_method, payRef, `Subscription Purchase: ${plan.name} (${plan.duration_days} Days)`
+        ]
+      );
+
+      const newSubRes = await db.query('SELECT * FROM subscriptions WHERE id = $1;', [dbId]);
+      sub = newSubRes.rows[0];
+    }
+
+    res.json({
+      success: true,
+      subscription: sub,
+      payment_reference: sub.payment_reference,
+      amount: parseFloat(sub.purchase_price)
+    });
+  } catch (err) {
+    console.error('Error initiating subscription purchase:', err);
+    res.status(500).json({ success: false, message: 'Failed to process subscription purchase request.' });
+  }
+});
+
+// POST /api/subscriptions/confirm-payment - Verification & Generation of Meal Passes
+// PART G, M: IDEMPOTENCY & PASS GENERATION
+app.post('/api/subscriptions/confirm-payment', authenticateToken, async (req, res) => {
+  try {
+    const { subscription_id, id, utr_number, payment_screenshot } = req.body;
+    const targetId = id || subscription_id;
+
+    if (!targetId) {
+      return res.status(400).json({ success: false, message: 'Subscription ID is required.' });
+    }
+
+    // Atomic transaction for activation & meal pass generation
+    const result = await db.executeTransaction(async (tx) => {
+      const subRes = await tx.query(
+        'SELECT * FROM subscriptions WHERE (id = $1 OR subscription_id = $1) AND customer_id = $2;',
+        [targetId, req.user.id]
+      );
+      if (!subRes.rows || subRes.rows.length === 0) {
+        throw new Error('Subscription record not found.');
+      }
+      const sub = subRes.rows[0];
+
+      // PART G: IDEMPOTENCY CHECK - If already ACTIVE, return cleanly without duplicate pass generation
+      if (sub.status === 'ACTIVE') {
+        const existingPasses = await tx.query('SELECT * FROM subscription_meal_passes WHERE subscription_id = $1 ORDER BY meal_number ASC;', [sub.id]);
+        return { already_active: true, subscription: sub, passes_count: existingPasses.rows.length };
+      }
+
+      const now = new Date();
+      const startDateIso = now.toISOString();
+      const expiryDate = new Date(now.getTime() + (sub.duration_days * 24 * 60 * 60 * 1000));
+      const expiryDateIso = expiryDate.toISOString();
+
+      // Update UTR/screenshot if provided
+      if (utr_number) {
+        await tx.query('UPDATE subscriptions SET payment_reference = $1 WHERE id = $2;', [utr_number.trim(), sub.id]);
+        await tx.query('UPDATE payments SET utr_number = $1 WHERE order_id = $2 OR order_number = $3;', [utr_number.trim(), sub.id, sub.subscription_id]);
+      }
+
+      // Activate Subscription
+      await tx.query(
+        `UPDATE subscriptions
+         SET status = 'ACTIVE', payment_status = 'VERIFIED', start_date = $1, expiry_date = $2, updated_at = $3
+         WHERE id = $4;`,
+        [startDateIso, expiryDateIso, startDateIso, sub.id]
+      );
+      await tx.query(
+        `UPDATE payments SET payment_status = 'Paid' WHERE order_id = $1 OR order_number = $2;`,
+        [sub.id, sub.subscription_id]
+      );
+
+      // PART M: Generate Unique Meal Passes for each included meal
+      const passes = [];
+      for (let i = 1; i <= sub.total_meals; i++) {
+        const passSeqNum = await db.getNextCounter('mealpass_seq');
+        const passFormattedId = 'MP-' + String(passSeqNum).padStart(6, '0');
+        const passDbId = 'pass_' + Date.now() + '_' + i + '_' + crypto.randomBytes(4).toString('hex');
+        // PART O: Cryptographically secure random token reference ONLY
+        const secureToken = 'MP_TOK_' + crypto.randomBytes(24).toString('hex');
+
+        await tx.query(
+          `INSERT INTO subscription_meal_passes (id, pass_id, subscription_id, customer_id, meal_number, secure_token, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'AVAILABLE', $7);`,
+          [passDbId, passFormattedId, sub.id, sub.customer_id, i, secureToken, startDateIso]
+        );
+        passes.push({ pass_id: passFormattedId, meal_number: i, secure_token: secureToken, status: 'AVAILABLE' });
+      }
+
+      const activeSubRes = await tx.query('SELECT * FROM subscriptions WHERE id = $1;', [sub.id]);
+      return { already_active: false, subscription: activeSubRes.rows[0], passes_count: passes.length };
+    });
+
+    res.json({
+      success: true,
+      message: result.already_active ? 'Subscription is active.' : 'Subscription activated successfully! Meal passes generated.',
+      subscription: result.subscription,
+      passes_count: result.passes_count
+    });
+  } catch (err) {
+    console.error('Error confirming subscription payment:', err);
+    res.status(400).json({ success: false, message: err.message || 'Payment confirmation failed.' });
+  }
+});
+
+// ------------------------------------------------------------
+// PART K, L, N: CUSTOMER DASHBOARD & MEAL PASSES
+// ------------------------------------------------------------
+
+// GET /api/subscriptions/my-subscriptions - Customer Subscriptions Dashboard
+app.get('/api/subscriptions/my-subscriptions', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { q = '', status = 'ALL' } = req.query;
+
+    const nowIso = new Date().toISOString();
+    // Auto-expire outdated active subscriptions
+    await db.query(`UPDATE subscriptions SET status = 'EXPIRED' WHERE customer_id = $1 AND status = 'ACTIVE' AND expiry_date < $2;`, [customerId, nowIso]);
+
+    let queryText = 'SELECT * FROM subscriptions WHERE customer_id = $1';
+    const params = [customerId];
+
+    if (status && status !== 'ALL') {
+      params.push(status.toUpperCase());
+      queryText += ` AND UPPER(status) = $${params.length}`;
+    }
+
+    if (q && q.trim()) {
+      params.push(`%${q.trim()}%`);
+      queryText += ` AND (LOWER(plan_name) LIKE LOWER($${params.length}) OR LOWER(subscription_id) LIKE LOWER($${params.length}))`;
+    }
+
+    queryText += ' ORDER BY created_at DESC;';
+
+    const subRes = await db.query(queryText, params);
+    const subscriptions = (subRes.rows || []).map(s => {
+      const total = parseInt(s.total_meals, 10);
+      const used = parseInt(s.used_meals, 10);
+      const remaining = Math.max(0, total - used);
+      
+      let daysRemaining = 0;
+      if (s.expiry_date && s.status === 'ACTIVE') {
+        const diffMs = new Date(s.expiry_date).getTime() - Date.now();
+        daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+      }
+
+      return {
+        ...s,
+        total_meals: total,
+        used_meals: used,
+        remaining_meals: remaining,
+        days_remaining: daysRemaining
+      };
+    });
+
+    res.json({ success: true, subscriptions });
+  } catch (err) {
+    console.error('Error fetching customer subscriptions:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch your subscriptions.' });
+  }
+});
+
+// GET /api/subscriptions/my-passes - Customer Meal Passes
+app.get('/api/subscriptions/my-passes', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const { subscription_id, status = 'ALL' } = req.query;
+
+    let queryText = `
+      SELECT p.*, s.plan_name, s.subscription_id as sub_formatted_id, s.expiry_date, s.status as sub_status
+      FROM subscription_meal_passes p
+      JOIN subscriptions s ON p.subscription_id = s.id
+      WHERE p.customer_id = $1
+    `;
+    const params = [customerId];
+
+    if (subscription_id) {
+      params.push(subscription_id);
+      queryText += ` AND (p.subscription_id = $${params.length} OR s.subscription_id = $${params.length})`;
+    }
+
+    if (status && status !== 'ALL') {
+      params.push(status.toUpperCase());
+      queryText += ` AND UPPER(p.status) = $${params.length}`;
+    }
+
+    queryText += ' ORDER BY p.meal_number ASC, p.created_at DESC;';
+
+    const passesRes = await db.query(queryText, params);
+    const passes = passesRes.rows || [];
+
+    res.json({ success: true, passes });
+  } catch (err) {
+    console.error('Error fetching customer meal passes:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch meal passes.' });
+  }
+});
+
+// ------------------------------------------------------------
+// PART P, Q, R, S, T, U, V, W, X: OWNER SCANNER, VERIFICATION & REDEMPTION
+// ------------------------------------------------------------
+
+// POST /api/subscriptions/verify-pass - Owner Scans QR Token
+app.post('/api/subscriptions/verify-pass', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token || typeof token !== 'string' || !token.trim()) {
+      return res.status(400).json({ success: false, code: 'INVALID_PASS', message: 'Invalid meal pass token.' });
+    }
+
+    const cleanToken = token.trim();
+
+    // 1. Check Pass Existence
+    const passRes = await db.query(
+      `SELECT p.*, s.subscription_id as sub_formatted_id, s.customer_name, s.customer_mobile, s.plan_name,
+              s.total_meals, s.used_meals, s.expiry_date, s.status as sub_status, s.payment_status
+       FROM subscription_meal_passes p
+       JOIN subscriptions s ON p.subscription_id = s.id
+       WHERE p.secure_token = $1 OR p.pass_id = $1;`,
+      [cleanToken]
+    );
+
+    if (!passRes.rows || passRes.rows.length === 0) {
+      return res.status(404).json({ success: false, code: 'INVALID_PASS', message: 'Invalid meal pass.' });
+    }
+
+    const pass = passRes.rows[0];
+
+    // PART T: Check Already Used
+    if (pass.status === 'USED') {
+      const redemptionRes = await db.query('SELECT * FROM subscription_redemptions WHERE meal_pass_id = $1 ORDER BY redeemed_at DESC LIMIT 1;', [pass.id]);
+      const redemption = redemptionRes.rows[0] || {};
+      const redeemedFormattedDate = redemption.redeemed_at
+        ? new Date(redemption.redeemed_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+        : (pass.redeemed_at ? new Date(pass.redeemed_at).toLocaleString('en-IN') : 'Recently');
+
+      return res.status(400).json({
+        success: false,
+        code: 'ALREADY_USED',
+        message: 'This meal pass has already been redeemed.',
+        pass_number: `#${pass.meal_number}`,
+        redeemed_at: redeemedFormattedDate,
+        customer_name: pass.customer_name,
+        plan_name: pass.plan_name,
+        subscription_id: pass.sub_formatted_id
+      });
+    }
+
+    // PART V: Check Subscription Active & Not Expired
+    if (pass.sub_status !== 'ACTIVE') {
+      return res.status(400).json({ success: false, code: 'INACTIVE_SUBSCRIPTION', message: 'Subscription is not active.' });
+    }
+
+    if (pass.expiry_date && new Date(pass.expiry_date).getTime() < Date.now()) {
+      return res.status(400).json({ success: false, code: 'EXPIRED', message: 'Subscription has expired.' });
+    }
+
+    // PART W: Check Zero Meals Remaining
+    const total = parseInt(pass.total_meals, 10);
+    const used = parseInt(pass.used_meals, 10);
+    const remaining = Math.max(0, total - used);
+
+    if (remaining <= 0) {
+      return res.status(400).json({ success: false, code: 'NO_MEALS', message: 'No subscription meals remaining.' });
+    }
+
+    // Valid Verification Output for Owner Review
+    res.json({
+      success: true,
+      verified: true,
+      pass_id: pass.id,
+      pass_formatted_id: pass.pass_id,
+      meal_number: pass.meal_number,
+      customer_name: pass.customer_name,
+      customer_mobile: pass.customer_mobile,
+      plan_name: pass.plan_name,
+      subscription_id: pass.sub_formatted_id,
+      total_meals: total,
+      used_meals: used,
+      remaining_meals: remaining,
+      expiry_date: pass.expiry_date,
+      status: 'AVAILABLE'
+    });
+  } catch (err) {
+    console.error('Error verifying meal pass:', err);
+    res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Something went wrong while verifying meal pass.' });
+  }
+});
+
+// POST /api/subscriptions/redeem-pass - Owner Confirms Meal Pass Redemption
+// PART U: CONCURRENT REDEMPTION PROTECTION & ATOMIC DATABASE UPDATE
+app.post('/api/subscriptions/redeem-pass', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { token, pass_id } = req.body;
+    const searchToken = (token || pass_id || '').trim();
+
+    if (!searchToken) {
+      return res.status(400).json({ success: false, message: 'Pass identifier or token is required.' });
+    }
+
+    // Execute atomic transaction for redemption
+    const result = await db.executeTransaction(async (tx) => {
+      // 1. Fetch and Lock Pass
+      const passRes = await tx.query(
+        `SELECT p.*, s.id as sub_db_id, s.subscription_id as sub_formatted_id, s.customer_id, s.customer_name,
+                s.customer_mobile, s.plan_name, s.total_meals, s.used_meals, s.expiry_date, s.status as sub_status
+         FROM subscription_meal_passes p
+         JOIN subscriptions s ON p.subscription_id = s.id
+         WHERE p.secure_token = $1 OR p.pass_id = $1 OR p.id = $1;`,
+        [searchToken]
+      );
+
+      if (!passRes.rows || passRes.rows.length === 0) {
+        throw { code: 'INVALID_PASS', message: 'Invalid meal pass.' };
+      }
+
+      const pass = passRes.rows[0];
+
+      // PART T: Double Redemption Guard
+      if (pass.status !== 'AVAILABLE') {
+        const redemptionRes = await tx.query('SELECT redeemed_at FROM subscription_redemptions WHERE meal_pass_id = $1 LIMIT 1;', [pass.id]);
+        const redeemedAtStr = redemptionRes.rows[0]?.redeemed_at
+          ? new Date(redemptionRes.rows[0].redeemed_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+          : 'Recently';
+        throw { code: 'ALREADY_USED', message: 'This meal pass has already been redeemed.', redeemed_at: redeemedAtStr, meal_number: pass.meal_number };
+      }
+
+      if (pass.sub_status !== 'ACTIVE') {
+        throw { code: 'INACTIVE_SUBSCRIPTION', message: 'Subscription is not active.' };
+      }
+
+      if (pass.expiry_date && new Date(pass.expiry_date).getTime() < Date.now()) {
+        throw { code: 'EXPIRED', message: 'Subscription has expired.' };
+      }
+
+      const total = parseInt(pass.total_meals, 10);
+      const currentUsed = parseInt(pass.used_meals, 10);
+      if (currentUsed >= total) {
+        throw { code: 'NO_MEALS', message: 'No subscription meals remaining.' };
+      }
+
+      // Generate Redemption Sequence
+      const redSeqNum = await db.getNextCounter('redemption_seq');
+      const redFormattedId = 'RED-' + String(redSeqNum).padStart(6, '0');
+      const redDbId = 'red_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+      const nowIso = new Date().toISOString();
+
+      // ATOMIC UPDATE: Meal Pass AVAILABLE -> USED (Row-matching lock)
+      const updatePassRes = await tx.query(
+        `UPDATE subscription_meal_passes
+         SET status = 'USED', redeemed_at = $1, redemption_id = $2
+         WHERE id = $3 AND status = 'AVAILABLE';`,
+        [nowIso, redDbId, pass.id]
+      );
+
+      if (updatePassRes.rowCount === 0) {
+        // Concurrent scanner lost the race
+        throw { code: 'ALREADY_USED', message: 'This meal pass was just redeemed by another request.' };
+      }
+
+      // Increment Subscription used_meals
+      await tx.query(
+        `UPDATE subscriptions
+         SET used_meals = used_meals + 1, updated_at = $1
+         WHERE id = $2 AND used_meals < total_meals;`,
+        [nowIso, pass.sub_db_id]
+      );
+
+      // Create Redemption Audit Record
+      await tx.query(
+        `INSERT INTO subscription_redemptions (
+          id, redemption_reference, meal_pass_id, subscription_id, customer_id, customer_name,
+          customer_mobile, plan_name, meal_number, redeemed_at, redeemed_by, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'SUCCESS');`,
+        [
+          redDbId, redFormattedId, pass.id, pass.sub_db_id, pass.customer_id, pass.customer_name,
+          pass.customer_mobile, pass.plan_name, pass.meal_number, nowIso, req.user.name || 'Owner'
+        ]
+      );
+
+      const newUsed = currentUsed + 1;
+      const newRemaining = Math.max(0, total - newUsed);
+
+      return {
+        redemption_reference: redFormattedId,
+        pass_number: pass.meal_number,
+        customer_name: pass.customer_name,
+        plan_name: pass.plan_name,
+        subscription_id: pass.sub_formatted_id,
+        total_meals: total,
+        used_meals: newUsed,
+        remaining_meals: newRemaining,
+        customer_id: pass.customer_id
+      };
+    });
+
+    // Broadcast Real-time WebSocket event to Customer Dashboard
+    try {
+      const wsPayload = JSON.stringify({
+        type: 'MEAL_PASS_REDEEMED',
+        customerId: result.customer_id,
+        subscriptionId: result.subscription_id,
+        usedMeals: result.used_meals,
+        remainingMeals: result.remaining_meals
+      });
+      activeWsClients.forEach((client, ws) => {
+        if (ws.readyState === 1 && client.userId === result.customer_id) {
+          ws.send(wsPayload);
+        }
+      });
+    } catch (wsErr) {
+      console.warn('WS Broadcast notice:', wsErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'Meal pass redeemed successfully!',
+      redemption: result
+    });
+  } catch (err) {
+    if (err && err.code) {
+      return res.status(400).json({
+        success: false,
+        code: err.code,
+        message: err.message,
+        redeemed_at: err.redeemed_at,
+        pass_number: err.meal_number
+      });
+    }
+    console.error('Error redeeming meal pass:', err);
+    res.status(500).json({ success: false, code: 'SERVER_ERROR', message: 'Failed to process meal redemption.' });
+  }
+});
+
+// ------------------------------------------------------------
+// PART Y, Z: OWNER SUBSCRIBERS, PASSES & REDEMPTIONS (SEARCH, FILTER, SORT, PAGINATION)
+// ------------------------------------------------------------
+
+// GET /api/owner/subscribers - Subscriber List with Search, Multi-Filter, Sorting & Pagination
+app.get('/api/owner/subscribers', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const {
+      q = '',
+      status = 'ALL',
+      plan_id = 'ALL',
+      expiry = 'ALL',
+      sort = 'newest',
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    let whereConditions = [];
+    let params = [];
+
+    // Search filter
+    if (q && q.trim()) {
+      const searchVal = `%${q.trim().toLowerCase()}%`;
+      params.push(searchVal);
+      whereConditions.push(
+        `(LOWER(customer_name) LIKE $${params.length} OR LOWER(customer_mobile) LIKE $${params.length} OR LOWER(subscription_id) LIKE $${params.length} OR LOWER(plan_name) LIKE $${params.length})`
+      );
+    }
+
+    // Status filter
+    if (status && status !== 'ALL') {
+      params.push(status.toUpperCase());
+      whereConditions.push(`UPPER(status) = $${params.length}`);
+    }
+
+    // Plan filter
+    if (plan_id && plan_id !== 'ALL') {
+      params.push(plan_id);
+      whereConditions.push(`(plan_id = $${params.length} OR LOWER(plan_name) LIKE LOWER($${params.length}))`);
+    }
+
+    // Expiry filter
+    if (expiry === 'EXPIRING_SOON') {
+      const threeDaysLater = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      const nowIso = new Date().toISOString();
+      params.push(nowIso, threeDaysLater);
+      whereConditions.push(`(status = 'ACTIVE' AND expiry_date >= $${params.length - 1} AND expiry_date <= $${params.length})`);
+    } else if (expiry === 'EXPIRED') {
+      const nowIso = new Date().toISOString();
+      params.push(nowIso);
+      whereConditions.push(`(status = 'EXPIRED' OR expiry_date < $${params.length})`);
+    }
+
+    const whereClause = whereConditions.length > 0 ? ' WHERE ' + whereConditions.join(' AND ') : '';
+
+    // Sorting
+    let orderByClause = ' ORDER BY created_at DESC';
+    switch (sort) {
+      case 'oldest':
+        orderByClause = ' ORDER BY created_at ASC';
+        break;
+      case 'expiry_soonest':
+        orderByClause = ' ORDER BY expiry_date ASC';
+        break;
+      case 'expiry_latest':
+        orderByClause = ' ORDER BY expiry_date DESC';
+        break;
+      case 'most_meals':
+        orderByClause = ' ORDER BY (total_meals - used_meals) DESC';
+        break;
+      case 'least_meals':
+        orderByClause = ' ORDER BY (total_meals - used_meals) ASC';
+        break;
+      case 'highest_price':
+        orderByClause = ' ORDER BY purchase_price DESC';
+        break;
+      case 'lowest_price':
+        orderByClause = ' ORDER BY purchase_price ASC';
+        break;
+      default:
+        orderByClause = ' ORDER BY created_at DESC';
+    }
+
+    // Count Total
+    const countSql = `SELECT COUNT(*) as total FROM subscriptions${whereClause};`;
+    const countRes = await db.query(countSql, params);
+    const totalRecords = parseInt(countRes.rows[0]?.total || '0', 10);
+
+    // Fetch Paginated Records
+    params.push(parsedLimit, offset);
+    const dataSql = `SELECT * FROM subscriptions${whereClause}${orderByClause} LIMIT $${params.length - 1} OFFSET $${params.length};`;
+    const dataRes = await db.query(dataSql, params);
+
+    const subscribers = (dataRes.rows || []).map(s => {
+      const total = parseInt(s.total_meals, 10);
+      const used = parseInt(s.used_meals, 10);
+      return {
+        ...s,
+        total_meals: total,
+        used_meals: used,
+        remaining_meals: Math.max(0, total - used)
+      };
+    });
+
+    res.json({
+      success: true,
+      subscribers,
+      pagination: {
+        total: totalRecords,
+        page: parsedPage,
+        limit: parsedLimit,
+        total_pages: Math.ceil(totalRecords / parsedLimit) || 1
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching subscribers list:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch subscribers list.' });
+  }
+});
+
+// GET /api/owner/subscription-passes - Meal Passes Management
+app.get('/api/owner/subscription-passes', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { q = '', status = 'ALL', plan_id = 'ALL', page = 1, limit = 20 } = req.query;
+
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    let whereConditions = [];
+    let params = [];
+
+    if (q && q.trim()) {
+      const searchVal = `%${q.trim().toLowerCase()}%`;
+      params.push(searchVal);
+      whereConditions.push(
+        `(LOWER(p.pass_id) LIKE $${params.length} OR LOWER(s.subscription_id) LIKE $${params.length} OR LOWER(s.customer_name) LIKE $${params.length} OR LOWER(s.customer_mobile) LIKE $${params.length})`
+      );
+    }
+
+    if (status && status !== 'ALL') {
+      params.push(status.toUpperCase());
+      whereConditions.push(`UPPER(p.status) = $${params.length}`);
+    }
+
+    if (plan_id && plan_id !== 'ALL') {
+      params.push(plan_id);
+      whereConditions.push(`(s.plan_id = $${params.length} OR LOWER(s.plan_name) LIKE LOWER($${params.length}))`);
+    }
+
+    const whereClause = whereConditions.length > 0 ? ' WHERE ' + whereConditions.join(' AND ') : '';
+
+    const countSql = `
+      SELECT COUNT(*) as total
+      FROM subscription_meal_passes p
+      JOIN subscriptions s ON p.subscription_id = s.id
+      ${whereClause};
+    `;
+    const countRes = await db.query(countSql, params);
+    const totalRecords = parseInt(countRes.rows[0]?.total || '0', 10);
+
+    params.push(parsedLimit, offset);
+    const dataSql = `
+      SELECT p.*, s.subscription_id as sub_formatted_id, s.customer_name, s.customer_mobile, s.plan_name
+      FROM subscription_meal_passes p
+      JOIN subscriptions s ON p.subscription_id = s.id
+      ${whereClause}
+      ORDER BY p.created_at DESC, p.meal_number ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length};
+    `;
+    const dataRes = await db.query(dataSql, params);
+
+    res.json({
+      success: true,
+      passes: dataRes.rows || [],
+      pagination: {
+        total: totalRecords,
+        page: parsedPage,
+        limit: parsedLimit,
+        total_pages: Math.ceil(totalRecords / parsedLimit) || 1
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching subscription passes:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch meal passes.' });
+  }
+});
+
+// GET /api/owner/subscription-redemptions - Redemption Audit Logs
+app.get('/api/owner/subscription-redemptions', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { q = '', date_range = 'ALL', page = 1, limit = 20 } = req.query;
+
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    let whereConditions = [];
+    let params = [];
+
+    if (q && q.trim()) {
+      const searchVal = `%${q.trim().toLowerCase()}%`;
+      params.push(searchVal);
+      whereConditions.push(
+        `(LOWER(redemption_reference) LIKE $${params.length} OR LOWER(customer_name) LIKE $${params.length} OR LOWER(customer_mobile) LIKE $${params.length} OR LOWER(plan_name) LIKE $${params.length})`
+      );
+    }
+
+    if (date_range === 'TODAY') {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      params.push(startOfDay.toISOString());
+      whereConditions.push(`redeemed_at >= $${params.length}`);
+    } else if (date_range === '7DAYS') {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      params.push(sevenDaysAgo.toISOString());
+      whereConditions.push(`redeemed_at >= $${params.length}`);
+    } else if (date_range === '30DAYS') {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      params.push(thirtyDaysAgo.toISOString());
+      whereConditions.push(`redeemed_at >= $${params.length}`);
+    }
+
+    const whereClause = whereConditions.length > 0 ? ' WHERE ' + whereConditions.join(' AND ') : '';
+
+    const countSql = `SELECT COUNT(*) as total FROM subscription_redemptions${whereClause};`;
+    const countRes = await db.query(countSql, params);
+    const totalRecords = parseInt(countRes.rows[0]?.total || '0', 10);
+
+    params.push(parsedLimit, offset);
+    const dataSql = `SELECT * FROM subscription_redemptions${whereClause} ORDER BY redeemed_at DESC LIMIT $${params.length - 1} OFFSET $${params.length};`;
+    const dataRes = await db.query(dataSql, params);
+
+    res.json({
+      success: true,
+      redemptions: dataRes.rows || [],
+      pagination: {
+        total: totalRecords,
+        page: parsedPage,
+        limit: parsedLimit,
+        total_pages: Math.ceil(totalRecords / parsedLimit) || 1
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching redemptions:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch redemption logs.' });
+  }
+});
+
+/* ============================================================
+   📍 CUSTOMER DELIVERY ADDRESS MANAGEMENT ENDPOINTS
+   ============================================================ */
+
+// GET /api/addresses - List Customer's Saved Addresses
+app.get('/api/addresses', authenticateToken, async (req, res) => {
+  try {
+    const addressesRes = await db.query(
+      `SELECT * FROM customer_addresses WHERE customer_id = $1 ORDER BY is_default DESC, created_at DESC;`,
+      [req.user.id]
+    );
+    res.json({
+      success: true,
+      addresses: addressesRes.rows || []
+    });
+  } catch (err) {
+    console.error('Error fetching addresses:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch saved addresses.' });
+  }
+});
+
+// POST /api/addresses - Add New Delivery Address
+app.post('/api/addresses', authenticateToken, async (req, res) => {
+  try {
+    let {
+      address_type = 'Home',
+      full_name,
+      mobile_number,
+      address_line1,
+      address_line2 = '',
+      area,
+      city,
+      state,
+      pincode,
+      landmark = '',
+      delivery_instructions = '',
+      is_default = false
+    } = req.body;
+
+    full_name = (full_name || '').trim();
+    mobile_number = (mobile_number || '').trim();
+    address_line1 = (address_line1 || '').trim();
+    address_line2 = (address_line2 || '').trim();
+    area = (area || '').trim();
+    city = (city || '').trim();
+    state = (state || '').trim();
+    pincode = (pincode || '').trim();
+    landmark = (landmark || '').trim();
+    delivery_instructions = (delivery_instructions || '').trim();
+
+    if (!full_name || !mobile_number || !address_line1 || !area || !city || !state || !pincode) {
+      return res.status(400).json({ success: false, message: 'Please fill all required address fields.' });
+    }
+
+    // Validate Indian PIN Code Format (6 digits)
+    const pinRegex = /^[1-9][0-9]{5}$/;
+    if (!pinRegex.test(pincode)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid 6-digit Indian PIN code.' });
+    }
+
+    // Address Count Limit Check (Max 15)
+    const countRes = await db.query(`SELECT COUNT(*) as total FROM customer_addresses WHERE customer_id = $1;`, [req.user.id]);
+    const currentCount = parseInt(countRes.rows[0]?.total || '0', 10);
+    if (currentCount >= 15) {
+      return res.status(400).json({ success: false, message: 'Address limit reached. Please delete an existing address before adding another.' });
+    }
+
+    const setAsDefault = Boolean(is_default || currentCount === 0);
+
+    if (setAsDefault) {
+      await db.query(`UPDATE customer_addresses SET is_default = false WHERE customer_id = $1;`, [req.user.id]);
+    }
+
+    const addrId = 'addr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `INSERT INTO customer_addresses (
+        id, customer_id, address_type, full_name, mobile_number, address_line1, address_line2,
+        area, city, state, pincode, landmark, delivery_instructions, is_default, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);`,
+      [
+        addrId, req.user.id, address_type || 'Home', full_name, mobile_number, address_line1, address_line2,
+        area, city, state, pincode, landmark, delivery_instructions, setAsDefault, nowIso, nowIso
+      ]
+    );
+
+    const newAddrRes = await db.query(`SELECT * FROM customer_addresses WHERE id = $1;`, [addrId]);
+    res.json({
+      success: true,
+      message: '🎉 Address saved successfully.',
+      address: newAddrRes.rows[0]
+    });
+  } catch (err) {
+    console.error('Error adding address:', err);
+    res.status(500).json({ success: false, message: 'Failed to save address.' });
+  }
+});
+
+// PUT /api/addresses/:id - Edit Saved Address (Strict Ownership Check)
+app.put('/api/addresses/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const addrCheck = await db.query(`SELECT * FROM customer_addresses WHERE id = $1;`, [id]);
+    if (!addrCheck.rows || addrCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    if (addrCheck.rows[0].customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. You do not own this address.' });
+    }
+
+    let {
+      address_type = 'Home',
+      full_name,
+      mobile_number,
+      address_line1,
+      address_line2 = '',
+      area,
+      city,
+      state,
+      pincode,
+      landmark = '',
+      delivery_instructions = '',
+      is_default = false
+    } = req.body;
+
+    full_name = (full_name || '').trim();
+    mobile_number = (mobile_number || '').trim();
+    address_line1 = (address_line1 || '').trim();
+    address_line2 = (address_line2 || '').trim();
+    area = (area || '').trim();
+    city = (city || '').trim();
+    state = (state || '').trim();
+    pincode = (pincode || '').trim();
+    landmark = (landmark || '').trim();
+    delivery_instructions = (delivery_instructions || '').trim();
+
+    if (!full_name || !mobile_number || !address_line1 || !area || !city || !state || !pincode) {
+      return res.status(400).json({ success: false, message: 'Please fill all required address fields.' });
+    }
+
+    const pinRegex = /^[1-9][0-9]{5}$/;
+    if (!pinRegex.test(pincode)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid 6-digit Indian PIN code.' });
+    }
+
+    const setAsDefault = Boolean(is_default);
+
+    if (setAsDefault) {
+      await db.query(`UPDATE customer_addresses SET is_default = false WHERE customer_id = $1;`, [req.user.id]);
+    }
+
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `UPDATE customer_addresses SET
+        address_type = $1, full_name = $2, mobile_number = $3, address_line1 = $4, address_line2 = $5,
+        area = $6, city = $7, state = $8, pincode = $9, landmark = $10, delivery_instructions = $11,
+        is_default = $12, updated_at = $13
+      WHERE id = $14 AND customer_id = $15;`,
+      [
+        address_type || 'Home', full_name, mobile_number, address_line1, address_line2,
+        area, city, state, pincode, landmark, delivery_instructions,
+        setAsDefault, nowIso, id, req.user.id
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Address updated successfully.'
+    });
+  } catch (err) {
+    console.error('Error updating address:', err);
+    res.status(500).json({ success: false, message: 'Failed to update address.' });
+  }
+});
+
+// DELETE /api/addresses/:id - Delete Address (Auto-promotes new default if needed)
+app.delete('/api/addresses/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const addrCheck = await db.query(`SELECT * FROM customer_addresses WHERE id = $1;`, [id]);
+    if (!addrCheck.rows || addrCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    if (addrCheck.rows[0].customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. You do not own this address.' });
+    }
+
+    const wasDefault = Boolean(addrCheck.rows[0].is_default);
+
+    await db.query(`DELETE FROM customer_addresses WHERE id = $1 AND customer_id = $2;`, [id, req.user.id]);
+
+    // If default address was deleted, auto-promote most recently created remaining address
+    if (wasDefault) {
+      const remainRes = await db.query(
+        `SELECT id FROM customer_addresses WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1;`,
+        [req.user.id]
+      );
+      if (remainRes.rows && remainRes.rows.length > 0) {
+        await db.query(`UPDATE customer_addresses SET is_default = true WHERE id = $1;`, [remainRes.rows[0].id]);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Address deleted successfully.'
+    });
+  } catch (err) {
+    console.error('Error deleting address:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete address.' });
+  }
+});
+
+// PATCH /api/addresses/:id/set-default - Set Specific Address as Default
+app.patch('/api/addresses/:id/set-default', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const addrCheck = await db.query(`SELECT * FROM customer_addresses WHERE id = $1;`, [id]);
+    if (!addrCheck.rows || addrCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    if (addrCheck.rows[0].customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. You do not own this address.' });
+    }
+
+    await db.query(`UPDATE customer_addresses SET is_default = false WHERE customer_id = $1;`, [req.user.id]);
+    await db.query(`UPDATE customer_addresses SET is_default = true WHERE id = $1 AND customer_id = $2;`, [id, req.user.id]);
+
+    res.json({
+      success: true,
+      message: '⭐ Default address updated.'
+    });
+  } catch (err) {
+    console.error('Error setting default address:', err);
+    res.status(500).json({ success: false, message: 'Failed to set default address.' });
+  }
+});
+
+/* ============================================================
+   🗺️ OWNER DELIVERY ZONE MANAGEMENT ENDPOINTS
+   ============================================================ */
+
+// GET /api/owner/delivery-zones - List Delivery Zones (Owner)
+app.get('/api/owner/delivery-zones', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { q = '', status = 'ALL' } = req.query;
+    let whereConditions = [];
+    let params = [];
+
+    if (q && q.trim()) {
+      params.push(`%${q.trim().toLowerCase()}%`);
+      whereConditions.push(`(LOWER(zone_name) LIKE $${params.length} OR LOWER(description) LIKE $${params.length} OR LOWER(pincodes::text) LIKE $${params.length})`);
+    }
+
+    if (status && status !== 'ALL') {
+      params.push(status.toUpperCase());
+      whereConditions.push(`UPPER(status) = $${params.length}`);
+    }
+
+    const whereClause = whereConditions.length > 0 ? ' WHERE ' + whereConditions.join(' AND ') : '';
+    const zonesRes = await db.query(`SELECT * FROM delivery_zones${whereClause} ORDER BY created_at DESC;`, params);
+
+    res.json({
+      success: true,
+      zones: zonesRes.rows || []
+    });
+  } catch (err) {
+    console.error('Error fetching delivery zones:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch delivery zones.' });
+  }
+});
+
+// POST /api/owner/delivery-zones - Create Delivery Zone with Duplicate PIN Check
+app.post('/api/owner/delivery-zones', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    let {
+      zone_name,
+      description = '',
+      pincodes = [],
+      delivery_fee = 0,
+      min_order_amount = 0,
+      max_order_amount = null,
+      status = 'ACTIVE'
+    } = req.body;
+
+    zone_name = (zone_name || '').trim();
+    description = (description || '').trim();
+    const fee = Math.max(0, parseFloat(delivery_fee || '0') || 0);
+    const minOrder = Math.max(0, parseFloat(min_order_amount || '0') || 0);
+    const maxOrder = max_order_amount ? Math.max(0, parseFloat(max_order_amount) || 0) : null;
+
+    if (!zone_name) {
+      return res.status(400).json({ success: false, message: 'Zone name is required.' });
+    }
+
+    // Parse PIN codes array
+    let rawPins = [];
+    if (Array.isArray(pincodes)) {
+      rawPins = pincodes;
+    } else if (typeof pincodes === 'string') {
+      rawPins = pincodes.split(',').map(s => s.trim());
+    }
+
+    const cleanPins = Array.from(new Set(rawPins.map(p => String(p).trim()).filter(p => /^[1-9][0-9]{5}$/.test(p))));
+
+    if (cleanPins.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide at least one valid 6-digit Indian PIN code.' });
+    }
+
+    // SERVER DUPLICATE CHECK: Verify PIN codes against existing ACTIVE delivery zones
+    if (status === 'ACTIVE') {
+      const activeZonesRes = await db.query(`SELECT id, zone_name, pincodes FROM delivery_zones WHERE status = 'ACTIVE';`);
+      for (const az of (activeZonesRes.rows || [])) {
+        let existingPins = [];
+        try {
+          existingPins = typeof az.pincodes === 'string' ? JSON.parse(az.pincodes) : (az.pincodes || []);
+        } catch (e) {
+          existingPins = [];
+        }
+        for (const p of cleanPins) {
+          if (existingPins.map(x => String(x).trim()).includes(p)) {
+            return res.status(400).json({
+              success: false,
+              message: `PIN code ${p} is already assigned to active delivery zone "${az.zone_name}".`
+            });
+          }
+        }
+      }
+    }
+
+    const zoneId = 'zone_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `INSERT INTO delivery_zones (id, zone_name, description, pincodes, delivery_fee, min_order_amount, max_order_amount, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+      [zoneId, zone_name, description, JSON.stringify(cleanPins), fee, minOrder, maxOrder, status || 'ACTIVE', nowIso, nowIso]
+    );
+
+    const newZoneRes = await db.query(`SELECT * FROM delivery_zones WHERE id = $1;`, [zoneId]);
+    res.json({
+      success: true,
+      message: '🗺️ Delivery zone created successfully.',
+      zone: newZoneRes.rows[0]
+    });
+  } catch (err) {
+    console.error('Error creating delivery zone:', err);
+    res.status(500).json({ success: false, message: 'Failed to create delivery zone.' });
+  }
+});
+
+// PUT /api/owner/delivery-zones/:id - Edit Delivery Zone
+app.put('/api/owner/delivery-zones/:id', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const zoneCheck = await db.query(`SELECT * FROM delivery_zones WHERE id = $1;`, [id]);
+    if (!zoneCheck.rows || zoneCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Delivery zone not found.' });
+    }
+
+    let {
+      zone_name,
+      description = '',
+      pincodes = [],
+      delivery_fee = 0,
+      min_order_amount = 0,
+      max_order_amount = null,
+      status = 'ACTIVE'
+    } = req.body;
+
+    zone_name = (zone_name || '').trim();
+    description = (description || '').trim();
+    const fee = Math.max(0, parseFloat(delivery_fee || '0') || 0);
+    const minOrder = Math.max(0, parseFloat(min_order_amount || '0') || 0);
+    const maxOrder = max_order_amount ? Math.max(0, parseFloat(max_order_amount) || 0) : null;
+
+    if (!zone_name) {
+      return res.status(400).json({ success: false, message: 'Zone name is required.' });
+    }
+
+    let rawPins = [];
+    if (Array.isArray(pincodes)) {
+      rawPins = pincodes;
+    } else if (typeof pincodes === 'string') {
+      rawPins = pincodes.split(',').map(s => s.trim());
+    }
+
+    const cleanPins = Array.from(new Set(rawPins.map(p => String(p).trim()).filter(p => /^[1-9][0-9]{5}$/.test(p))));
+
+    if (cleanPins.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide at least one valid 6-digit Indian PIN code.' });
+    }
+
+    // SERVER DUPLICATE CHECK: Verify PIN codes against OTHER active delivery zones
+    if (status === 'ACTIVE') {
+      const activeZonesRes = await db.query(`SELECT id, zone_name, pincodes FROM delivery_zones WHERE status = 'ACTIVE' AND id != $1;`, [id]);
+      for (const az of (activeZonesRes.rows || [])) {
+        let existingPins = [];
+        try {
+          existingPins = typeof az.pincodes === 'string' ? JSON.parse(az.pincodes) : (az.pincodes || []);
+        } catch (e) {
+          existingPins = [];
+        }
+        for (const p of cleanPins) {
+          if (existingPins.map(x => String(x).trim()).includes(p)) {
+            return res.status(400).json({
+              success: false,
+              message: `PIN code ${p} is already assigned to active delivery zone "${az.zone_name}".`
+            });
+          }
+        }
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+
+    await db.query(
+      `UPDATE delivery_zones SET
+        zone_name = $1, description = $2, pincodes = $3, delivery_fee = $4,
+        min_order_amount = $5, max_order_amount = $6, status = $7, updated_at = $8
+      WHERE id = $9;`,
+      [zone_name, description, JSON.stringify(cleanPins), fee, minOrder, maxOrder, status || 'ACTIVE', nowIso, id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Delivery zone updated successfully.'
+    });
+  } catch (err) {
+    console.error('Error updating delivery zone:', err);
+    res.status(500).json({ success: false, message: 'Failed to update delivery zone.' });
+  }
+});
+
+// PATCH /api/owner/delivery-zones/:id/status - Toggle Zone Active/Inactive
+app.patch('/api/owner/delivery-zones/:id/status', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const newStatus = (status || 'ACTIVE').toUpperCase();
+
+    const zoneCheck = await db.query(`SELECT * FROM delivery_zones WHERE id = $1;`, [id]);
+    if (!zoneCheck.rows || zoneCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Delivery zone not found.' });
+    }
+
+    const targetZone = zoneCheck.rows[0];
+
+    // If activating, check PIN codes against other active zones
+    if (newStatus === 'ACTIVE') {
+      let cleanPins = [];
+      try {
+        cleanPins = typeof targetZone.pincodes === 'string' ? JSON.parse(targetZone.pincodes) : (targetZone.pincodes || []);
+      } catch (e) {
+        cleanPins = [];
+      }
+
+      const activeZonesRes = await db.query(`SELECT id, zone_name, pincodes FROM delivery_zones WHERE status = 'ACTIVE' AND id != $1;`, [id]);
+      for (const az of (activeZonesRes.rows || [])) {
+        let existingPins = [];
+        try {
+          existingPins = typeof az.pincodes === 'string' ? JSON.parse(az.pincodes) : (az.pincodes || []);
+        } catch (e) {
+          existingPins = [];
+        }
+        for (const p of cleanPins) {
+          if (existingPins.map(x => String(x).trim()).includes(p)) {
+            return res.status(400).json({
+              success: false,
+              message: `Cannot activate zone. PIN code ${p} is already assigned to active zone "${az.zone_name}".`
+            });
+          }
+        }
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    await db.query(`UPDATE delivery_zones SET status = $1, updated_at = $2 WHERE id = $3;`, [newStatus, nowIso, id]);
+
+    res.json({
+      success: true,
+      message: `Delivery zone status updated to ${newStatus}.`
+    });
+  } catch (err) {
+    console.error('Error toggling zone status:', err);
+    res.status(500).json({ success: false, message: 'Failed to update zone status.' });
+  }
+});
+
+// DELETE /api/owner/delivery-zones/:id - Delete Delivery Zone
+app.delete('/api/owner/delivery-zones/:id', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const zoneCheck = await db.query(`SELECT * FROM delivery_zones WHERE id = $1;`, [id]);
+    if (!zoneCheck.rows || zoneCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Delivery zone not found.' });
+    }
+
+    await db.query(`DELETE FROM delivery_zones WHERE id = $1;`, [id]);
+
+    res.json({
+      success: true,
+      message: 'Delivery zone deleted successfully.'
+    });
+  } catch (err) {
+    console.error('Error deleting delivery zone:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete delivery zone.' });
+  }
+});
+
+/* ============================================================
+   📍 PINCODE LOOKUP & DELIVERY ZONE CHECK ENDPOINT
+   ============================================================ */
+
+// POST /api/delivery-zones/check-pincode - Match PIN code to active delivery zone
+app.post('/api/delivery-zones/check-pincode', async (req, res) => {
+  try {
+    const { pincode, address_id } = req.body;
+    let targetPin = (pincode || '').trim();
+
+    if (address_id) {
+      const addrRes = await db.query(`SELECT pincode FROM customer_addresses WHERE id = $1;`, [address_id]);
+      if (addrRes.rows && addrRes.rows.length > 0) {
+        targetPin = (addrRes.rows[0].pincode || '').trim();
+      }
+    }
+
+    if (!targetPin) {
+      return res.status(400).json({ success: false, message: 'PIN code or Address ID is required.' });
+    }
+
+    const activeZonesRes = await db.query(`SELECT * FROM delivery_zones WHERE status = 'ACTIVE';`);
+    let matchedZone = null;
+
+    for (const z of (activeZonesRes.rows || [])) {
+      let pinList = [];
+      try {
+        pinList = typeof z.pincodes === 'string' ? JSON.parse(z.pincodes) : (z.pincodes || []);
+      } catch (e) {
+        pinList = [];
+      }
+      if (Array.isArray(pinList) && pinList.map(p => String(p).trim()).includes(targetPin)) {
+        matchedZone = z;
+        break;
+      }
+    }
+
+    if (matchedZone) {
+      return res.json({
+        success: true,
+        available: true,
+        zone: {
+          id: matchedZone.id,
+          zone_name: matchedZone.zone_name,
+          delivery_fee: Number(matchedZone.delivery_fee || 0),
+          min_order_amount: Number(matchedZone.min_order_amount || 0)
+        },
+        delivery_fee: Number(matchedZone.delivery_fee || 0)
+      });
+    }
+
+    res.json({
+      success: true,
+      available: false,
+      message: '🚫 Sorry, delivery is currently unavailable at this location.'
+    });
+  } catch (err) {
+    console.error('Error checking pincode delivery zone:', err);
+    res.status(500).json({ success: false, message: 'Failed to verify delivery zone.' });
   }
 });
 

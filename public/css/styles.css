@@ -7617,6 +7617,36 @@ body.guest-mode #btnMobileMenuToggle {
 }
 
 /* =========================================================================
+   🧺 SUBSCRIPTION MEAL ORDER HIGHLIGHT STYLES
+   ========================================================================= */
+.card-order-subscription {
+  border: 2px solid #AB47BC !important;
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.16) 0%, var(--bg-surface-elevated, #1E1E2E) 100%) !important;
+  box-shadow: 0 4px 20px rgba(156, 39, 176, 0.3) !important;
+  position: relative !important;
+}
+
+.badge-subscription-order {
+  background: linear-gradient(135deg, #9C27B0 0%, #E040FB 100%) !important;
+  color: #FFFFFF !important;
+  font-weight: 800 !important;
+  font-size: 0.78rem !important;
+  padding: 3px 10px !important;
+  border-radius: 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  letter-spacing: 0.3px !important;
+  box-shadow: 0 2px 10px rgba(224, 64, 251, 0.45) !important;
+  text-transform: uppercase !important;
+}
+
+.table-row-subscription {
+  background: linear-gradient(90deg, rgba(156, 39, 176, 0.22) 0%, rgba(30, 20, 50, 0.4) 100%) !important;
+  border-left: 4px solid #E040FB !important;
+}
+
+/* =========================================================================
    ATTRACTIVE PREMIUM PAY & SUBMIT BUTTON WITH HOVER SHIMMER & GLOW ANIMATION
    ========================================================================= */
 .btn-member-pay-submit {
@@ -8371,6 +8401,55 @@ body.guest-mode #btnMobileMenuToggle {
 
 .btn-reject-pay:active {
   transform: translateY(0) scale(0.98);
+}
+
+/* =========================================================================
+   📍 DELIVERY ADDRESS & 🗺️ DELIVERY ZONE CUSTOM STYLES
+   ========================================================================= */
+.address-card {
+  background: var(--bg-surface-elevated, #1E1E2E);
+  border: 1.5px solid var(--border-color, rgba(255,255,255,0.1));
+  border-radius: 16px;
+  padding: 16px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+.address-card.is-default {
+  border-color: #FF5722 !important;
+  box-shadow: 0 4px 18px rgba(255, 87, 34, 0.25) !important;
+}
+.badge-address-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 0.75rem;
+  background: rgba(255, 87, 34, 0.15);
+  color: #FF7043;
+  border: 1px solid rgba(255, 87, 34, 0.3);
+}
+.zone-card {
+  background: var(--bg-surface-elevated, #1E1E2E);
+  border: 1.5px solid var(--border-color, rgba(255,255,255,0.1));
+  border-radius: 16px;
+  padding: 18px;
+  transition: all 0.2s ease;
+}
+.zone-card.active-zone {
+  border-color: rgba(76, 175, 80, 0.5);
+}
+.pincode-tag {
+  background: rgba(76, 175, 80, 0.15);
+  color: #81C784;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 0.78rem;
+  display: inline-block;
 }
 
 
