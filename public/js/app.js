@@ -231,6 +231,10 @@ class TiffinApp {
 
         this.cart = this.currentUser.cart || [];
         this.favorites = this.currentUser.favorites || [];
+        try {
+          const savedAddons = localStorage.getItem('tiffin_selected_addons');
+          if (savedAddons) this.selectedCartAddons = JSON.parse(savedAddons) || {};
+        } catch (e) {}
         this.checkPasswordChangeRequired();
       } catch (e) {
         console.error('Failed to parse saved user:', e);
@@ -4327,10 +4331,14 @@ class TiffinApp {
 
   calculateCartTotals() {
     const items = this.cart || [];
-    const subtotal = items.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 1)), 0);
+    const mainSubtotal = items.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 1)), 0);
+    const addonsSubtotal = this.calculateSelectedAddonsTotal ? this.calculateSelectedAddonsTotal() : 0;
+    const subtotal = mainSubtotal + addonsSubtotal;
     const walletDiscount = Number(this.appliedWalletDiscount || 0);
     const grandTotal = Math.max(0, subtotal - walletDiscount);
     return {
+      mainSubtotal,
+      addonsSubtotal,
       subtotal,
       walletDiscount,
       grandTotal
@@ -4340,7 +4348,9 @@ class TiffinApp {
   updateCartUI() {
     const badge = document.getElementById('cartBadgeCount');
     const mobileBadge = document.getElementById('mobileCartBadgeCount');
-    const totalCount = (this.cart || []).reduce((acc, c) => acc + c.quantity, 0);
+    const mainItemsCount = (this.cart || []).reduce((acc, c) => acc + c.quantity, 0);
+    const addonsCount = Object.values(this.selectedCartAddons || {}).reduce((acc, a) => acc + (a.quantity || 0), 0);
+    const totalCount = mainItemsCount + addonsCount;
 
     if (totalCount > 0) {
       if (badge) { badge.innerText = totalCount; badge.classList.remove('hidden'); }
@@ -4355,32 +4365,68 @@ class TiffinApp {
     const { subtotal, grandTotal } = this.calculateCartTotals();
 
     const container = document.getElementById('cartItemsContainer');
+    const selectedAddonsList = Object.values(this.selectedCartAddons || {});
+
     if (container) {
-      if (!this.cart.length) {
+      if (!this.cart.length && !selectedAddonsList.length) {
         container.innerHTML = `
           <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
             <i class="fa-solid fa-cart-flatbed" style="font-size: 2.5rem; margin-bottom: 0.5rem;"></i>
             <p>Your shopping cart is empty.</p>
           </div>`;
       } else {
-        container.innerHTML = this.cart.map(item => {
-          const itemTotal = item.price * item.quantity;
-          return `
-            <div class="cart-item">
-              <img src="${item.image}" alt="${item.name}" class="cart-item-img" onerror="this.src='/images/idly_sambar.png'">
-              <div class="cart-item-details">
-                <div class="cart-item-title">${item.name}</div>
-                <div class="cart-item-price">₹${item.price} x ${item.quantity} = ₹${itemTotal}</div>
+        let html = '';
+
+        if (this.cart.length > 0) {
+          html += this.cart.map(item => {
+            const itemTotal = item.price * item.quantity;
+            return `
+              <div class="cart-item">
+                <img src="${item.image}" alt="${escapeHtml(item.name)}" class="cart-item-img" onerror="this.src='/images/idly_sambar.png'">
+                <div class="cart-item-details">
+                  <div class="cart-item-title">${escapeHtml(item.name)}</div>
+                  <div class="cart-item-price">₹${item.price} x ${item.quantity} = ₹${itemTotal}</div>
+                </div>
+                <div class="qty-selector" style="transform: scale(0.85);">
+                  <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', -1)">-</button>
+                  <span class="qty-val">${item.quantity}</span>
+                  <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', 1)">+</button>
+                </div>
+                <button class="cart-item-remove" onclick="app.removeCartItem('${item.id}')" title="Remove Item"><i class="fa-solid fa-trash"></i></button>
               </div>
-              <div class="qty-selector" style="transform: scale(0.85);">
-                <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', -1)">-</button>
-                <span class="qty-val">${item.quantity}</span>
-                <button class="qty-btn" onclick="app.updateCartItemQty('${item.id}', 1)">+</button>
-              </div>
-              <button class="cart-item-remove" onclick="app.removeCartItem('${item.id}')" title="Remove Item"><i class="fa-solid fa-trash"></i></button>
+            `;
+          }).join('');
+        }
+
+        if (selectedAddonsList.length > 0) {
+          html += `
+            <div style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px dashed var(--border-color);">
+              <h5 style="margin: 0 0 0.5rem 0; color: var(--accent-gold); font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                <span>🥘</span> Selected Extra Add-ons
+              </h5>
+              ${selectedAddonsList.map(addon => {
+                const addonId = addon.add_on_id || addon.id;
+                const addonTotal = Number(addon.price) * Number(addon.quantity);
+                return `
+                  <div class="cart-item" style="border-left: 3px solid var(--accent-gold); background: rgba(255,179,0,0.05); margin-bottom: 6px; padding: 0.6rem 0.75rem;">
+                    <div class="cart-item-details">
+                      <div class="cart-item-title" style="font-size: 0.85rem; color: #FFF;">${escapeHtml(addon.name)}</div>
+                      <div class="cart-item-price" style="font-size: 0.78rem; color: #FFC107;">+₹${addon.price} x ${addon.quantity} = +₹${addonTotal}</div>
+                    </div>
+                    <div class="qty-selector" style="transform: scale(0.8);">
+                      <button class="qty-btn" onclick="app.updateCartAddonQty('${addonId}', -1)">-</button>
+                      <span class="qty-val">${addon.quantity}</span>
+                      <button class="qty-btn" onclick="app.updateCartAddonQty('${addonId}', 1)">+</button>
+                    </div>
+                    <button class="cart-item-remove" onclick="app.removeAddon('${addonId}')" title="Remove Add-on"><i class="fa-solid fa-trash"></i></button>
+                  </div>
+                `;
+              }).join('')}
             </div>
           `;
-        }).join('');
+        }
+
+        container.innerHTML = html;
       }
     }
 
@@ -4424,6 +4470,10 @@ class TiffinApp {
 
     drawer.classList.toggle('open', isOpen);
     overlay.classList.toggle('open', isOpen);
+
+    if (isOpen) {
+      this.fetchAvailableAddons();
+    }
   }
 
   openOrderCheckoutModal() {
@@ -4823,7 +4873,8 @@ class TiffinApp {
       delivery_address: deliveryAddress || (orderType === 'Delivery' ? (this.currentUser ? this.currentUser.address : 'Home Delivery') : 'Counter Pickup'),
       notes: notes,
       used_wallet_amount: this.appliedWalletDiscount || 0,
-      items: this.cart
+      items: this.cart,
+      add_ons: this.getSelectedAddonsPayload ? this.getSelectedAddonsPayload() : []
     };
 
     this.isSubmittingOrder = true;
@@ -5463,7 +5514,8 @@ class TiffinApp {
       payment_screenshot: this.tempPaymentScreenshot || '',
       utr_number: utrNumber || '',
       used_wallet_amount: finalUsedWalletAmount,
-      items: this.cart
+      items: this.cart,
+      add_ons: this.getSelectedAddonsPayload ? this.getSelectedAddonsPayload() : []
     };
 
     this.isSubmittingOrder = true;
@@ -5487,6 +5539,8 @@ class TiffinApp {
           if (this.referralStats) this.referralStats.wallet_balance = json.wallet_balance;
         }
         this.cart = [];
+        this.selectedCartAddons = {};
+        try { localStorage.removeItem('tiffin_selected_addons'); } catch (e) {}
         this.tempPaymentScreenshot = null;
         this.appliedWalletDiscount = 0;
         const chk = document.getElementById('chkUseWallet');
@@ -15554,7 +15608,7 @@ class TiffinApp {
   }
 
   toggleCartAddonCheckbox(addonId, isChecked) {
-    const addon = this.availableAddonsList.find(a => a.id === addonId);
+    const addon = (this.availableAddonsList || []).find(a => a.id === addonId);
     if (!addon) return;
 
     if (isChecked) {
@@ -15570,16 +15624,21 @@ class TiffinApp {
       this.showToast(`Removed ${addon.name}`, 'info');
     }
 
+    try {
+      localStorage.setItem('tiffin_selected_addons', JSON.stringify(this.selectedCartAddons));
+    } catch (e) {}
+
     this.renderCustomerAddonsWidget();
-    if (typeof this.updateCartSummary === 'function') this.updateCartSummary();
+    this.updateCartUI();
+    if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
   }
 
   updateCartAddonQty(addonId, delta) {
-    const addon = this.availableAddonsList.find(a => a.id === addonId);
-    if (!addon) return;
+    const addon = (this.availableAddonsList || []).find(a => a.id === addonId);
+    if (!addon && (!this.selectedCartAddons || !this.selectedCartAddons[addonId])) return;
 
     if (!this.selectedCartAddons[addonId]) {
-      if (delta > 0) {
+      if (delta > 0 && addon) {
         this.selectedCartAddons[addonId] = {
           add_on_id: addon.id,
           name: addon.name,
@@ -15596,12 +15655,31 @@ class TiffinApp {
       }
     }
 
+    try {
+      localStorage.setItem('tiffin_selected_addons', JSON.stringify(this.selectedCartAddons));
+    } catch (e) {}
+
     this.renderCustomerAddonsWidget();
-    if (typeof this.updateCartSummary === 'function') this.updateCartSummary();
+    this.updateCartUI();
+    if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
+  }
+
+  removeAddon(addonId) {
+    if (this.selectedCartAddons && this.selectedCartAddons[addonId]) {
+      const addonName = this.selectedCartAddons[addonId].name;
+      delete this.selectedCartAddons[addonId];
+      try {
+        localStorage.setItem('tiffin_selected_addons', JSON.stringify(this.selectedCartAddons));
+      } catch (e) {}
+      this.showToast(`Removed ${addonName}`, 'info');
+      this.renderCustomerAddonsWidget();
+      this.updateCartUI();
+      if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
+    }
   }
 
   getSelectedAddonsPayload() {
-    return Object.values(this.selectedCartAddons).map(item => ({
+    return Object.values(this.selectedCartAddons || {}).map(item => ({
       add_on_id: item.add_on_id,
       quantity: item.quantity
     }));
