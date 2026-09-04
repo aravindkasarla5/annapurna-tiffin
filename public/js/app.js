@@ -18517,8 +18517,10 @@ class TiffinApp {
               </thead>
               <tbody>
                 ${json.subscribers.map(sub => {
-                  const isActive = sub.status === 'ACTIVE';
+                  const isCompleted = sub.status === 'COMPLETED' || (sub.remaining_meals <= 0 && sub.total_meals > 0) || (sub.used_meals >= sub.total_meals && sub.total_meals > 0);
+                  const isActive = sub.status === 'ACTIVE' && !isCompleted;
                   const isPending = sub.status === 'PENDING_PAYMENT';
+                  const isRejected = sub.status === 'FAILED' || sub.status === 'REJECTED';
                   const expiryStr = sub.expiry_date ? new Date(sub.expiry_date).toLocaleDateString('en-IN') : 'N/A';
                   const startStr = sub.start_date ? new Date(sub.start_date).toLocaleDateString('en-IN') : 'N/A';
 

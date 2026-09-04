@@ -11318,8 +11318,13 @@ app.get('/api/owner/subscribers', authenticateToken, requireOwnerOrKitchen, asyn
 
     // Status filter
     if (status && status !== 'ALL') {
-      params.push(status.toUpperCase());
-      whereConditions.push(`UPPER(status) = $${params.length}`);
+      const targetStatus = status.toUpperCase();
+      if (targetStatus === 'FAILED' || targetStatus === 'REJECTED') {
+        whereConditions.push(`(UPPER(status) = 'FAILED' OR UPPER(status) = 'REJECTED')`);
+      } else {
+        params.push(targetStatus);
+        whereConditions.push(`UPPER(status) = $${params.length}`);
+      }
     }
 
     // Plan filter
@@ -11375,13 +11380,16 @@ app.get('/api/owner/subscribers', authenticateToken, requireOwnerOrKitchen, asyn
     const countRes = await db.query(countSql, params);
     const totalRecords = parseInt(countRes.rows[0]?.total || '0', 10);
 
-    // Fetch Paginated Records
-    params.push(parsedLimit, offset);
-    const dataSql = `SELECT * FROM subscriptions${whereClause}${orderByClause} LIMIT $${params.length - 1} OFFSET $${params.length};`;
     // Auto-complete fully used active subscriptions
     await db.query("UPDATE subscriptions SET status = 'COMPLETED' WHERE status = 'ACTIVE' AND used_meals >= total_meals;");
 
-    const dataRes = await db.query(dataSql, params);
+    // Fetch Paginated Records
+    const limitParamIdx = params.length + 1;
+    const offsetParamIdx = params.length + 2;
+    const dataSql = `SELECT * FROM subscriptions${whereClause}${orderByClause} LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx};`;
+    const dataParams = [...params, parsedLimit, offset];
+
+    const dataRes = await db.query(dataSql, dataParams);
 
     const subscribers = (dataRes.rows || []).map(s => {
       const total = parseInt(s.total_meals, 10);
