@@ -17551,39 +17551,105 @@ class TiffinApp {
     }
 
     try {
-      this.showToast('Initiating plan checkout...', 'info');
-      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/purchase`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: planId })
-      });
+      const res = await this.fetchWithAuth(`${API_BASE}/subscription-plans`);
       const json = await res.json();
+      const plan = (json.plans || []).find(p => p.id === planId);
 
-      if (!json.success || !json.subscription) {
-        this.showToast(json.message || 'Failed to initiate plan purchase.', 'error');
+      if (!plan) {
+        this.showToast('Selected subscription plan does not exist.', 'error');
         return;
       }
 
-      const sub = json.subscription;
+      this.selectedPlanForPurchase = plan;
+      const modalContent = document.getElementById('subPaymentChoiceContent');
+      if (!modalContent) return;
 
-      // Auto-Confirm / Prompt for UPI UTR payment confirmation
-      const confirmRes = await this.fetchWithAuth(`${API_BASE}/subscriptions/confirm-payment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription_id: sub.id, utr_number: 'PAY_' + Date.now() })
-      });
-      const confirmJson = await confirmRes.json();
+      modalContent.innerHTML = `
+        <div style="background: rgba(0,0,0,0.2); border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+          <h4 style="font-size: 1.1rem; font-weight: 800; color: #FFF; margin: 0 0 6px 0;">🥣 ${escapeHtml(plan.name)}</h4>
+          <div style="display: flex; gap: 12px; font-size: 0.82rem; color: var(--text-muted); flex-wrap: wrap;">
+            <span><i class="fa-solid fa-calendar-days" style="color: var(--accent-gold);"></i> ${plan.duration_days} Days</span>
+            <span><i class="fa-solid fa-utensils" style="color: #81C784;"></i> ${plan.included_meals} Meals</span>
+            <span style="font-weight: 800; color: #FFF; font-size: 1rem; margin-left: auto;">₹${parseFloat(plan.price).toLocaleString('en-IN')}</span>
+          </div>
+        </div>
 
-      if (confirmJson.success) {
-        this.showToast('🎉 Subscription purchased & activated successfully!', 'success');
-        this.switchView('secCustomerSubscriptions');
-      } else {
-        this.showToast(confirmJson.message || 'Payment confirmation pending.', 'warning');
-        this.switchView('secCustomerSubscriptions');
-      }
+        <label style="font-weight: 700; font-size: 0.88rem; color: #FFF; margin-bottom: 10px; display: block;">Select Payment Method:</label>
+        
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+          <label style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: border-color 0.2s;" id="lblOptPayOnline">
+            <input type="radio" name="radSubPaymentMethod" value="ONLINE" checked style="accent-color: #FF9800; transform: scale(1.2);">
+            <div>
+              <strong style="color: #FFF; font-size: 0.95rem;">💳 Online Payment</strong>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Instant activation upon payment completion</div>
+            </div>
+          </label>
+
+          <label style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: border-color 0.2s;" id="lblOptPayCash">
+            <input type="radio" name="radSubPaymentMethod" value="CASH" style="accent-color: #FF9800; transform: scale(1.2);">
+            <div>
+              <strong style="color: #FFF; font-size: 0.95rem;">💵 Cash Payment</strong>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Subscription will be activated after owner confirms your cash payment</div>
+            </div>
+          </label>
+        </div>
+
+        <button type="button" id="btnSubmitSubPayment" class="btn-primary-block" onclick="app.confirmSubscriptionPurchase('${plan.id}')" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800; font-size: 1rem;">
+          <i class="fa-solid fa-lock"></i> Pay ₹${parseFloat(plan.price).toLocaleString('en-IN')} & Subscribe
+        </button>
+      `;
+
+      this.toggleSubPaymentChoiceModal(true);
     } catch (err) {
       console.error('Subscribe to plan error:', err);
       this.showToast('Error initiating subscription. Please try again.', 'error');
+    }
+  }
+
+  toggleSubPaymentChoiceModal(show) {
+    const backdrop = document.getElementById('modalSubPaymentChoiceBackdrop');
+    if (backdrop) backdrop.classList.toggle('open', show);
+  }
+
+  async confirmSubscriptionPurchase(planId) {
+    const radMethod = document.querySelector('input[name="radSubPaymentMethod"]:checked');
+    const paymentMethod = radMethod ? radMethod.value : 'ONLINE';
+
+    const btn = document.getElementById('btnSubmitSubPayment');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan_id: planId, payment_method: paymentMethod })
+      });
+      const json = await res.json();
+
+      this.toggleSubPaymentChoiceModal(false);
+
+      if (!json.success || !json.subscription) {
+        this.showToast(json.message || 'Payment failed. Your subscription has not been activated.', 'error');
+        return;
+      }
+
+      if (paymentMethod === 'CASH') {
+        this.showToast('Cash payment selected. Your subscription will be activated after owner confirms your payment.', 'info');
+      } else {
+        this.showToast('🎉 Subscription purchased & activated successfully!', 'success');
+      }
+
+      this.switchView('secCustomerSubscriptions');
+    } catch (err) {
+      console.error('Confirm subscription purchase error:', err);
+      this.showToast('Error processing subscription. Please try again.', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+      }
     }
   }
 
@@ -17611,16 +17677,31 @@ class TiffinApp {
 
       container.innerHTML = json.subscriptions.map(sub => {
         const isActive = sub.status === 'ACTIVE';
-        const statusBadge = isActive
-          ? '<span style="background: rgba(76, 175, 80, 0.15); color: #81C784; border: 1px solid #4CAF50; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-circle-check"></i> ACTIVE</span>'
-          : `<span style="background: rgba(255, 82, 82, 0.15); color: #FF5252; border: 1px solid #FF5252; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">${escapeHtml(sub.status)}</span>`;
+        const isPending = sub.status === 'PENDING_PAYMENT';
+        const isRejected = sub.status === 'REJECTED';
+        const isExpired = sub.status === 'EXPIRED';
+
+        let statusBadge = '';
+        if (isActive) {
+          statusBadge = '<span style="background: rgba(76, 175, 80, 0.15); color: #81C784; border: 1px solid #4CAF50; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-circle-check"></i> ACTIVE</span>';
+        } else if (isPending) {
+          statusBadge = '<span style="background: rgba(255, 152, 0, 0.15); color: #FF9800; border: 1px solid #FF9800; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-hourglass-half"></i> PENDING CASH CONFIRMATION</span>';
+        } else if (isRejected) {
+          statusBadge = '<span style="background: rgba(255, 82, 82, 0.15); color: #FF5252; border: 1px solid #FF5252; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-xmark"></i> REJECTED</span>';
+        } else {
+          statusBadge = `<span style="background: rgba(255, 82, 82, 0.15); color: #FF5252; border: 1px solid #FF5252; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;">${escapeHtml(sub.status)}</span>`;
+        }
 
         const expiryFormatted = sub.expiry_date
           ? new Date(sub.expiry_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          : 'Pending Activation';
+
+        const startDateFormatted = sub.start_date
+          ? new Date(sub.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
           : 'N/A';
 
         return `
-          <div style="background: var(--bg-surface-elevated); border: 1px solid ${isActive ? 'var(--accent-gold)' : 'var(--border-color)'}; border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); position: relative;">
+          <div style="background: var(--bg-surface-elevated); border: 1px solid ${isActive ? 'var(--accent-gold)' : (isPending ? '#FF9800' : 'var(--border-color)')}; border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); position: relative;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
               <div>
                 <h3 style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">🥣 ${escapeHtml(sub.plan_name)}</h3>
@@ -17628,6 +17709,12 @@ class TiffinApp {
               </div>
               ${statusBadge}
             </div>
+
+            ${isPending ? `
+              <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 12px; padding: 12px; margin-bottom: 14px; font-size: 0.82rem; color: #FFE082;">
+                <i class="fa-solid fa-circle-info"></i> Cash payment selected. Your subscription will be activated after the owner confirms your payment.
+              </div>
+            ` : ''}
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 10px; margin-bottom: 14px; text-align: center;">
               <div>
@@ -17644,14 +17731,20 @@ class TiffinApp {
               </div>
             </div>
 
-            <div style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px; display: flex; justify-content: space-between;">
+            <div style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
               <span>Valid Until: <strong style="color: #FFF;">${expiryFormatted}</strong></span>
               ${isActive ? `<span style="color: var(--accent-gold); font-weight: 700;"><i class="fa-solid fa-clock"></i> ${sub.days_remaining} Days Left</span>` : ''}
             </div>
 
-            <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold);">
-              <i class="fa-solid fa-qrcode"></i> View Meal Passes (${sub.remaining_meals} Available)
-            </button>
+            ${isActive ? `
+              <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold);">
+                <i class="fa-solid fa-qrcode"></i> View Meal Passes (${sub.remaining_meals} Available)
+              </button>
+            ` : `
+              <button type="button" class="btn-primary-block" disabled style="background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border-color); cursor: not-allowed;">
+                <i class="fa-solid fa-lock"></i> ${isPending ? 'Awaiting Owner Cash Confirmation' : (isRejected ? 'Subscription Request Rejected' : 'Subscription Expired')}
+              </button>
+            `}
           </div>
         `;
       }).join('');
@@ -18268,6 +18361,7 @@ class TiffinApp {
               <tbody>
                 ${json.subscribers.map(sub => {
                   const isActive = sub.status === 'ACTIVE';
+                  const isPending = sub.status === 'PENDING_PAYMENT';
                   const expiryStr = sub.expiry_date ? new Date(sub.expiry_date).toLocaleDateString('en-IN') : 'N/A';
                   const startStr = sub.start_date ? new Date(sub.start_date).toLocaleDateString('en-IN') : 'N/A';
 
@@ -18295,9 +18389,19 @@ class TiffinApp {
                         ₹${parseFloat(sub.purchase_price).toLocaleString('en-IN')}
                       </td>
                       <td style="padding: 12px;">
-                        <span style="background: ${isActive ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 82, 82, 0.15)'}; color: ${isActive ? '#81C784' : '#FF5252'}; border: 1px solid ${isActive ? '#4CAF50' : '#FF5252'}; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.72rem;">
+                        <span style="background: ${isActive ? 'rgba(76, 175, 80, 0.15)' : (isPending ? 'rgba(255, 152, 0, 0.15)' : 'rgba(255, 82, 82, 0.15)')}; color: ${isActive ? '#81C784' : (isPending ? '#FF9800' : '#FF5252')}; border: 1px solid ${isActive ? '#4CAF50' : (isPending ? '#FF9800' : '#FF5252')}; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.72rem;">
                           ${escapeHtml(sub.status)}
                         </span>
+                        ${isPending ? `
+                          <div style="display: flex; gap: 6px; margin-top: 6px;">
+                            <button type="button" class="btn-primary-block" onclick="app.confirmOwnerCashSubscription('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; background: #4CAF50; color: #FFF; width: auto; font-weight: 800;">
+                              <i class="fa-solid fa-check"></i> Confirm Cash
+                            </button>
+                            <button type="button" class="btn-secondary-outline" onclick="app.rejectOwnerCashSubscription('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; color: #FF5252; border-color: #FF5252; width: auto; font-weight: 700;">
+                              <i class="fa-solid fa-xmark"></i> Reject
+                            </button>
+                          </div>
+                        ` : ''}
                       </td>
                     </tr>
                   `;
@@ -18426,6 +18530,54 @@ class TiffinApp {
     } catch (err) {
       console.error('Render owner subscribers hub error:', err);
       container.innerHTML = '<div style="text-align: center; color: #FF5252; padding: 30px;">Failed to load data.</div>';
+    }
+  }
+
+  async confirmOwnerCashSubscription(subId) {
+    if (!confirm('Are you sure you want to confirm cash payment and activate this subscription?')) {
+      return;
+    }
+
+    try {
+      this.showToast('Confirming cash payment...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscriptions/${subId}/confirm-cash`, {
+        method: 'POST'
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('🎉 Cash payment confirmed & subscription activated!', 'success');
+        this.renderOwnerSubscribersHub(this.ownerSubscribersPage || 1);
+      } else {
+        this.showToast(json.message || 'Failed to confirm cash payment.', 'error');
+      }
+    } catch (err) {
+      console.error('Confirm owner cash subscription error:', err);
+      this.showToast('Error confirming cash payment. Please try again.', 'error');
+    }
+  }
+
+  async rejectOwnerCashSubscription(subId) {
+    if (!confirm('Are you sure you want to reject this cash subscription request?')) {
+      return;
+    }
+
+    try {
+      this.showToast('Rejecting cash subscription request...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscriptions/${subId}/reject-cash`, {
+        method: 'POST'
+      });
+      const json = await res.json();
+
+      if (json.success) {
+        this.showToast('Subscription cash request rejected.', 'info');
+        this.renderOwnerSubscribersHub(this.ownerSubscribersPage || 1);
+      } else {
+        this.showToast(json.message || 'Failed to reject cash payment.', 'error');
+      }
+    } catch (err) {
+      console.error('Reject owner cash subscription error:', err);
+      this.showToast('Error rejecting cash payment. Please try again.', 'error');
     }
   }
 

@@ -588,6 +588,7 @@ async function initDatabase() {
       start_date TIMESTAMPTZ,
       expiry_date TIMESTAMPTZ,
       payment_reference VARCHAR(100),
+      payment_method VARCHAR(100) DEFAULT 'ONLINE',
       payment_status VARCHAR(50) DEFAULT 'PENDING',
       status VARCHAR(50) DEFAULT 'PENDING_PAYMENT',
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -813,11 +814,13 @@ async function initDatabase() {
         await query(`ALTER TABLE password_resets ADD COLUMN IF NOT EXISTS attempts INT DEFAULT 0;`);
         await query(`ALTER TABLE password_resets ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false;`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'SUCCESS';`);
+        await query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(100) DEFAULT 'ONLINE';`);
       } catch (aErr) {
         console.warn('PostgreSQL DDL Notice:', aErr.message);
       }
     } else {
       const safeAlter = async (sql) => { try { await query(sql); } catch(e) {} };
+      await safeAlter(`ALTER TABLE subscriptions ADD COLUMN payment_method TEXT DEFAULT 'ONLINE';`);
       await safeAlter(`ALTER TABLE reviews ADD COLUMN order_number TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN cancellation_reason TEXT;`);
       await safeAlter(`ALTER TABLE orders ADD COLUMN rejection_reason TEXT;`);

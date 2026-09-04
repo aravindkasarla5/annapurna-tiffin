@@ -3665,6 +3665,19 @@
       </div>
     </div>
 
+    <!-- Modal for Customer Subscription Payment Method Selection -->
+    <div class="modal-backdrop" id="modalSubPaymentChoiceBackdrop" onclick="app.toggleSubPaymentChoiceModal(false)">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 480px;">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-credit-card" style="color: #FF9800;"></i> Choose Payment Method</h3>
+          <button type="button" class="icon-btn" onclick="app.toggleSubPaymentChoiceModal(false)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="subPaymentChoiceContent">
+          <!-- Populated dynamically by JavaScript -->
+        </div>
+      </div>
+    </div>
+
     <!-- Modal for Creating/Editing Smart Cart Offer -->
     <div class="modal-backdrop" id="modalSmartOfferBackdrop" onclick="app.toggleSmartOfferModal(false)">
       <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 480px;">
