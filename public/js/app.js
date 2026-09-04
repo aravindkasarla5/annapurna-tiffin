@@ -17928,7 +17928,8 @@ class TiffinApp {
     const modalContent = document.getElementById('showMealPassQrModalContent');
     if (!modalContent) return;
 
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(secureToken)}`;
+    const qrUrlPrimary = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(secureToken)}`;
+    const qrUrlFallback = `https://chart.googleapis.com/chart?cht=qr&chs=250x250&chl=${encodeURIComponent(secureToken)}`;
 
     modalContent.innerHTML = `
       <div style="margin-bottom: 15px;">
@@ -17936,15 +17937,15 @@ class TiffinApp {
         <p style="font-size: 0.85rem; color: var(--accent-gold); margin: 0;">${escapeHtml(planName)}</p>
       </div>
 
-      <div style="background: #FFF; padding: 15px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.3); margin-bottom: 12px; position: relative; cursor: pointer;" onclick="app.viewFullScreenshot('${qrUrl}', 'Meal Pass #${mealNumber} QR Code Scanner')">
-        <img src="${qrUrl}" alt="Meal Pass QR Code" style="width: 200px; height: 200px; display: block;">
+      <div style="background: #FFF; padding: 15px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.3); margin-bottom: 12px; position: relative; cursor: pointer;" onclick="app.viewFullScreenshot('${qrUrlPrimary}', 'Meal Pass #${mealNumber} QR Code Scanner')">
+        <img src="${qrUrlPrimary}" onerror="this.onerror=null; this.src='${qrUrlFallback}';" alt="Meal Pass QR Code" style="width: 220px; height: 220px; display: block; border-radius: 8px;">
         <div style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.8); color: var(--accent-gold); border-radius: 20px; padding: 2px 8px; font-size: 0.72rem; font-weight: 800; border: 1px solid var(--accent-gold);">
           <i class="fa-solid fa-magnifying-glass-plus"></i> Zoom
         </div>
       </div>
 
       <div style="margin-bottom: 15px;">
-        <button type="button" class="btn-secondary-outline" onclick="app.viewFullScreenshot('${qrUrl}', 'Meal Pass #${mealNumber} QR Code Scanner')" style="padding: 4px 14px; font-size: 0.8rem; border-color: var(--accent-gold); color: var(--accent-gold); border-radius: 20px;">
+        <button type="button" class="btn-secondary-outline" onclick="app.viewFullScreenshot('${qrUrlPrimary}', 'Meal Pass #${mealNumber} QR Code Scanner')" style="padding: 6px 16px; font-size: 0.82rem; border-color: var(--accent-gold); color: var(--accent-gold); border-radius: 20px; font-weight: 700;">
           <i class="fa-solid fa-expand"></i> 🔍 Zoom Scanner / Fullscreen
         </button>
       </div>
@@ -17965,9 +17966,13 @@ class TiffinApp {
     this.toggleMealPassQrModal(true);
   }
 
-  toggleMealPassQrModal(show) {
+  toggleMealPassQrModal(show = true) {
     const backdrop = document.getElementById('modalShowMealPassQrBackdrop');
-    if (backdrop) backdrop.classList.toggle('hidden', !show);
+    if (backdrop) {
+      backdrop.classList.toggle('open', show);
+      backdrop.classList.toggle('hidden', !show);
+      backdrop.style.display = show ? 'flex' : 'none';
+    }
   }
 
   // ------------------------------------------------------------
@@ -18334,9 +18339,13 @@ class TiffinApp {
     this.toggleVerifyPassModal(true);
   }
 
-  toggleVerifyPassModal(show) {
+  toggleVerifyPassModal(show = true) {
     const backdrop = document.getElementById('modalVerifyMealPassBackdrop');
-    if (backdrop) backdrop.classList.toggle('hidden', !show);
+    if (backdrop) {
+      backdrop.classList.toggle('open', show);
+      backdrop.classList.toggle('hidden', !show);
+      backdrop.style.display = show ? 'flex' : 'none';
+    }
     if (!show) {
       this.isMealPassScanProcessing = false;
       if (this.activeView === 'secOwnerMealPassScanner' && this.mealPassCameraStream) {
