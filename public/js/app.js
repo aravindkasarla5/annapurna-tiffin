@@ -2558,6 +2558,42 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secCustomerAddresses' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerAddresses');">
+            <div class="drawer-icon-box" style="background: rgba(255,87,34,0.15); color: #FF5722;"><i class="fa-solid fa-location-dot"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">📍 My Saved Addresses</strong>
+              <span class="drawer-item-sub">Manage Home, Work & Delivery PINs</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerMealPlans' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerMealPlans');">
+            <div class="drawer-icon-box" style="background: rgba(255,152,0,0.15); color: #FF9800;"><i class="fa-solid fa-basket-shopping"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🧺 Subscription Meal Plans</strong>
+              <span class="drawer-item-sub">Save big with 7/15/30-Day packages</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerSubscriptions' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerSubscriptions');">
+            <div class="drawer-icon-box" style="background: rgba(76,175,80,0.15); color: #4CAF50;"><i class="fa-solid fa-calendar-check"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🧺 My Subscriptions</strong>
+              <span class="drawer-item-sub">Active plans & renewal history</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secCustomerMealPasses' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerMealPasses');">
+            <div class="drawer-icon-box" style="background: rgba(234,162,33,0.15); color: var(--accent-gold);"><i class="fa-solid fa-qrcode"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🎫 My Digital Meal Passes</strong>
+              <span class="drawer-item-sub">Show QR code at shop counter</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item ${this.activeView === 'secCustomerVoting' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerVoting');">
             <div class="drawer-icon-box" style="background: rgba(156,39,176,0.15); color: #9C27B0;"><i class="fa-solid fa-square-poll-vertical"></i></div>
             <div class="drawer-text-group">
@@ -2712,6 +2748,42 @@ class TiffinApp {
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Dashboard & Analytics</strong>
               <span class="drawer-item-sub">Real-time sales & order stats</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerDeliveryZones' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerDeliveryZones');">
+            <div class="drawer-icon-box" style="background: rgba(76,175,80,0.15); color: #4CAF50;"><i class="fa-solid fa-map-location-dot"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🗺️ Delivery Zones & Fees</strong>
+              <span class="drawer-item-sub">Configure PIN codes, fees & thresholds</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerSubscriptionPlans' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerSubscriptionPlans');">
+            <div class="drawer-icon-box" style="background: rgba(255,152,0,0.15); color: #FF9800;"><i class="fa-solid fa-basket-shopping"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🧺 Subscription Plans</strong>
+              <span class="drawer-item-sub">Create & edit meal packages</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerMealPassScanner' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerMealPassScanner');">
+            <div class="drawer-icon-box" style="background: rgba(0,230,118,0.15); color: #00E676;"><i class="fa-solid fa-qrcode"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">🎫 Meal Pass Scanner</strong>
+              <span class="drawer-item-sub">Camera scanner for QR pass verification</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerSubscribers' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerSubscribers');">
+            <div class="drawer-icon-box" style="background: rgba(64,196,255,0.15); color: #40C4FF;"><i class="fa-solid fa-users"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">👥 Subscribers Hub</strong>
+              <span class="drawer-item-sub">Search, multi-filter & sort subscribers</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
