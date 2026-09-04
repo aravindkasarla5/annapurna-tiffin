@@ -15479,32 +15479,53 @@ class TiffinApp {
 
     container.classList.remove('hidden');
     container.innerHTML = `
-      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.15rem; margin: 1.25rem 0;">
-        <h4 style="margin: 0 0 0.75rem 0; color: #FFF; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
-          <span>🥘</span> Want Extra Add-ons? (Optional)
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.85rem; margin: 1rem 0;">
+        <h4 style="margin: 0 0 0.5rem 0; color: #FFF; font-size: 0.9rem; display: flex; align-items: center; gap: 8px;">
+          <span>🥘</span> Extra Add-ons (Select with Checkbox)
         </h4>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px;">
           ${this.availableAddonsList.map(ao => {
             const sel = this.selectedCartAddons[ao.id];
-            const qty = sel ? sel.quantity : 0;
+            const isChecked = sel && sel.quantity > 0;
 
             return `
-              <div style="background: rgba(0,0,0,0.25); border: 1px solid ${qty > 0 ? 'var(--accent-gold)' : 'var(--border-color)'}; border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <div>
-                  <strong style="color: #FFF; font-size: 0.88rem; display: block;">${ao.name}</strong>
-                  <span style="color: var(--accent-gold); font-size: 0.82rem; font-weight: 700; font-family: var(--font-number);">+₹${ao.price}</span>
-                </div>
-                <div class="addon-qty-picker">
-                  <button type="button" class="addon-qty-btn" onclick="app.updateCartAddonQty('${ao.id}', -1)">-</button>
-                  <span class="addon-qty-val">${qty}</span>
-                  <button type="button" class="addon-qty-btn" onclick="app.updateCartAddonQty('${ao.id}', 1)">+</button>
-                </div>
+              <div class="smart-cart-card-small" style="margin-bottom: 0;">
+                <label class="smart-cart-checkbox-wrap">
+                  <input type="checkbox" class="smart-cart-checkbox" ${isChecked ? 'checked' : ''} onchange="app.toggleCartAddonCheckbox('${ao.id}', this.checked)">
+                  <div class="smart-cart-content">
+                    <div class="smart-cart-top-row">
+                      <span class="smart-cart-text">🥘 ${escapeHtml(ao.name)}</span>
+                      <span class="smart-cart-save-pill" style="color: #81C784; border-color: #4CAF50; background: rgba(76,175,80,0.15);">+₹${ao.price}</span>
+                    </div>
+                  </div>
+                </label>
               </div>
             `;
           }).join('')}
         </div>
       </div>
     `;
+  }
+
+  toggleCartAddonCheckbox(addonId, isChecked) {
+    const addon = this.availableAddonsList.find(a => a.id === addonId);
+    if (!addon) return;
+
+    if (isChecked) {
+      this.selectedCartAddons[addonId] = {
+        add_on_id: addon.id,
+        name: addon.name,
+        price: Number(addon.price),
+        quantity: 1
+      };
+      this.showToast(`Added ${addon.name} (+₹${addon.price})`, 'success');
+    } else {
+      delete this.selectedCartAddons[addonId];
+      this.showToast(`Removed ${addon.name}`, 'info');
+    }
+
+    this.renderCustomerAddonsWidget();
+    if (typeof this.updateCartSummary === 'function') this.updateCartSummary();
   }
 
   updateCartAddonQty(addonId, delta) {
@@ -16403,36 +16424,42 @@ class TiffinApp {
 
     let html = '';
 
-    // Render unlocked offer banners
+    let html = '';
+
+    // Render unlocked offer banners as small compact boxes with checked checkboxes
     if (unlockedOffers.length > 0) {
       html += unlockedOffers.map(u => `
-        <div class="smart-success-banner">
-          <span><i class="fa-solid fa-gift" style="color: var(--accent-gold);"></i> 🎉 <strong>${u.offer.offer_name} Unlocked!</strong> Saved ₹${u.discAmount}</span>
-          <span style="font-size: 0.75rem; background: var(--accent-gold); color: #000; padding: 2px 8px; border-radius: 8px; font-weight: 800;">APPLIED</span>
+        <div class="smart-cart-card-small" style="border-color: #81C784; background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(0,0,0,0.3));">
+          <label class="smart-cart-checkbox-wrap">
+            <input type="checkbox" class="smart-cart-checkbox" checked onchange="app.toggleSmartCartOfferCheckbox(this, '${u.offer.id}', ${u.currentQty}, '${escapeHtml(u.offer.eligible_item_name)}')">
+            <div class="smart-cart-content">
+              <div class="smart-cart-top-row">
+                <span class="smart-cart-text" style="color: #81C784;"><i class="fa-solid fa-gift"></i> ${escapeHtml(u.offer.offer_name)} Unlocked!</span>
+                <span class="smart-cart-save-pill" style="background: #4CAF50; color: #FFF; border-color: #81C784;">Saved ₹${u.discAmount}</span>
+              </div>
+            </div>
+          </label>
         </div>
       `).join('');
     }
 
-    // Render top 2 pending recommendations ranked by potential saving vs needed spend
+    // Render top 2 pending recommendations as small compact boxes with unchecked checkboxes
     if (pendingRecommendations.length > 0) {
       pendingRecommendations.sort((a, b) => (b.discAmount / Math.max(1, b.neededSpend)) - (a.discAmount / Math.max(1, a.neededSpend)));
       
       const topRecs = pendingRecommendations.slice(0, 2);
       html += topRecs.map(rec => `
-        <div class="smart-cart-card">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-            <span style="font-size: 0.8rem; font-weight: 800; color: #4CAF50; text-transform: uppercase;">💡 Smart Saving</span>
-            <span style="font-size: 0.75rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">Save ₹${rec.discAmount}</span>
-          </div>
-          <div style="font-size: 0.9rem; font-weight: 800; color: #FFF; margin-bottom: 4px;">
-            Add ${rec.neededQty} more ${rec.eligibleItemName} to unlock ₹${rec.discAmount} off!
-          </div>
-          <div style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 8px;">
-            Spend ₹${rec.neededSpend} more → Get ₹${rec.discAmount} combo discount
-          </div>
-          <button type="button" class="smart-btn-one-tap" onclick="app.acceptSmartCartOffer('${rec.offer.id}', ${rec.neededQty}, '${rec.eligibleItemName}')">
-            <i class="fa-solid fa-cart-plus"></i> + Add ${rec.neededQty} ${rec.eligibleItemName}
-          </button>
+        <div class="smart-cart-card-small">
+          <label class="smart-cart-checkbox-wrap">
+            <input type="checkbox" class="smart-cart-checkbox" onchange="app.toggleSmartCartOfferCheckbox(this, '${rec.offer.id}', ${rec.neededQty}, '${escapeHtml(rec.eligibleItemName)}')">
+            <div class="smart-cart-content">
+              <div class="smart-cart-top-row">
+                <span class="smart-cart-text">💡 Add ${rec.neededQty} more ${escapeHtml(rec.eligibleItemName)}</span>
+                <span class="smart-cart-save-pill">Save ₹${rec.discAmount}</span>
+              </div>
+              <div class="smart-cart-sub-text">Spend ₹${rec.neededSpend} more &rarr; Get ₹${rec.discAmount} off</div>
+            </div>
+          </label>
         </div>
       `).join('');
 
@@ -16449,35 +16476,54 @@ class TiffinApp {
     container.innerHTML = html;
   }
 
-  async acceptSmartCartOffer(offerId, neededQty, itemName) {
+  async toggleSmartCartOfferCheckbox(checkboxEl, offerId, neededQty, itemName) {
+    const isChecked = checkboxEl ? checkboxEl.checked : false;
     const menuItem = (this.menuItems || []).find(m => m.name.toLowerCase().includes(itemName.toLowerCase()));
 
-    if (menuItem) {
-      this.addToCart(menuItem, neededQty);
+    if (isChecked) {
+      if (menuItem) {
+        this.addToCart(menuItem, neededQty);
+      } else {
+        const cartItem = this.cart.find(c => c.name.toLowerCase().includes(itemName.toLowerCase()));
+        if (cartItem) {
+          cartItem.quantity += neededQty;
+        } else {
+          this.cart.push({
+            id: 'item_' + Date.now(),
+            name: itemName,
+            price: 20,
+            quantity: neededQty,
+            image: '/images/idly_sambar.png'
+          });
+        }
+        this.updateCartUI();
+      }
+      this.showToast(`🎉 Added ${neededQty} ${itemName}! Discount unlocked!`, 'success');
+
+      try {
+        await fetch(`${API_BASE}/smart-cart-analytics/track`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_type: 'ACCEPTED', offer_id: offerId })
+        });
+      } catch (err) {}
     } else {
       const cartItem = this.cart.find(c => c.name.toLowerCase().includes(itemName.toLowerCase()));
       if (cartItem) {
-        cartItem.quantity += neededQty;
-      } else {
-        this.cart.push({
-          id: 'item_' + Date.now(),
-          name: itemName,
-          price: 20,
-          quantity: neededQty,
-          image: '/images/idly_sambar.png'
-        });
+        if (cartItem.quantity <= neededQty) {
+          this.cart = this.cart.filter(c => c.id !== cartItem.id);
+        } else {
+          cartItem.quantity -= neededQty;
+        }
+        this.updateCartUI();
+        this.showToast(`Removed ${itemName} offer from cart.`, 'info');
       }
-      this.updateCartUI();
     }
+  }
 
-    this.showToast(`🎉 Great choice! Unlocked combo saving!`, 'success');
-
-    try {
-      await fetch(`${API_BASE}/smart-cart-analytics/track`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event_type: 'ACCEPTED', offer_id: offerId })
-      });
+  async acceptSmartCartOffer(offerId, neededQty, itemName) {
+    return this.toggleSmartCartOfferCheckbox({ checked: true }, offerId, neededQty, itemName);
+  }
     } catch (e) {}
   }
 

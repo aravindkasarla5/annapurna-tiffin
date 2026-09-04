@@ -8176,49 +8176,75 @@ body.guest-mode #btnMobileMenuToggle {
    SMART CART OPTIMIZER STYLES
    ========================================================================= */
 
-.smart-cart-card {
-  background: linear-gradient(135deg, rgba(76, 175, 80, 0.15), rgba(46, 125, 50, 0.08));
-  border: 1.5px solid #4CAF50;
-  border-radius: 14px;
-  padding: 0.9rem 1.1rem;
-  margin-bottom: 0.85rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-.smart-btn-one-tap {
-  background: linear-gradient(135deg, #4CAF50, #2E7D32);
-  color: #FFF;
-  font-weight: 800;
-  font-size: 0.82rem;
-  padding: 6px 14px;
+.smart-cart-card-small {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.12), rgba(20, 40, 25, 0.4));
+  border: 1px solid rgba(76, 175, 80, 0.4);
   border-radius: 10px;
-  border: none;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
 }
 
-.smart-btn-one-tap:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.6);
+.smart-cart-card-small:hover {
+  border-color: #4CAF50;
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(20, 50, 28, 0.5));
 }
 
-.smart-success-banner {
-  background: linear-gradient(135deg, rgba(234, 162, 33, 0.2), rgba(255, 179, 0, 0.1));
-  border: 1.5px solid var(--accent-gold);
-  border-radius: 14px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.85rem;
-  color: #FFF;
-  font-size: 0.84rem;
-  font-weight: 700;
+.smart-cart-checkbox-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  width: 100%;
+  user-select: none;
+  margin: 0;
+}
+
+.smart-cart-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #4CAF50;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.smart-cart-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.smart-cart-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+}
+
+.smart-cart-text {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #FFF;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.smart-cart-save-pill {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--accent-gold);
+  background: rgba(234, 162, 33, 0.15);
+  border: 1px solid var(--accent-gold);
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.smart-cart-sub-text {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 /* =========================================================================
