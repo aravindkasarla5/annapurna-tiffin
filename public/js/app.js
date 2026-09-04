@@ -16453,8 +16453,6 @@ class TiffinApp {
 
     let html = '';
 
-    let html = '';
-
     // Render unlocked offer banners as small compact boxes with checked checkboxes
     if (unlockedOffers.length > 0) {
       html += unlockedOffers.map(u => `
@@ -16552,8 +16550,6 @@ class TiffinApp {
 
   async acceptSmartCartOffer(offerId, neededQty, itemName) {
     return this.toggleSmartCartOfferCheckbox({ checked: true }, offerId, neededQty, itemName);
-  }
-    } catch (e) {}
   }
 
   // Owner Smart Offers Methods
