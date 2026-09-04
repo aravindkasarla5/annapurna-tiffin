@@ -17566,8 +17566,12 @@ class TiffinApp {
       }
 
       this.selectedPlanForPurchase = plan;
+      this.subScreenshotData = null;
       const modalContent = document.getElementById('subPaymentChoiceContent');
       if (!modalContent) return;
+
+      const upiId = this.settings?.upi_id || '9392974900@ybl';
+      const qrSrc = this.getQrDisplayUrl();
 
       modalContent.innerHTML = `
         <div style="background: rgba(0,0,0,0.2); border-radius: 16px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--border-color);">
@@ -17583,15 +17587,36 @@ class TiffinApp {
         
         <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
           <label style="background: var(--bg-surface-elevated); border: 2px solid var(--accent-gold); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: border-color 0.2s;" id="lblOptPayOnline">
-            <input type="radio" name="radSubPaymentMethod" value="ONLINE" checked style="accent-color: #FF9800; transform: scale(1.2);">
+            <input type="radio" name="radSubPaymentMethod" value="ONLINE" checked onchange="app.toggleSubPaymentMethodUI('ONLINE')" style="accent-color: #FF9800; transform: scale(1.2);">
             <div>
-              <strong style="color: #FFF; font-size: 0.95rem;">💳 Online Payment</strong>
-              <div style="font-size: 0.78rem; color: var(--text-muted);">Instant activation upon payment completion</div>
+              <strong style="color: #FFF; font-size: 0.95rem;">⚡ Online Payment Instant Activation</strong>
+              <div style="font-size: 0.78rem; color: var(--text-muted);">Pay via UPI QR / UTR & upload proof screenshot for owner verification</div>
             </div>
           </label>
 
+          <!-- Online Details Subpanel -->
+          <div id="subOnlineDetailsBox" style="background: rgba(0,0,0,0.25); border: 1px dashed var(--accent-gold); border-radius: 14px; padding: 14px; margin-top: -4px;">
+            <div style="text-align: center; margin-bottom: 12px;">
+              ${qrSrc ? `<img src="${qrSrc}" alt="UPI QR Code" style="width: 140px; height: 140px; border-radius: 12px; border: 2px solid #FFF; margin-bottom: 8px;">` : ''}
+              <div style="font-size: 0.85rem; color: #FFF;">UPI ID: <strong style="color: var(--accent-gold); font-family: monospace;">${escapeHtml(upiId)}</strong></div>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">UTR Number / Transaction ID:</label>
+              <input type="text" id="txtSubUtrNumber" placeholder="e.g. 12-digit UTR No." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.4); color: #FFF; font-family: monospace; font-size: 0.9rem;">
+            </div>
+
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Upload Payment Screenshot (Optional/Recommended):</label>
+              <input type="file" id="fileSubPaymentScreenshot" accept="image/*" onchange="app.handleSubScreenshotUpload(event)" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.4); color: #FFF; font-size: 0.82rem;">
+              <div id="subScreenshotPreviewWrapper" class="hidden" style="margin-top: 8px; text-align: center;">
+                <img id="subScreenshotPreviewImg" src="" style="max-height: 120px; border-radius: 8px; border: 1px solid var(--accent-gold);">
+              </div>
+            </div>
+          </div>
+
           <label style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: border-color 0.2s;" id="lblOptPayCash">
-            <input type="radio" name="radSubPaymentMethod" value="CASH" style="accent-color: #FF9800; transform: scale(1.2);">
+            <input type="radio" name="radSubPaymentMethod" value="CASH" onchange="app.toggleSubPaymentMethodUI('CASH')" style="accent-color: #FF9800; transform: scale(1.2);">
             <div>
               <strong style="color: #FFF; font-size: 0.95rem;">💵 Cash Payment</strong>
               <div style="font-size: 0.78rem; color: var(--text-muted);">Subscription will be activated after owner confirms your cash payment</div>
@@ -17611,6 +17636,36 @@ class TiffinApp {
     }
   }
 
+  toggleSubPaymentMethodUI(method) {
+    const box = document.getElementById('subOnlineDetailsBox');
+    const lblOnline = document.getElementById('lblOptPayOnline');
+    const lblCash = document.getElementById('lblOptPayCash');
+
+    if (box) box.style.display = method === 'ONLINE' ? 'block' : 'none';
+    if (lblOnline) lblOnline.style.borderColor = method === 'ONLINE' ? 'var(--accent-gold)' : 'var(--border-color)';
+    if (lblCash) lblCash.style.borderColor = method === 'CASH' ? 'var(--accent-gold)' : 'var(--border-color)';
+  }
+
+  handleSubScreenshotUpload(evt) {
+    const file = evt.target.files ? evt.target.files[0] : null;
+    const previewWrapper = document.getElementById('subScreenshotPreviewWrapper');
+    const previewImg = document.getElementById('subScreenshotPreviewImg');
+
+    if (!file) {
+      this.subScreenshotData = null;
+      if (previewWrapper) previewWrapper.classList.add('hidden');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.subScreenshotData = e.target.result;
+      if (previewImg) previewImg.src = e.target.result;
+      if (previewWrapper) previewWrapper.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
   toggleSubPaymentChoiceModal(show) {
     const backdrop = document.getElementById('modalSubPaymentChoiceBackdrop');
     if (backdrop) {
@@ -17623,6 +17678,7 @@ class TiffinApp {
   async confirmSubscriptionPurchase(planId) {
     const radMethod = document.querySelector('input[name="radSubPaymentMethod"]:checked');
     const paymentMethod = radMethod ? radMethod.value : 'ONLINE';
+    const utrNumber = document.getElementById('txtSubUtrNumber')?.value || '';
 
     const btn = document.getElementById('btnSubmitSubPayment');
     if (btn) {
@@ -17634,21 +17690,30 @@ class TiffinApp {
       const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/purchase`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_id: planId, payment_method: paymentMethod })
+        body: JSON.stringify({
+          plan_id: planId,
+          payment_method: paymentMethod,
+          payment_screenshot: this.subScreenshotData,
+          utr_number: utrNumber
+        })
       });
       const json = await res.json();
 
       this.toggleSubPaymentChoiceModal(false);
 
       if (!json.success || !json.subscription) {
-        this.showToast(json.message || 'Payment failed. Your subscription has not been activated.', 'error');
+        this.showToast(json.message || '❌ Subscription payment failed.', 'error');
         return;
       }
 
-      if (paymentMethod === 'CASH') {
+      this.subScreenshotData = null;
+
+      if (json.subscription.status === 'ACTIVE') {
+        this.showToast('🎉 Subscription activated successfully!', 'success');
+      } else if (paymentMethod === 'CASH') {
         this.showToast('Cash payment selected. Your subscription will be activated after owner confirms your payment.', 'info');
       } else {
-        this.showToast('🎉 Subscription purchased & activated successfully!', 'success');
+        this.showToast('🎉 Subscription payment proof submitted! Waiting for owner verification.', 'success');
       }
 
       this.switchView('secCustomerSubscriptions');
@@ -18361,10 +18426,11 @@ class TiffinApp {
                   <th style="padding: 12px;">Customer</th>
                   <th style="padding: 12px;">Subscription ID</th>
                   <th style="padding: 12px;">Plan</th>
+                  <th style="padding: 12px;">Payment Info</th>
                   <th style="padding: 12px;">Start / Expiry</th>
                   <th style="padding: 12px;">Total/Used/Remaining</th>
                   <th style="padding: 12px;">Price</th>
-                  <th style="padding: 12px;">Status</th>
+                  <th style="padding: 12px;">Status & Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -18386,6 +18452,15 @@ class TiffinApp {
                       <td style="padding: 12px; color: #FFF; font-weight: 700;">
                         ${escapeHtml(sub.plan_name)}
                       </td>
+                      <td style="padding: 12px; font-size: 0.8rem;">
+                        <span style="color: #FFF; font-weight: 700;">${sub.payment_method === 'ONLINE' ? '💳 ONLINE' : '💵 CASH'}</span>
+                        ${sub.utr_number ? `<br><span style="color: var(--accent-gold); font-family: monospace;">UTR: ${escapeHtml(sub.utr_number)}</span>` : ''}
+                        ${sub.payment_screenshot ? `
+                          <br><button type="button" class="btn-secondary-outline" onclick="app.viewFullScreenshot('${escapeHtml(sub.payment_screenshot)}', 'Payment Proof - ${escapeHtml(sub.subscription_id)}')" style="padding: 2px 8px; font-size: 0.72rem; margin-top: 4px;">
+                            <i class="fa-solid fa-image"></i> View Proof
+                          </button>
+                        ` : ''}
+                      </td>
                       <td style="padding: 12px; color: var(--text-muted); font-size: 0.8rem;">
                         ${startStr} &rarr; <strong style="color: #FFF;">${expiryStr}</strong>
                       </td>
@@ -18402,12 +18477,12 @@ class TiffinApp {
                           ${escapeHtml(sub.status)}
                         </span>
                         ${isPending ? `
-                          <div style="display: flex; gap: 6px; margin-top: 6px;">
-                            <button type="button" class="btn-primary-block" onclick="app.confirmOwnerCashSubscription('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; background: #4CAF50; color: #FFF; width: auto; font-weight: 800;">
-                              <i class="fa-solid fa-check"></i> Confirm Cash
+                          <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
+                            <button type="button" class="btn-primary-block" onclick="app.confirmOwnerSubscriptionPayment('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; background: #4CAF50; color: #FFF; width: auto; font-weight: 800;">
+                              <i class="fa-solid fa-check"></i> Verify & Activate
                             </button>
-                            <button type="button" class="btn-secondary-outline" onclick="app.rejectOwnerCashSubscription('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; color: #FF5252; border-color: #FF5252; width: auto; font-weight: 700;">
-                              <i class="fa-solid fa-xmark"></i> Reject
+                            <button type="button" class="btn-secondary-outline" onclick="app.rejectOwnerSubscriptionPayment('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; color: #FF5252; border-color: #FF5252; width: auto; font-weight: 700;">
+                              <i class="fa-solid fa-xmark"></i> Reject Payment
                             </button>
                           </div>
                         ` : ''}
@@ -18542,52 +18617,60 @@ class TiffinApp {
     }
   }
 
-  async confirmOwnerCashSubscription(subId) {
-    if (!confirm('Are you sure you want to confirm cash payment and activate this subscription?')) {
+  async confirmOwnerSubscriptionPayment(subId) {
+    if (!confirm('Are you sure you want to verify payment and activate this subscription?')) {
       return;
     }
 
     try {
-      this.showToast('Confirming cash payment...', 'info');
-      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscriptions/${subId}/confirm-cash`, {
+      this.showToast('Verifying payment & activating subscription...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscriptions/${subId}/confirm-payment`, {
         method: 'POST'
       });
       const json = await res.json();
 
       if (json.success) {
-        this.showToast('🎉 Cash payment confirmed & subscription activated!', 'success');
+        this.showToast('🎉 Subscription activated successfully!', 'success');
         this.renderOwnerSubscribersHub(this.ownerSubscribersPage || 1);
       } else {
-        this.showToast(json.message || 'Failed to confirm cash payment.', 'error');
+        this.showToast(json.message || 'Failed to activate subscription.', 'error');
       }
     } catch (err) {
-      console.error('Confirm owner cash subscription error:', err);
-      this.showToast('Error confirming cash payment. Please try again.', 'error');
+      console.error('Confirm owner subscription error:', err);
+      this.showToast('Error activating subscription. Please try again.', 'error');
     }
   }
 
-  async rejectOwnerCashSubscription(subId) {
-    if (!confirm('Are you sure you want to reject this cash subscription request?')) {
+  async rejectOwnerSubscriptionPayment(subId) {
+    if (!confirm('Are you sure you want to reject this subscription payment?')) {
       return;
     }
 
     try {
-      this.showToast('Rejecting cash subscription request...', 'info');
-      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscriptions/${subId}/reject-cash`, {
+      this.showToast('Rejecting subscription payment...', 'info');
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscriptions/${subId}/reject-payment`, {
         method: 'POST'
       });
       const json = await res.json();
 
       if (json.success) {
-        this.showToast('Subscription cash request rejected.', 'info');
+        this.showToast('❌ Subscription payment failed.', 'info');
         this.renderOwnerSubscribersHub(this.ownerSubscribersPage || 1);
       } else {
-        this.showToast(json.message || 'Failed to reject cash payment.', 'error');
+        this.showToast(json.message || 'Failed to reject payment.', 'error');
       }
     } catch (err) {
-      console.error('Reject owner cash subscription error:', err);
-      this.showToast('Error rejecting cash payment. Please try again.', 'error');
+      console.error('Reject owner subscription error:', err);
+      this.showToast('Error rejecting subscription payment. Please try again.', 'error');
     }
+  }
+
+  confirmOwnerCashSubscription(subId) {
+    return this.confirmOwnerSubscriptionPayment(subId);
+  }
+
+  rejectOwnerCashSubscription(subId) {
+    return this.rejectOwnerSubscriptionPayment(subId);
   }
 
   /* ============================================================

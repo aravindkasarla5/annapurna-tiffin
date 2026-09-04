@@ -10374,7 +10374,13 @@ app.get('/api/subscription-plans', async (req, res) => {
 app.post('/api/subscriptions/purchase', authenticateToken, async (req, res) => {
   try {
     const customerId = req.user.id;
-    const { plan_id, payment_method = 'ONLINE', auto_confirm = false } = req.body;
+    const {
+      plan_id,
+      payment_method = 'ONLINE',
+      utr_number = '',
+      payment_screenshot = null,
+      auto_confirm = false
+    } = req.body;
 
     const normalizedPaymentMethod = (payment_method || 'ONLINE').toUpperCase() === 'CASH' ? 'CASH' : 'ONLINE';
 
@@ -10392,6 +10398,20 @@ app.post('/api/subscriptions/purchase', authenticateToken, async (req, res) => {
       return res.status(400).json({ success: false, message: 'This plan is currently inactive and unavailable for new purchases.' });
     }
 
+    // Save screenshot if provided as base64
+    let savedScreenshotUrl = null;
+    if (payment_screenshot && typeof payment_screenshot === 'string' && payment_screenshot.startsWith('data:image/')) {
+      try {
+        savedScreenshotUrl = await saveBase64Image(payment_screenshot, 'screenshots');
+      } catch (imgErr) {
+        console.error('Subscription proof save notice:', imgErr.message);
+      }
+    } else if (payment_screenshot && typeof payment_screenshot === 'string') {
+      savedScreenshotUrl = payment_screenshot;
+    }
+
+    const cleanUtr = (utr_number || '').trim();
+
     // Idempotency check: check if user has an existing PENDING_PAYMENT for this exact plan in the last 5 minutes
     const pendingRes = await db.query(
       `SELECT * FROM subscriptions WHERE customer_id = $1 AND plan_id = $2 AND status = 'PENDING_PAYMENT' ORDER BY created_at DESC LIMIT 1;`,
@@ -10401,34 +10421,43 @@ app.post('/api/subscriptions/purchase', authenticateToken, async (req, res) => {
     let sub;
     if (pendingRes.rows && pendingRes.rows.length > 0) {
       sub = pendingRes.rows[0];
+      if (cleanUtr || savedScreenshotUrl) {
+        await db.query(
+          `UPDATE subscriptions SET utr_number = $1, payment_screenshot = $2, updated_at = $3 WHERE id = $4;`,
+          [cleanUtr, savedScreenshotUrl, new Date().toISOString(), sub.id]
+        );
+        const updatedSubRes = await db.query('SELECT * FROM subscriptions WHERE id = $1;', [sub.id]);
+        sub = updatedSubRes.rows[0];
+      }
     } else {
       const seqNum = await db.getNextCounter('subscription_seq');
       const subFormattedId = 'SUB-' + String(seqNum).padStart(6, '0');
       const dbId = 'sub_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
-      const payRef = 'PAY_SUB_' + seqNum + '_' + Date.now();
+      const payRef = cleanUtr || ('PAY_SUB_' + seqNum + '_' + Date.now());
       const nowIso = new Date().toISOString();
 
       await db.query(
         `INSERT INTO subscriptions (
           id, subscription_id, customer_id, customer_name, customer_mobile, plan_id, plan_name,
           meal_type, duration_days, total_meals, used_meals, purchase_price, payment_reference,
-          payment_method, payment_status, status, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $13, 'PENDING', 'PENDING_PAYMENT', $14, $15);`,
+          payment_method, utr_number, payment_screenshot, payment_status, status, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $13, $14, $15, 'PENDING', 'PENDING_PAYMENT', $16, $17);`,
         [
           dbId, subFormattedId, customerId, req.user.name, req.user.mobile, plan.id, plan.name,
           plan.meal_type, plan.duration_days, plan.included_meals, plan.price, payRef,
-          normalizedPaymentMethod, nowIso, nowIso
+          normalizedPaymentMethod, cleanUtr, savedScreenshotUrl, nowIso, nowIso
         ]
       );
 
       // Record in main payments table for owner awareness
       const payId = 'pay_sub_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
       await db.query(
-        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending Verification', $9, $10);`,
+        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, utr_number, screenshot_url, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pending Verification', $9, $10, $11);`,
         [
           payId, subFormattedId, dbId, customerId, req.user.name, req.user.mobile,
-          plan.price, normalizedPaymentMethod, payRef, `Subscription Purchase: ${plan.name} (${plan.duration_days} Days)`
+          plan.price, normalizedPaymentMethod, cleanUtr || payRef, savedScreenshotUrl,
+          `Subscription Purchase: ${plan.name} (${plan.duration_days} Days)`
         ]
       );
 
@@ -10436,13 +10465,13 @@ app.post('/api/subscriptions/purchase', authenticateToken, async (req, res) => {
       sub = newSubRes.rows[0];
     }
 
-    if (normalizedPaymentMethod === 'CASH') {
+    if (normalizedPaymentMethod === 'CASH' || (!auto_confirm && req.body.require_verification !== false)) {
       // Dispatch Real-time Notification to Owner
       try {
         await createAndDispatchNotification({
           target_role: 'OWNER',
-          title: '🧺 New Subscription Cash Payment',
-          message: '🧺 New subscription payment requires confirmation.',
+          title: `🧺 New Subscription Payment Verification (${normalizedPaymentMethod})`,
+          message: `🧺 New subscription payment proof uploaded by ${req.user.name} requires verification.`,
           type: 'SUBSCRIPTION'
         });
       } catch (nErr) {
@@ -10452,104 +10481,82 @@ app.post('/api/subscriptions/purchase', authenticateToken, async (req, res) => {
       return res.json({
         success: true,
         subscription: sub,
-        payment_method: 'CASH',
+        payment_method: normalizedPaymentMethod,
         status: 'PENDING_PAYMENT',
-        message: 'Cash payment selected. Your subscription will be activated after the owner confirms your payment.'
+        message: normalizedPaymentMethod === 'CASH'
+          ? 'Cash payment selected. Your subscription will be activated after the owner confirms your payment.'
+          : 'Online payment proof submitted. Your subscription will be activated after owner verifies your payment.'
       });
     }
 
-    // Online Payment Handling
-    if (auto_confirm || req.body.simulate_success !== false) {
-      // Execute atomic transaction for Online Activation
-      const result = await db.executeTransaction(async (tx) => {
-        const now = new Date();
-        const startDateIso = now.toISOString();
-        const expiryDate = new Date(now.getTime() + (plan.duration_days * 24 * 60 * 60 * 1000));
-        const expiryDateIso = expiryDate.toISOString();
+    // Online Instant Activation Handling (for confirmed payment)
+    const result = await db.executeTransaction(async (tx) => {
+      const now = new Date();
+      const startDateIso = now.toISOString();
+      const expiryDate = new Date(now.getTime() + (plan.duration_days * 24 * 60 * 60 * 1000));
+      const expiryDateIso = expiryDate.toISOString();
+
+      await tx.query(
+        `UPDATE subscriptions
+         SET status = 'ACTIVE', payment_status = 'VERIFIED', start_date = $1, expiry_date = $2, updated_at = $3
+         WHERE id = $4;`,
+        [startDateIso, expiryDateIso, startDateIso, sub.id]
+      );
+
+      await tx.query(
+        `UPDATE payments SET payment_status = 'Paid' WHERE order_id = $1 OR order_number = $2;`,
+        [sub.id, sub.subscription_id]
+      );
+
+      // Generate Meal Passes
+      const passes = [];
+      for (let i = 1; i <= plan.included_meals; i++) {
+        const passSeqNum = await db.getNextCounter('mealpass_seq');
+        const passFormattedId = 'MP-' + String(passSeqNum).padStart(6, '0');
+        const passDbId = 'pass_' + Date.now() + '_' + i + '_' + crypto.randomBytes(4).toString('hex');
+        const secureToken = 'MP_TOK_' + crypto.randomBytes(24).toString('hex');
 
         await tx.query(
-          `UPDATE subscriptions
-           SET status = 'ACTIVE', payment_status = 'VERIFIED', start_date = $1, expiry_date = $2, updated_at = $3
-           WHERE id = $4;`,
-          [startDateIso, expiryDateIso, startDateIso, sub.id]
+          `INSERT INTO subscription_meal_passes (id, pass_id, subscription_id, customer_id, meal_number, secure_token, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'AVAILABLE', $7);`,
+          [passDbId, passFormattedId, sub.id, customerId, i, secureToken, startDateIso]
         );
-
-        await tx.query(
-          `UPDATE payments SET payment_status = 'Paid' WHERE order_id = $1 OR order_number = $2;`,
-          [sub.id, sub.subscription_id]
-        );
-
-        // Generate Meal Passes
-        const passes = [];
-        for (let i = 1; i <= plan.included_meals; i++) {
-          const passSeqNum = await db.getNextCounter('mealpass_seq');
-          const passFormattedId = 'MP-' + String(passSeqNum).padStart(6, '0');
-          const passDbId = 'pass_' + Date.now() + '_' + i + '_' + crypto.randomBytes(4).toString('hex');
-          const secureToken = 'MP_TOK_' + crypto.randomBytes(24).toString('hex');
-
-          await tx.query(
-            `INSERT INTO subscription_meal_passes (id, pass_id, subscription_id, customer_id, meal_number, secure_token, status, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, 'AVAILABLE', $7);`,
-            [passDbId, passFormattedId, sub.id, customerId, i, secureToken, startDateIso]
-          );
-          passes.push({ pass_id: passFormattedId, meal_number: i, secure_token: secureToken, status: 'AVAILABLE' });
-        }
-
-        const activeSubRes = await tx.query('SELECT * FROM subscriptions WHERE id = $1;', [sub.id]);
-        return { subscription: activeSubRes.rows[0], passes_count: passes.length };
-      });
-
-      // Dispatch Notification to Customer
-      try {
-        await createAndDispatchNotification({
-          target_role: 'CUSTOMER',
-          customer_id: customerId,
-          title: '🎉 Subscription Activated!',
-          message: '🎉 Subscription activated successfully!',
-          type: 'SUBSCRIPTION'
-        });
-      } catch (nErr) {
-        console.error('Notification dispatch error:', nErr.message);
+        passes.push({ pass_id: passFormattedId, meal_number: i, secure_token: secureToken, status: 'AVAILABLE' });
       }
 
-      return res.json({
-        success: true,
-        subscription: result.subscription,
-        payment_method: 'ONLINE',
-        status: 'ACTIVE',
-        passes_count: result.passes_count,
-        message: '🎉 Subscription activated successfully!'
-      });
-    } else {
-      // Payment Failed Simulation
-      await db.query(`UPDATE subscriptions SET status = 'FAILED', payment_status = 'FAILED' WHERE id = $1;`, [sub.id]);
-      await db.query(`UPDATE payments SET payment_status = 'Failed' WHERE order_id = $1 OR order_number = $2;`, [sub.id, sub.subscription_id]);
+      const activeSubRes = await tx.query('SELECT * FROM subscriptions WHERE id = $1;', [sub.id]);
+      return { subscription: activeSubRes.rows[0], passes_count: passes.length };
+    });
 
-      try {
-        await createAndDispatchNotification({
-          target_role: 'CUSTOMER',
-          customer_id: customerId,
-          title: '❌ Subscription Payment Failed',
-          message: '❌ Subscription payment failed.',
-          type: 'SUBSCRIPTION'
-        });
-      } catch (nErr) {
-        console.error('Notification error:', nErr.message);
-      }
-
-      return res.status(400).json({
-        success: false,
-        message: 'Payment failed. Your subscription has not been activated.'
+    // Dispatch Notification to Customer
+    try {
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: customerId,
+        title: '🎉 Subscription Activated!',
+        message: '🎉 Subscription activated successfully!',
+        type: 'SUBSCRIPTION'
       });
+    } catch (nErr) {
+      console.error('Notification dispatch error:', nErr.message);
     }
+
+    return res.json({
+      success: true,
+      subscription: result.subscription,
+      payment_method: 'ONLINE',
+      status: 'ACTIVE',
+      passes_count: result.passes_count,
+      message: '🎉 Subscription activated successfully!'
+    });
   } catch (err) {
     console.error('Error initiating subscription purchase:', err);
     res.status(500).json({ success: false, message: 'Failed to process subscription purchase request.' });
   }
 });
 
-// POST /api/owner/subscriptions/:id/confirm-cash - Owner Confirms Cash Payment for Pending Subscription
-app.post('/api/owner/subscriptions/:id/confirm-cash', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+// Helper route handler for Owner confirming subscription payment (Online or Cash)
+const handleOwnerConfirmSubscriptionPayment = async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) {
@@ -10572,7 +10579,7 @@ app.post('/api/owner/subscriptions/:id/confirm-cash', authenticateToken, require
       }
 
       if (sub.status !== 'PENDING_PAYMENT') {
-        throw new Error(`Cannot confirm cash payment for subscription in status '${sub.status}'.`);
+        throw new Error(`Cannot confirm payment for subscription in status '${sub.status}'.`);
       }
 
       const now = new Date();
@@ -10620,8 +10627,8 @@ app.post('/api/owner/subscriptions/:id/confirm-cash', authenticateToken, require
       await createAndDispatchNotification({
         target_role: 'CUSTOMER',
         customer_id: result.subscription.customer_id,
-        title: '🎉 Cash Payment Confirmed!',
-        message: '🎉 Your cash payment has been confirmed. Your subscription is now active.',
+        title: '🎉 Subscription Activated!',
+        message: '🎉 Subscription activated successfully!',
         type: 'SUBSCRIPTION'
       });
     } catch (nErr) {
@@ -10630,17 +10637,20 @@ app.post('/api/owner/subscriptions/:id/confirm-cash', authenticateToken, require
 
     res.json({
       success: true,
-      message: result.already_active ? 'Subscription is active.' : 'Cash payment confirmed. Subscription activated successfully!',
+      message: result.already_active ? 'Subscription is active.' : '🎉 Subscription activated successfully!',
       subscription: result.subscription
     });
   } catch (err) {
-    console.error('Error confirming cash subscription:', err);
-    res.status(400).json({ success: false, message: err.message || 'Failed to confirm cash payment.' });
+    console.error('Error confirming subscription payment:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to confirm payment.' });
   }
-});
+};
 
-// POST /api/owner/subscriptions/:id/reject-cash - Owner Rejects Pending Cash Subscription Payment
-app.post('/api/owner/subscriptions/:id/reject-cash', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+app.post('/api/owner/subscriptions/:id/confirm-cash', authenticateToken, requireOwnerOrKitchen, handleOwnerConfirmSubscriptionPayment);
+app.post('/api/owner/subscriptions/:id/confirm-payment', authenticateToken, requireOwnerOrKitchen, handleOwnerConfirmSubscriptionPayment);
+
+// Helper route handler for Owner rejecting subscription payment (Online or Cash)
+const handleOwnerRejectSubscriptionPayment = async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) {
@@ -10653,16 +10663,16 @@ app.post('/api/owner/subscriptions/:id/reject-cash', authenticateToken, requireO
     }
     const sub = subRes.rows[0];
 
-    await db.query(`UPDATE subscriptions SET status = 'REJECTED', payment_status = 'REJECTED', updated_at = $1 WHERE id = $2;`, [new Date().toISOString(), sub.id]);
-    await db.query(`UPDATE payments SET payment_status = 'Rejected' WHERE order_id = $1 OR order_number = $2;`, [sub.id, sub.subscription_id]);
+    await db.query(`UPDATE subscriptions SET status = 'FAILED', payment_status = 'FAILED', updated_at = $1 WHERE id = $2;`, [new Date().toISOString(), sub.id]);
+    await db.query(`UPDATE payments SET payment_status = 'Failed' WHERE order_id = $1 OR order_number = $2;`, [sub.id, sub.subscription_id]);
 
     // Real-time Notification to Customer
     try {
       await createAndDispatchNotification({
         target_role: 'CUSTOMER',
         customer_id: sub.customer_id,
-        title: '❌ Cash Subscription Request Rejected',
-        message: '❌ Your cash subscription request was rejected.',
+        title: '❌ Subscription Payment Failed',
+        message: '❌ Subscription payment failed.',
         type: 'SUBSCRIPTION'
       });
     } catch (nErr) {
@@ -10672,14 +10682,17 @@ app.post('/api/owner/subscriptions/:id/reject-cash', authenticateToken, requireO
     const updatedSubRes = await db.query('SELECT * FROM subscriptions WHERE id = $1;', [sub.id]);
     res.json({
       success: true,
-      message: 'Subscription cash request rejected.',
+      message: 'Subscription payment failed.',
       subscription: updatedSubRes.rows[0]
     });
   } catch (err) {
-    console.error('Error rejecting cash subscription:', err);
-    res.status(500).json({ success: false, message: 'Failed to reject cash payment request.' });
+    console.error('Error rejecting subscription payment:', err);
+    res.status(500).json({ success: false, message: 'Failed to reject payment request.' });
   }
-});
+};
+
+app.post('/api/owner/subscriptions/:id/reject-cash', authenticateToken, requireOwnerOrKitchen, handleOwnerRejectSubscriptionPayment);
+app.post('/api/owner/subscriptions/:id/reject-payment', authenticateToken, requireOwnerOrKitchen, handleOwnerRejectSubscriptionPayment);
 
 // POST /api/subscriptions/confirm-payment - Verification & Generation of Meal Passes
 // PART G, M: IDEMPOTENCY & PASS GENERATION
