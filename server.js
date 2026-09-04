@@ -10578,7 +10578,7 @@ const handleOwnerConfirmSubscriptionPayment = async (req, res) => {
         return { already_active: true, subscription: sub };
       }
 
-      if (sub.status !== 'PENDING_PAYMENT') {
+      if (sub.status !== 'PENDING_PAYMENT' && sub.status !== 'FAILED' && sub.status !== 'REJECTED' && sub.status !== 'CANCELLED') {
         throw new Error(`Cannot confirm payment for subscription in status '${sub.status}'.`);
       }
 
@@ -10693,6 +10693,125 @@ const handleOwnerRejectSubscriptionPayment = async (req, res) => {
 
 app.post('/api/owner/subscriptions/:id/reject-cash', authenticateToken, requireOwnerOrKitchen, handleOwnerRejectSubscriptionPayment);
 app.post('/api/owner/subscriptions/:id/reject-payment', authenticateToken, requireOwnerOrKitchen, handleOwnerRejectSubscriptionPayment);
+
+// DELETE /api/owner/subscriptions/:id - Owner Delete Subscription Record
+app.delete('/api/owner/subscriptions/:id', authenticateToken, requireOwnerOrKitchen, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Subscription ID is required.' });
+    }
+
+    const subRes = await db.query('SELECT * FROM subscriptions WHERE id = $1 OR subscription_id = $1;', [id]);
+    if (!subRes.rows || subRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Subscription record not found.' });
+    }
+    const sub = subRes.rows[0];
+
+    // Delete associated meal pass redemptions first
+    await db.query(`DELETE FROM subscription_redemptions WHERE subscription_id = $1 OR meal_pass_id IN (SELECT id FROM subscription_meal_passes WHERE subscription_id = $1);`, [sub.id]);
+    // Delete associated meal passes
+    await db.query('DELETE FROM subscription_meal_passes WHERE subscription_id = $1;', [sub.id]);
+    // Delete associated payments
+    await db.query('DELETE FROM payments WHERE order_id = $1 OR order_number = $2;', [sub.id, sub.subscription_id]);
+    // Delete subscription record
+    await db.query('DELETE FROM subscriptions WHERE id = $1;', [sub.id]);
+
+    res.json({
+      success: true,
+      message: `Subscription ${sub.subscription_id || sub.id} deleted successfully.`
+    });
+  } catch (err) {
+    console.error('Error deleting owner subscription:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete subscription record.' });
+  }
+});
+
+// DELETE /api/subscriptions/passes/bulk-delete - Bulk Delete USED or EXPIRED Meal Passes
+app.delete('/api/subscriptions/passes/bulk-delete', authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    const targetStatus = (status || '').toUpperCase();
+
+    let allowedStatuses = [];
+    if (targetStatus === 'USED') {
+      allowedStatuses = ['USED'];
+    } else if (targetStatus === 'EXPIRED') {
+      allowedStatuses = ['EXPIRED'];
+    } else if (targetStatus === 'ALL_INACTIVE' || targetStatus === 'ALL') {
+      allowedStatuses = ['USED', 'EXPIRED'];
+    } else {
+      return res.status(400).json({ success: false, message: 'Must specify status: USED, EXPIRED, or ALL_INACTIVE.' });
+    }
+
+    const isOwnerOrKitchen = req.user.role === 'OWNER' || req.user.role === 'ADMIN' || req.user.role === 'KITCHEN';
+
+    let passQuery = 'SELECT id FROM subscription_meal_passes WHERE status IN (' + allowedStatuses.map((_, i) => `$${i + 1}`).join(', ') + ')';
+    let passParams = [...allowedStatuses];
+
+    if (!isOwnerOrKitchen) {
+      passParams.push(req.user.id);
+      passQuery += ` AND customer_id = $${passParams.length}`;
+    }
+
+    const passesToDel = await db.query(passQuery, passParams);
+    const passIds = (passesToDel.rows || []).map(p => p.id);
+
+    if (passIds.length === 0) {
+      return res.json({ success: true, message: 'No matching USED or EXPIRED passes found to delete.', deleted_count: 0 });
+    }
+
+    for (const pId of passIds) {
+      await db.query('DELETE FROM subscription_redemptions WHERE meal_pass_id = $1;', [pId]);
+      await db.query('DELETE FROM subscription_meal_passes WHERE id = $1;', [pId]);
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${passIds.length} meal pass(es).`,
+      deleted_count: passIds.length
+    });
+  } catch (err) {
+    console.error('Error bulk deleting meal passes:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete meal passes.' });
+  }
+});
+
+// DELETE /api/subscriptions/passes/:id - Delete single meal pass (USED or EXPIRED only)
+app.delete('/api/subscriptions/passes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Meal pass ID is required.' });
+    }
+
+    const passRes = await db.query('SELECT * FROM subscription_meal_passes WHERE id = $1 OR pass_id = $1;', [id]);
+    if (!passRes.rows || passRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Meal pass not found.' });
+    }
+    const pass = passRes.rows[0];
+
+    const isOwnerOrKitchen = req.user.role === 'OWNER' || req.user.role === 'ADMIN' || req.user.role === 'KITCHEN';
+    if (!isOwnerOrKitchen && pass.customer_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to delete this meal pass.' });
+    }
+
+    if (pass.status !== 'USED' && pass.status !== 'EXPIRED') {
+      return res.status(400).json({ success: false, message: 'Only USED or EXPIRED meal passes can be deleted to protect active balances.' });
+    }
+
+    await db.query('DELETE FROM subscription_redemptions WHERE meal_pass_id = $1;', [pass.id]);
+    await db.query('DELETE FROM subscription_meal_passes WHERE id = $1;', [pass.id]);
+
+    res.json({
+      success: true,
+      message: `Meal pass ${pass.pass_id} deleted successfully.`
+    });
+  } catch (err) {
+    console.error('Error deleting meal pass:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete meal pass.' });
+  }
+});
 
 // POST /api/subscriptions/confirm-payment - Verification & Generation of Meal Passes
 // PART G, M: IDEMPOTENCY & PASS GENERATION

@@ -17879,7 +17879,21 @@ class TiffinApp {
         return;
       }
 
-      grid.innerHTML = json.passes.map(pass => {
+      let bulkDeleteHeader = '';
+      if (statusTab === 'USED' || statusTab === 'EXPIRED') {
+        bulkDeleteHeader = `
+          <div style="grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 16px; margin-bottom: 5px; flex-wrap: wrap; gap: 10px;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">
+              <i class="fa-solid fa-circle-info"></i> Manage history for ${statusTab.toLowerCase()} meal passes.
+            </span>
+            <button type="button" class="btn-secondary-outline" onclick="app.bulkDeleteMealPasses('${statusTab}')" style="color: #FF5252; border-color: #FF5252; padding: 6px 14px; font-size: 0.8rem; border-radius: 10px; font-weight: 700;">
+              <i class="fa-solid fa-trash-can"></i> Delete All ${statusTab} Passes
+            </button>
+          </div>
+        `;
+      }
+
+      grid.innerHTML = bulkDeleteHeader + json.passes.map(pass => {
         const isAvailable = pass.status === 'AVAILABLE';
         const isUsed = pass.status === 'USED';
 
@@ -17914,6 +17928,9 @@ class TiffinApp {
               <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px;">
                 ${isUsed ? `Redeemed: <br><strong style="color: #FFF;">${redeemedFormatted}</strong>` : 'Expired'}
               </div>
+              <button type="button" class="btn-secondary-outline" onclick="app.deleteMealPass('${pass.id}')" style="color: #FF5252; border-color: rgba(255,82,82,0.4); padding: 4px 10px; font-size: 0.75rem; margin-top: 8px; border-radius: 8px; font-weight: 700; width: 100%;">
+                <i class="fa-solid fa-trash"></i> Delete Pass
+              </button>
             `}
           </div>
         `;
@@ -18520,7 +18537,22 @@ class TiffinApp {
                               <i class="fa-solid fa-xmark"></i> Reject Payment
                             </button>
                           </div>
-                        ` : ''}
+                        ` : ((sub.status === 'FAILED' || sub.status === 'REJECTED' || sub.status === 'CANCELLED') ? `
+                          <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
+                            <button type="button" class="btn-primary-block" onclick="app.confirmOwnerSubscriptionPayment('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; background: #2196F3; color: #FFF; width: auto; font-weight: 800;" title="Re-Verify payment and activate subscription">
+                              <i class="fa-solid fa-rotate-right"></i> Re-Verify & Activate
+                            </button>
+                            <button type="button" class="btn-secondary-outline" onclick="app.deleteOwnerSubscription('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; color: #FF5252; border-color: #FF5252; width: auto; font-weight: 700;">
+                              <i class="fa-solid fa-trash"></i> Delete
+                            </button>
+                          </div>
+                        ` : `
+                          <div style="margin-top: 6px;">
+                            <button type="button" class="btn-secondary-outline" onclick="app.deleteOwnerSubscription('${sub.id}')" style="padding: 4px 8px; font-size: 0.72rem; color: #FF5252; border-color: rgba(255,82,82,0.4); width: auto; font-weight: 700;">
+                              <i class="fa-solid fa-trash"></i> Delete
+                            </button>
+                          </div>
+                        `)}
                       </td>
                     </tr>
                   `;
@@ -18557,6 +18589,14 @@ class TiffinApp {
         const pagination = json.pagination || {};
 
         container.innerHTML = `
+          <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px;">
+            <button type="button" class="btn-secondary-outline" onclick="app.bulkDeleteMealPasses('USED')" style="color: #FF9800; border-color: #FF9800; padding: 4px 10px; font-size: 0.78rem;">
+              <i class="fa-solid fa-trash-can"></i> Delete All USED Passes
+            </button>
+            <button type="button" class="btn-secondary-outline" onclick="app.bulkDeleteMealPasses('EXPIRED')" style="color: #FF5252; border-color: #FF5252; padding: 4px 10px; font-size: 0.78rem;">
+              <i class="fa-solid fa-trash-can"></i> Delete All EXPIRED Passes
+            </button>
+          </div>
           <div style="overflow-x: auto; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 16px; margin-bottom: 15px;">
             <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
               <thead>
@@ -18565,7 +18605,7 @@ class TiffinApp {
                   <th style="padding: 12px;">Customer</th>
                   <th style="padding: 12px;">Subscription ID</th>
                   <th style="padding: 12px;">Meal #</th>
-                  <th style="padding: 12px;">Status</th>
+                  <th style="padding: 12px;">Status & Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -18579,6 +18619,11 @@ class TiffinApp {
                       <span style="background: ${p.status === 'AVAILABLE' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(255, 152, 0, 0.15)'}; color: ${p.status === 'AVAILABLE' ? '#81C784' : '#FF9800'}; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.72rem;">
                         ${escapeHtml(p.status)}
                       </span>
+                      ${(p.status === 'USED' || p.status === 'EXPIRED') ? `
+                        <button type="button" class="btn-secondary-outline" onclick="app.deleteMealPass('${p.id}')" style="padding: 2px 8px; font-size: 0.72rem; color: #FF5252; border-color: #FF5252; margin-left: 6px;" title="Delete Pass">
+                          <i class="fa-solid fa-trash"></i> Delete
+                        </button>
+                      ` : ''}
                     </td>
                   </tr>
                 `).join('')}
@@ -18706,6 +18751,69 @@ class TiffinApp {
 
   rejectOwnerCashSubscription(subId) {
     return this.rejectOwnerSubscriptionPayment(subId);
+  }
+
+  async deleteOwnerSubscription(subId) {
+    if (!confirm('Are you sure you want to delete this subscription record? This action cannot be undone.')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/subscriptions/${subId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || 'Subscription deleted successfully.', 'success');
+        this.renderOwnerSubscribersHub(this.ownerSubscribersPage || 1);
+      } else {
+        this.showToast(json.message || 'Failed to delete subscription.', 'error');
+      }
+    } catch (err) {
+      console.error('Delete owner subscription error:', err);
+      this.showToast('Failed to delete subscription.', 'error');
+    }
+  }
+
+  async deleteMealPass(passId) {
+    if (!confirm('Are you sure you want to delete this meal pass record?')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/passes/${passId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || 'Meal pass deleted successfully.', 'success');
+        if (this.activeView === 'secCustomerMealPasses') {
+          this.renderCustomerMealPasses();
+        } else if (this.activeView === 'secOwnerSubscribers') {
+          this.renderOwnerSubscribersHub(this.ownerSubscribersPage || 1);
+        }
+      } else {
+        this.showToast(json.message || 'Failed to delete meal pass.', 'error');
+      }
+    } catch (err) {
+      console.error('Delete meal pass error:', err);
+      this.showToast('Failed to delete meal pass.', 'error');
+    }
+  }
+
+  async bulkDeleteMealPasses(statusTab) {
+    if (!confirm(`Are you sure you want to delete ALL ${statusTab} meal passes? This action cannot be undone.`)) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/passes/bulk-delete`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: statusTab })
+      });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || `All ${statusTab} meal passes deleted successfully.`, 'success');
+        if (this.activeView === 'secCustomerMealPasses') {
+          this.renderCustomerMealPasses();
+        } else if (this.activeView === 'secOwnerSubscribers') {
+          this.renderOwnerSubscribersHub(this.ownerSubscribersPage || 1);
+        }
+      } else {
+        this.showToast(json.message || 'Failed to delete meal passes.', 'error');
+      }
+    } catch (err) {
+      console.error('Bulk delete meal passes error:', err);
+      this.showToast('Failed to delete meal passes.', 'error');
+    }
   }
 
   /* ============================================================
