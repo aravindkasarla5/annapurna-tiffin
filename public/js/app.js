@@ -17767,14 +17767,17 @@ class TiffinApp {
       }
 
       container.innerHTML = json.subscriptions.map(sub => {
-        const isActive = sub.status === 'ACTIVE';
+        const isCompleted = sub.status === 'COMPLETED' || (sub.remaining_meals <= 0 && sub.total_meals > 0) || (sub.used_meals >= sub.total_meals && sub.total_meals > 0);
+        const isActive = sub.status === 'ACTIVE' && !isCompleted;
         const isPending = sub.status === 'PENDING_PAYMENT';
-        const isRejected = sub.status === 'REJECTED';
+        const isRejected = sub.status === 'REJECTED' || sub.status === 'FAILED';
         const isExpired = sub.status === 'EXPIRED';
 
         let statusBadge = '';
         if (isActive) {
           statusBadge = '<span style="background: rgba(76, 175, 80, 0.15); color: #81C784; border: 1px solid #4CAF50; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-circle-check"></i> ACTIVE</span>';
+        } else if (isCompleted) {
+          statusBadge = '<span style="background: rgba(33, 150, 243, 0.15); color: #64B5F6; border: 1px solid #2196F3; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-circle-check"></i> COMPLETED</span>';
         } else if (isPending) {
           statusBadge = '<span style="background: rgba(255, 152, 0, 0.15); color: #FF9800; border: 1px solid #FF9800; padding: 4px 12px; border-radius: 12px; font-weight: 700; font-size: 0.8rem;"><i class="fa-solid fa-hourglass-half"></i> PENDING CASH CONFIRMATION</span>';
         } else if (isRejected) {
@@ -17791,8 +17794,12 @@ class TiffinApp {
           ? new Date(sub.start_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
           : 'N/A';
 
+        const cardBorder = isActive
+          ? 'var(--accent-gold)'
+          : (isCompleted ? '#2196F3' : (isPending ? '#FF9800' : 'var(--border-color)'));
+
         return `
-          <div style="background: var(--bg-surface-elevated); border: 1px solid ${isActive ? 'var(--accent-gold)' : (isPending ? '#FF9800' : 'var(--border-color)')}; border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); position: relative;">
+          <div style="background: var(--bg-surface-elevated); border: 1px solid ${cardBorder}; border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); position: relative;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
               <div>
                 <h3 style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin: 0 0 4px 0;">🥣 ${escapeHtml(sub.plan_name)}</h3>
@@ -17818,24 +17825,41 @@ class TiffinApp {
               </div>
               <div>
                 <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Remaining</div>
-                <div style="font-size: 1.1rem; font-weight: 800; color: #4CAF50;">${sub.remaining_meals}</div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: ${isCompleted ? '#64B5F6' : '#4CAF50'};">${sub.remaining_meals}</div>
               </div>
             </div>
 
             <div style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
               <span>Valid Until: <strong style="color: #FFF;">${expiryFormatted}</strong></span>
               ${isActive ? `<span style="color: var(--accent-gold); font-weight: 700;"><i class="fa-solid fa-clock"></i> ${sub.days_remaining} Days Left</span>` : ''}
+              ${isCompleted ? `<span style="color: #64B5F6; font-weight: 700;"><i class="fa-solid fa-circle-check"></i> All Meals Used</span>` : ''}
             </div>
 
             ${isActive ? `
               <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold);">
                 <i class="fa-solid fa-qrcode"></i> View Meal Passes (${sub.remaining_meals} Available)
               </button>
+            ` : (isCompleted ? `
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn-secondary-outline" onclick="app.viewSubscriptionPasses('${sub.id}')" style="flex: 1; padding: 8px; font-size: 0.8rem; border-color: #2196F3; color: #64B5F6; font-weight: 700;">
+                  <i class="fa-solid fa-qrcode"></i> View Pass History
+                </button>
+                <button type="button" class="btn-secondary-outline" onclick="app.deleteCustomerSubscription('${sub.id}')" style="flex: 1; color: #FF5252; border: 1.5px solid #FF5252; background: rgba(255, 82, 82, 0.12); padding: 8px; font-size: 0.8rem; font-weight: 800; border-radius: 10px; cursor: pointer;">
+                  <i class="fa-solid fa-trash"></i> Delete Subscription
+                </button>
+              </div>
             ` : `
-              <button type="button" class="btn-secondary-outline" onclick="app.viewSubscriptionPasses('${sub.id}')" style="width: 100%; padding: 8px; font-size: 0.8rem; border-color: var(--accent-gold); color: var(--accent-gold); font-weight: 700;">
-                <i class="fa-solid fa-qrcode"></i> View Pass History (${escapeHtml(sub.status)})
-              </button>
-            `}
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn-secondary-outline" onclick="app.viewSubscriptionPasses('${sub.id}')" style="flex: 1; padding: 8px; font-size: 0.8rem; border-color: var(--accent-gold); color: var(--accent-gold); font-weight: 700;">
+                  <i class="fa-solid fa-qrcode"></i> View Pass History (${escapeHtml(sub.status)})
+                </button>
+                ${(isExpired || isRejected) ? `
+                  <button type="button" class="btn-secondary-outline" onclick="app.deleteCustomerSubscription('${sub.id}')" style="color: #FF5252; border: 1.5px solid #FF5252; background: rgba(255, 82, 82, 0.12); padding: 8px; font-size: 0.8rem; font-weight: 800; border-radius: 10px; cursor: pointer;">
+                    <i class="fa-solid fa-trash"></i> Delete
+                  </button>
+                ` : ''}
+              </div>
+            `)}
           </div>
         `;
       }).join('');
@@ -18531,8 +18555,8 @@ class TiffinApp {
                         ₹${parseFloat(sub.purchase_price).toLocaleString('en-IN')}
                       </td>
                       <td style="padding: 12px;">
-                        <span style="background: ${isActive ? 'rgba(76, 175, 80, 0.15)' : (isPending ? 'rgba(255, 152, 0, 0.15)' : 'rgba(255, 82, 82, 0.15)')}; color: ${isActive ? '#81C784' : (isPending ? '#FF9800' : '#FF5252')}; border: 1px solid ${isActive ? '#4CAF50' : (isPending ? '#FF9800' : '#FF5252')}; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.72rem;">
-                          ${escapeHtml(sub.status)}
+                        <span style="background: ${isActive ? 'rgba(76, 175, 80, 0.15)' : (isCompleted ? 'rgba(33, 150, 243, 0.15)' : (isPending ? 'rgba(255, 152, 0, 0.15)' : 'rgba(255, 82, 82, 0.15)'))}; color: ${isActive ? '#81C784' : (isCompleted ? '#64B5F6' : (isPending ? '#FF9800' : '#FF5252'))}; border: 1px solid ${isActive ? '#4CAF50' : (isCompleted ? '#2196F3' : (isPending ? '#FF9800' : '#FF5252'))}; padding: 2px 8px; border-radius: 8px; font-weight: 700; font-size: 0.72rem;">
+                          ${isCompleted ? 'COMPLETED' : escapeHtml(sub.status)}
                         </span>
                         ${isPending ? `
                           <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
@@ -18782,6 +18806,23 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Delete owner subscription error:', err);
+      this.showToast('Failed to delete subscription.', 'error');
+    }
+  }
+
+  async deleteCustomerSubscription(subId) {
+    if (!confirm('Are you sure you want to delete this completed subscription? This action cannot be undone.')) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/my-subscriptions/${subId}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        this.showToast(json.message || 'Subscription deleted successfully.', 'success');
+        this.renderCustomerSubscriptions();
+      } else {
+        this.showToast(json.message || 'Failed to delete subscription.', 'error');
+      }
+    } catch (err) {
+      console.error('Delete customer subscription error:', err);
       this.showToast('Failed to delete subscription.', 'error');
     }
   }

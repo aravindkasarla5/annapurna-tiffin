@@ -10910,6 +10910,8 @@ app.get('/api/subscriptions/my-subscriptions', authenticateToken, async (req, re
     const nowIso = new Date().toISOString();
     // Auto-expire outdated active subscriptions
     await db.query(`UPDATE subscriptions SET status = 'EXPIRED' WHERE customer_id = $1 AND status = 'ACTIVE' AND expiry_date < $2;`, [customerId, nowIso]);
+    // Auto-complete fully used active subscriptions
+    await db.query(`UPDATE subscriptions SET status = 'COMPLETED' WHERE customer_id = $1 AND status = 'ACTIVE' AND used_meals >= total_meals;`, [customerId]);
 
     let queryText = 'SELECT * FROM subscriptions WHERE customer_id = $1';
     const params = [customerId];
@@ -10932,14 +10934,20 @@ app.get('/api/subscriptions/my-subscriptions', authenticateToken, async (req, re
       const used = parseInt(s.used_meals, 10);
       const remaining = Math.max(0, total - used);
       
+      let effectiveStatus = s.status;
+      if (s.status === 'ACTIVE' && remaining <= 0 && total > 0) {
+        effectiveStatus = 'COMPLETED';
+      }
+
       let daysRemaining = 0;
-      if (s.expiry_date && s.status === 'ACTIVE') {
+      if (s.expiry_date && effectiveStatus === 'ACTIVE') {
         const diffMs = new Date(s.expiry_date).getTime() - Date.now();
         daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
       }
 
       return {
         ...s,
+        status: effectiveStatus,
         total_meals: total,
         used_meals: used,
         remaining_meals: remaining,
@@ -10951,6 +10959,47 @@ app.get('/api/subscriptions/my-subscriptions', authenticateToken, async (req, re
   } catch (err) {
     console.error('Error fetching customer subscriptions:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch your subscriptions.' });
+  }
+});
+
+// DELETE /api/subscriptions/my-subscriptions/:id - Customer Delete Subscription (COMPLETED, EXPIRED, REJECTED, CANCELLED only)
+app.delete('/api/subscriptions/my-subscriptions/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Subscription ID is required.' });
+    }
+
+    const subRes = await db.query('SELECT * FROM subscriptions WHERE (id = $1 OR subscription_id = $1) AND customer_id = $2;', [id, req.user.id]);
+    if (!subRes.rows || subRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Subscription record not found.' });
+    }
+    const sub = subRes.rows[0];
+
+    const total = parseInt(sub.total_meals, 10);
+    const used = parseInt(sub.used_meals, 10);
+    const remaining = Math.max(0, total - used);
+
+    // Only allow deletion if subscription is COMPLETED, EXPIRED, FAILED/REJECTED, CANCELLED, or remaining === 0
+    const isDeletable = sub.status === 'COMPLETED' || sub.status === 'EXPIRED' || sub.status === 'FAILED' || sub.status === 'REJECTED' || sub.status === 'CANCELLED' || remaining <= 0;
+
+    if (!isDeletable) {
+      return res.status(400).json({ success: false, message: 'Active subscriptions with remaining meals cannot be deleted.' });
+    }
+
+    // Delete associated meal pass redemptions first
+    await db.query(`DELETE FROM subscription_redemptions WHERE subscription_id = $1 OR meal_pass_id IN (SELECT id FROM subscription_meal_passes WHERE subscription_id = $1);`, [sub.id]);
+    // Delete associated meal passes
+    await db.query('DELETE FROM subscription_meal_passes WHERE subscription_id = $1;', [sub.id]);
+    // Delete associated payments
+    await db.query('DELETE FROM payments WHERE order_id = $1 OR order_number = $2;', [sub.id, sub.subscription_id]);
+    // Delete subscription record
+    await db.query('DELETE FROM subscriptions WHERE id = $1;', [sub.id]);
+
+    res.json({ success: true, message: `Subscription ${sub.subscription_id || sub.id} deleted successfully.` });
+  } catch (err) {
+    console.error('Error deleting customer subscription:', err);
+    res.status(500).json({ success: false, message: 'Failed to delete subscription.' });
   }
 });
 
@@ -11175,6 +11224,14 @@ app.post('/api/subscriptions/redeem-pass', authenticateToken, requireOwnerOrKitc
       const newUsed = currentUsed + 1;
       const newRemaining = Math.max(0, total - newUsed);
 
+      // Auto-set status to COMPLETED if all meals used
+      if (newRemaining <= 0) {
+        await tx.query(
+          `UPDATE subscriptions SET status = 'COMPLETED', updated_at = $1 WHERE id = $2;`,
+          [nowIso, pass.sub_db_id]
+        );
+      }
+
       return {
         redemption_reference: redFormattedId,
         pass_number: pass.meal_number,
@@ -11321,16 +11378,26 @@ app.get('/api/owner/subscribers', authenticateToken, requireOwnerOrKitchen, asyn
     // Fetch Paginated Records
     params.push(parsedLimit, offset);
     const dataSql = `SELECT * FROM subscriptions${whereClause}${orderByClause} LIMIT $${params.length - 1} OFFSET $${params.length};`;
+    // Auto-complete fully used active subscriptions
+    await db.query("UPDATE subscriptions SET status = 'COMPLETED' WHERE status = 'ACTIVE' AND used_meals >= total_meals;");
+
     const dataRes = await db.query(dataSql, params);
 
     const subscribers = (dataRes.rows || []).map(s => {
       const total = parseInt(s.total_meals, 10);
       const used = parseInt(s.used_meals, 10);
+      const remaining = Math.max(0, total - used);
+      let effectiveStatus = s.status;
+      if (s.status === 'ACTIVE' && remaining <= 0 && total > 0) {
+        effectiveStatus = 'COMPLETED';
+      }
+
       return {
         ...s,
+        status: effectiveStatus,
         total_meals: total,
         used_meals: used,
-        remaining_meals: Math.max(0, total - used)
+        remaining_meals: remaining
       };
     });
 
