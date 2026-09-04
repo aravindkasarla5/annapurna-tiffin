@@ -17832,8 +17832,8 @@ class TiffinApp {
                 <i class="fa-solid fa-qrcode"></i> View Meal Passes (${sub.remaining_meals} Available)
               </button>
             ` : `
-              <button type="button" class="btn-primary-block" disabled style="background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border-color); cursor: not-allowed;">
-                <i class="fa-solid fa-lock"></i> ${isPending ? 'Awaiting Owner Cash Confirmation' : (isRejected ? 'Subscription Request Rejected' : 'Subscription Expired')}
+              <button type="button" class="btn-secondary-outline" onclick="app.viewSubscriptionPasses('${sub.id}')" style="width: 100%; padding: 8px; font-size: 0.8rem; border-color: var(--accent-gold); color: var(--accent-gold); font-weight: 700;">
+                <i class="fa-solid fa-qrcode"></i> View Pass History (${escapeHtml(sub.status)})
               </button>
             `}
           </div>
@@ -17867,6 +17867,25 @@ class TiffinApp {
 
     grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading meal passes...</p></div>';
 
+    const headerEl = document.getElementById('customerMealPassesHeader');
+    if (headerEl) {
+      if (statusTab === 'USED' || statusTab === 'EXPIRED') {
+        headerEl.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 82, 82, 0.1); border: 1.5px solid rgba(255, 82, 82, 0.4); border-radius: 14px; padding: 12px 18px; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h4 style="margin: 0; color: #FFF; font-size: 0.95rem; font-weight: 800;"><i class="fa-solid fa-trash-can" style="color: #FF5252;"></i> ${statusTab} Meal Passes</h4>
+              <p style="margin: 2px 0 0 0; font-size: 0.8rem; color: var(--text-muted);">Manage or bulk delete your ${statusTab.toLowerCase()} meal passes history.</p>
+            </div>
+            <button type="button" class="btn-primary-block" onclick="app.bulkDeleteMealPasses('${statusTab}')" style="background: #FF5252; color: #FFF; padding: 8px 16px; font-size: 0.82rem; font-weight: 800; border-radius: 10px; width: auto; cursor: pointer;">
+              <i class="fa-solid fa-trash-can"></i> Delete All ${statusTab} Passes
+            </button>
+          </div>
+        `;
+      } else {
+        headerEl.innerHTML = '';
+      }
+    }
+
     try {
       const queryParams = new URLSearchParams({ status: statusTab });
       if (subIdFilter) queryParams.append('subscription_id', subIdFilter);
@@ -17879,23 +17898,10 @@ class TiffinApp {
         return;
       }
 
-      let bulkDeleteHeader = '';
-      if (statusTab === 'USED' || statusTab === 'EXPIRED') {
-        bulkDeleteHeader = `
-          <div style="grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 16px; margin-bottom: 5px; flex-wrap: wrap; gap: 10px;">
-            <span style="font-size: 0.85rem; color: var(--text-muted);">
-              <i class="fa-solid fa-circle-info"></i> Manage history for ${statusTab.toLowerCase()} meal passes.
-            </span>
-            <button type="button" class="btn-secondary-outline" onclick="app.bulkDeleteMealPasses('${statusTab}')" style="color: #FF5252; border-color: #FF5252; padding: 6px 14px; font-size: 0.8rem; border-radius: 10px; font-weight: 700;">
-              <i class="fa-solid fa-trash-can"></i> Delete All ${statusTab} Passes
-            </button>
-          </div>
-        `;
-      }
-
-      grid.innerHTML = bulkDeleteHeader + json.passes.map(pass => {
-        const isAvailable = pass.status === 'AVAILABLE';
-        const isUsed = pass.status === 'USED';
+      grid.innerHTML = json.passes.map(pass => {
+        const passStatusUpper = (pass.status || '').toUpperCase();
+        const isAvailable = passStatusUpper === 'AVAILABLE';
+        const isUsed = passStatusUpper === 'USED';
 
         const redeemedFormatted = pass.redeemed_at
           ? new Date(pass.redeemed_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -17925,10 +17931,10 @@ class TiffinApp {
                 <i class="fa-solid fa-qrcode"></i> Show QR Code
               </button>
             ` : `
-              <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px;">
+              <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px; margin-bottom: 10px;">
                 ${isUsed ? `Redeemed: <br><strong style="color: #FFF;">${redeemedFormatted}</strong>` : 'Expired'}
               </div>
-              <button type="button" class="btn-secondary-outline" onclick="app.deleteMealPass('${pass.id}')" style="color: #FF5252; border-color: rgba(255,82,82,0.4); padding: 4px 10px; font-size: 0.75rem; margin-top: 8px; border-radius: 8px; font-weight: 700; width: 100%;">
+              <button type="button" class="btn-secondary-outline" onclick="app.deleteMealPass('${pass.id}')" style="color: #FF5252; border: 1.5px solid #FF5252; background: rgba(255, 82, 82, 0.15); padding: 8px 12px; font-size: 0.8rem; border-radius: 10px; font-weight: 800; width: 100%; cursor: pointer;">
                 <i class="fa-solid fa-trash"></i> Delete Pass
               </button>
             `}
@@ -18582,7 +18588,17 @@ class TiffinApp {
         const json = await res.json();
 
         if (!json.success || !json.passes || json.passes.length === 0) {
-          container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><p>No meal passes found.</p></div>';
+          container.innerHTML = `
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px;">
+              <button type="button" class="btn-secondary-outline" onclick="app.bulkDeleteMealPasses('USED')" style="color: #FF9800; border-color: #FF9800; padding: 4px 10px; font-size: 0.78rem;">
+                <i class="fa-solid fa-trash-can"></i> Delete All USED Passes
+              </button>
+              <button type="button" class="btn-secondary-outline" onclick="app.bulkDeleteMealPasses('EXPIRED')" style="color: #FF5252; border-color: #FF5252; padding: 4px 10px; font-size: 0.78rem;">
+                <i class="fa-solid fa-trash-can"></i> Delete All EXPIRED Passes
+              </button>
+            </div>
+            <div style="text-align: center; color: var(--text-muted); padding: 40px; background: var(--bg-surface-elevated); border-radius: 16px;"><p>No meal passes found.</p></div>
+          `;
           return;
         }
 
