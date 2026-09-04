@@ -11368,7 +11368,7 @@ app.get('/api/owner/delivery-zones', authenticateToken, requireOwnerOrKitchen, a
 
     if (q && q.trim()) {
       params.push(`%${q.trim().toLowerCase()}%`);
-      whereConditions.push(`(LOWER(zone_name) LIKE $${params.length} OR LOWER(description) LIKE $${params.length} OR LOWER(pincodes::text) LIKE $${params.length})`);
+      whereConditions.push(`(COALESCE(LOWER(zone_name), '') LIKE $${params.length} OR COALESCE(LOWER(description), '') LIKE $${params.length} OR COALESCE(LOWER(pincodes::text), '') LIKE $${params.length})`);
     }
 
     if (status && status !== 'ALL') {

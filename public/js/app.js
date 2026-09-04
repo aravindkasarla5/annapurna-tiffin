@@ -17838,7 +17838,7 @@ class TiffinApp {
       `).join('');
     } catch (err) {
       console.error('Render owner subscription plans error:', err);
-      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load subscription plans.</div>';
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px; background: var(--bg-surface-elevated); border-radius: 16px; border: 1px dashed rgba(255, 82, 82, 0.4);"><i class="fa-solid fa-triangle-exclamation fa-2x" style="margin-bottom: 10px;"></i><p style="font-weight: 700; margin: 0;">Unable to load subscription plans. Please try again.</p><button type="button" class="btn-secondary-outline" onclick="app.renderOwnerSubscriptionPlans()" style="margin-top: 12px; padding: 6px 16px; font-size: 0.8rem; border-color: rgba(255,82,82,0.4); color: #FF5252;"><i class="fa-solid fa-rotate"></i> Retry</button></div>';
     }
   }
 
@@ -17868,9 +17868,9 @@ class TiffinApp {
     this.toggleSubPlanModal(true);
   }
 
-  toggleSubPlanModal(show) {
+  toggleSubPlanModal(show = true) {
     const backdrop = document.getElementById('modalSubPlanBackdrop');
-    if (backdrop) backdrop.classList.toggle('hidden', !show);
+    if (backdrop) backdrop.classList.toggle('open', show);
   }
 
   async saveOwnerSubscriptionPlan(e) {
@@ -18764,7 +18764,7 @@ class TiffinApp {
       }).join('');
     } catch (err) {
       console.error('Load owner delivery zones error:', err);
-      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px;">Failed to load delivery zones.</div>';
+      container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #FF5252; padding: 30px; background: var(--bg-surface-elevated); border-radius: 16px; border: 1px dashed rgba(255, 82, 82, 0.4);"><i class="fa-solid fa-triangle-exclamation fa-2x" style="margin-bottom: 10px;"></i><p style="font-weight: 700; margin: 0;">Unable to load delivery zones. Please try again.</p><button type="button" class="btn-secondary-outline" onclick="app.loadOwnerDeliveryZones()" style="margin-top: 12px; padding: 6px 16px; font-size: 0.8rem; border-color: rgba(255,82,82,0.4); color: #FF5252;"><i class="fa-solid fa-rotate"></i> Retry</button></div>';
     }
   }
 
