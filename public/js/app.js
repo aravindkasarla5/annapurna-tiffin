@@ -5,6 +5,18 @@
 
 const API_BASE = '/api';
 
+// Safe HTML Escaping Helper for XSS Prevention and Safe UI Template Rendering
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+window.escapeHtml = escapeHtml;
+
 // =========================================================================
 // GLOBAL EARLY PWA EVENT LISTENER & SERVICE WORKER REGISTRATION
 // Captures `beforeinstallprompt` IMMEDIATELY before any async app initialization!
