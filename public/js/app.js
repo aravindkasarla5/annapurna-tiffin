@@ -1191,17 +1191,46 @@ class TiffinApp {
     if (forgotIdent) forgotIdent.value = '';
   }
 
-  openAuthModal(mode = 'LOGIN') {
+  openAuthModal(arg1 = 'LOGIN', arg2 = null) {
+    let mode = 'LOGIN';
+    let role = 'CUSTOMER';
+
+    const validModes = ['LOGIN', 'REGISTER', 'FORGOT_PASSWORD'];
+    const validRoles = ['CUSTOMER', 'OWNER', 'HOTEL_OWNER', 'ADMIN'];
+
+    if (typeof arg1 === 'string') {
+      const upper1 = arg1.toUpperCase();
+      if (validModes.includes(upper1)) {
+        mode = upper1;
+        if (arg2 && typeof arg2 === 'string' && validRoles.includes(arg2.toUpperCase())) {
+          role = arg2.toUpperCase();
+        }
+      } else if (validRoles.includes(upper1)) {
+        role = upper1;
+        if (arg2 && typeof arg2 === 'string' && validModes.includes(arg2.toUpperCase())) {
+          mode = arg2.toUpperCase();
+        }
+      }
+    }
+
     this.clearAuthFormInputs();
+    this.authRole = role;
     this.authMode = mode;
     this.setAuthMode(mode);
     this.toggleAuthModal(true);
   }
 
   toggleAuthModal(open = true) {
-    document.getElementById('authModalBackdrop')?.classList.toggle('open', open);
-    if (!open) {
-      this.clearAuthFormInputs();
+    const backdrop = document.getElementById('authModalBackdrop');
+    if (backdrop) {
+      backdrop.classList.toggle('open', open);
+      backdrop.classList.toggle('visible', open);
+      backdrop.classList.toggle('active', open);
+      backdrop.classList.toggle('hidden', !open);
+      backdrop.style.display = open ? 'flex' : 'none';
+      if (!open) {
+        this.clearAuthFormInputs();
+      }
     }
   }
 
