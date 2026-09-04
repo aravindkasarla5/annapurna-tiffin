@@ -17596,9 +17596,21 @@ class TiffinApp {
 
           <!-- Online Details Subpanel -->
           <div id="subOnlineDetailsBox" style="background: rgba(0,0,0,0.25); border: 1px dashed var(--accent-gold); border-radius: 14px; padding: 14px; margin-top: -4px;">
-            <div style="text-align: center; margin-bottom: 12px;">
-              ${qrSrc ? `<img src="${qrSrc}" alt="UPI QR Code" style="width: 140px; height: 140px; border-radius: 12px; border: 2px solid #FFF; margin-bottom: 8px;">` : ''}
-              <div style="font-size: 0.85rem; color: #FFF;">UPI ID: <strong style="color: var(--accent-gold); font-family: monospace;">${escapeHtml(upiId)}</strong></div>
+            <div style="text-align: center; margin-bottom: 14px;">
+              ${qrSrc ? `
+                <div style="position: relative; display: inline-block; cursor: pointer; margin-bottom: 8px;" onclick="app.viewFullScreenshot('${escapeHtml(qrSrc)}', 'UPI Payment QR Scanner')">
+                  <img src="${qrSrc}" alt="UPI QR Code" style="width: 150px; height: 150px; border-radius: 12px; border: 2px solid #FFF; display: block; box-shadow: 0 4px 14px rgba(255,152,0,0.3); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.04)'" onmouseout="this.style.transform='scale(1)'">
+                  <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.8); color: var(--accent-gold); border-radius: 20px; padding: 2px 8px; font-size: 0.72rem; font-weight: 800; border: 1px solid var(--accent-gold);">
+                    <i class="fa-solid fa-magnifying-glass-plus"></i> Zoom
+                  </div>
+                </div>
+                <div style="margin-bottom: 8px;">
+                  <button type="button" class="btn-secondary-outline" onclick="app.viewFullScreenshot('${escapeHtml(qrSrc)}', 'UPI Payment QR Scanner')" style="padding: 4px 12px; font-size: 0.78rem; border-color: var(--accent-gold); color: var(--accent-gold); border-radius: 20px; font-weight: 700;">
+                    <i class="fa-solid fa-expand"></i> 🔍 Zoom Scanner / Fullscreen
+                  </button>
+                </div>
+              ` : ''}
+              <div style="font-size: 0.85rem; color: #FFF;">UPI ID: <strong style="color: var(--accent-gold); font-family: monospace; user-select: all;">${escapeHtml(upiId)}</strong></div>
             </div>
 
             <div style="margin-bottom: 12px;">
@@ -17610,7 +17622,12 @@ class TiffinApp {
               <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Upload Payment Screenshot (Optional/Recommended):</label>
               <input type="file" id="fileSubPaymentScreenshot" accept="image/*" onchange="app.handleSubScreenshotUpload(event)" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.4); color: #FFF; font-size: 0.82rem;">
               <div id="subScreenshotPreviewWrapper" class="hidden" style="margin-top: 8px; text-align: center;">
-                <img id="subScreenshotPreviewImg" src="" style="max-height: 120px; border-radius: 8px; border: 1px solid var(--accent-gold);">
+                <div style="position: relative; display: inline-block; cursor: pointer;" onclick="app.viewFullScreenshot(document.getElementById('subScreenshotPreviewImg').src, 'Payment Proof Screenshot')">
+                  <img id="subScreenshotPreviewImg" src="" style="max-height: 120px; border-radius: 8px; border: 1px solid var(--accent-gold);">
+                  <div style="position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.8); color: #FFF; border-radius: 12px; padding: 2px 6px; font-size: 0.68rem;">
+                    🔍 Click to Zoom
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -17919,8 +17936,17 @@ class TiffinApp {
         <p style="font-size: 0.85rem; color: var(--accent-gold); margin: 0;">${escapeHtml(planName)}</p>
       </div>
 
-      <div style="background: #FFF; padding: 15px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.3); margin-bottom: 15px;">
+      <div style="background: #FFF; padding: 15px; border-radius: 16px; display: inline-block; box-shadow: 0 8px 24px rgba(0,0,0,0.3); margin-bottom: 12px; position: relative; cursor: pointer;" onclick="app.viewFullScreenshot('${qrUrl}', 'Meal Pass #${mealNumber} QR Code Scanner')">
         <img src="${qrUrl}" alt="Meal Pass QR Code" style="width: 200px; height: 200px; display: block;">
+        <div style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.8); color: var(--accent-gold); border-radius: 20px; padding: 2px 8px; font-size: 0.72rem; font-weight: 800; border: 1px solid var(--accent-gold);">
+          <i class="fa-solid fa-magnifying-glass-plus"></i> Zoom
+        </div>
+      </div>
+
+      <div style="margin-bottom: 15px;">
+        <button type="button" class="btn-secondary-outline" onclick="app.viewFullScreenshot('${qrUrl}', 'Meal Pass #${mealNumber} QR Code Scanner')" style="padding: 4px 14px; font-size: 0.8rem; border-color: var(--accent-gold); color: var(--accent-gold); border-radius: 20px;">
+          <i class="fa-solid fa-expand"></i> 🔍 Zoom Scanner / Fullscreen
+        </button>
       </div>
 
       <div style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace; word-break: break-all; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 8px;">
