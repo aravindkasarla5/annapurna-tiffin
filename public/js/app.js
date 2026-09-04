@@ -17502,6 +17502,8 @@ class TiffinApp {
         return;
       }
 
+      this.cachedCustomerPlans = json.plans;
+
       grid.innerHTML = json.plans.map(plan => `
         <div style="background: var(--bg-surface-elevated); border: 2px solid rgba(255, 152, 0, 0.3); border-radius: 20px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
           <div style="position: absolute; top: 0; right: 0; background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-size: 0.72rem; font-weight: 800; padding: 4px 14px; border-bottom-left-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -17551,9 +17553,12 @@ class TiffinApp {
     }
 
     try {
-      const res = await this.fetchWithAuth(`${API_BASE}/subscription-plans`);
-      const json = await res.json();
-      const plan = (json.plans || []).find(p => p.id === planId);
+      let plan = (this.cachedCustomerPlans || []).find(p => String(p.id) === String(planId));
+      if (!plan) {
+        const res = await fetch(`${API_BASE}/subscription-plans`);
+        const json = await res.json();
+        plan = (json.plans || []).find(p => String(p.id) === String(planId));
+      }
 
       if (!plan) {
         this.showToast('Selected subscription plan does not exist.', 'error');
@@ -17577,7 +17582,7 @@ class TiffinApp {
         <label style="font-weight: 700; font-size: 0.88rem; color: #FFF; margin-bottom: 10px; display: block;">Select Payment Method:</label>
         
         <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
-          <label style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: border-color 0.2s;" id="lblOptPayOnline">
+          <label style="background: var(--bg-surface-elevated); border: 2px solid var(--accent-gold); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: border-color 0.2s;" id="lblOptPayOnline">
             <input type="radio" name="radSubPaymentMethod" value="ONLINE" checked style="accent-color: #FF9800; transform: scale(1.2);">
             <div>
               <strong style="color: #FFF; font-size: 0.95rem;">💳 Online Payment</strong>
@@ -17608,7 +17613,11 @@ class TiffinApp {
 
   toggleSubPaymentChoiceModal(show) {
     const backdrop = document.getElementById('modalSubPaymentChoiceBackdrop');
-    if (backdrop) backdrop.classList.toggle('open', show);
+    if (backdrop) {
+      backdrop.classList.toggle('open', show);
+      backdrop.classList.toggle('hidden', !show);
+      backdrop.style.display = show ? 'flex' : 'none';
+    }
   }
 
   async confirmSubscriptionPurchase(planId) {
