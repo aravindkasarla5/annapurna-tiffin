@@ -33,9 +33,25 @@ if (dbUrl) {
 }
 
 // Convert PostgreSQL $1, $2 syntax to SQLite ? syntax when using local fallback
-function convertPgSqlToSqlite(sql) {
+function convertPgSqlToSqlite(sql, params = []) {
   let converted = sql;
-  converted = converted.replace(/\$\d+/g, '?');
+  let expandedParams = [];
+
+  const hasPgParams = /\$\d+/.test(sql);
+  if (hasPgParams) {
+    converted = converted.replace(/\$(\d+)/g, (match, num) => {
+      const idx = parseInt(num, 10) - 1;
+      if (idx >= 0 && idx < params.length) {
+        expandedParams.push(params[idx]);
+      } else {
+        expandedParams.push(null);
+      }
+      return '?';
+    });
+  } else {
+    expandedParams = [...params];
+  }
+
   converted = converted.replace(/::[a-z0-9_]+/gi, '');
   converted = converted.replace(/TIMESTAMPTZ/gi, 'TEXT');
   converted = converted.replace(/JSONB/gi, 'TEXT');
@@ -48,7 +64,7 @@ function convertPgSqlToSqlite(sql) {
     converted = converted.replace(/INSERT INTO/gi, 'INSERT OR IGNORE INTO');
     converted = converted.replace(/ON CONFLICT[\s\S]*/gi, '');
   }
-  return converted.trim();
+  return { cleanSql: converted.trim(), expandedParams };
 }
 
 // Universal SQL Query Method
@@ -64,11 +80,11 @@ async function query(text, params = []) {
 
   if (sqliteDb) {
     return new Promise((resolve, reject) => {
-      const cleanSql = convertPgSqlToSqlite(text.trim());
+      const { cleanSql, expandedParams } = convertPgSqlToSqlite(text.trim(), params);
       const isSelect = cleanSql.toUpperCase().startsWith('SELECT') || cleanSql.toUpperCase().startsWith('PRAGMA');
 
       if (isSelect) {
-        sqliteDb.all(cleanSql, params, (err, rows) => {
+        sqliteDb.all(cleanSql, expandedParams, (err, rows) => {
           if (err) {
             console.error('[SQLite Query Error]:', err.message, 'SQL:', cleanSql);
             return reject(err);
@@ -85,7 +101,7 @@ async function query(text, params = []) {
           resolve({ rows: parsedRows, rowCount: parsedRows.length });
         });
       } else {
-        sqliteDb.run(cleanSql, params, function(err) {
+        sqliteDb.run(cleanSql, expandedParams, function(err) {
           if (err) {
             console.error('[SQLite Query Error]:', err.message, 'SQL:', cleanSql);
             return reject(err);
