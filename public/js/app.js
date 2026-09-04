@@ -15573,7 +15573,7 @@ class TiffinApp {
     const container = document.getElementById('customerAddonsWidgetContainer');
     if (!container) return;
 
-    if (!this.availableAddonsList || this.availableAddonsList.length === 0) {
+    if (!this.cart || this.cart.length === 0 || !this.availableAddonsList || this.availableAddonsList.length === 0) {
       container.innerHTML = '';
       container.classList.add('hidden');
       return;
