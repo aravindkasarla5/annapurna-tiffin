@@ -2260,8 +2260,8 @@ class TiffinApp {
             <a class="nav-item ${this.activeView === 'secCustomerAddresses' ? 'active' : ''}" onclick="app.switchView('secCustomerAddresses')"><i class="fa-solid fa-location-dot" style="color: #FF5722;"></i> 📍 My Addresses</a>
             <a class="nav-item ${this.activeView === 'secCustomerMealPlans' ? 'active' : ''}" onclick="app.switchView('secCustomerMealPlans')"><i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> 🧺 Meal Plans</a>
             <a class="nav-item ${this.activeView === 'secCustomerSubscriptions' ? 'active' : ''}" onclick="app.switchView('secCustomerSubscriptions')"><i class="fa-solid fa-calendar-check" style="color: #4CAF50;"></i> 🧺 My Subscriptions</a>
-            <a class="nav-item ${this.activeView === 'secCustomerMealPasses' ? 'active' : ''}" onclick="app.switchView('secCustomerMealPasses')"><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> 🎫 My Meal Passes</a>
-            <a class="nav-item ${this.activeView === 'secCustomerMemberCard' ? 'active' : ''}" onclick="app.switchView('secCustomerMemberCard')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 🍽️ Member Card</a>
+            <a class="nav-item ${this.activeView === 'secCustomerMealPasses' ? 'active' : ''}" onclick="app.switchView('secCustomerMealPasses')"><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> 🎟️ My Passes</a>
+            <a class="nav-item ${this.activeView === 'secCustomerMemberCard' ? 'active' : ''}" onclick="app.switchView('secCustomerMemberCard')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 💳 Member Card</a>
             <a class="nav-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.switchView('secCustomerFavorites')"><i class="fa-solid fa-heart" style="color: #E53935;"></i> My Favorites ❤️</a>
             <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
             <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
@@ -2588,7 +2588,7 @@ class TiffinApp {
           <a class="drawer-item ${this.activeView === 'secCustomerMealPasses' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerMealPasses');">
             <div class="drawer-icon-box" style="background: rgba(234,162,33,0.15); color: var(--accent-gold);"><i class="fa-solid fa-qrcode"></i></div>
             <div class="drawer-text-group">
-              <strong class="drawer-item-title">🎫 My Digital Meal Passes</strong>
+              <strong class="drawer-item-title">🎟️ My Passes</strong>
               <span class="drawer-item-sub">Show QR code at shop counter</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
@@ -2660,7 +2660,7 @@ class TiffinApp {
           <a class="drawer-item ${this.activeView === 'secCustomerMemberCard' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerMemberCard');">
             <div class="drawer-icon-box gold" style="background: rgba(255, 215, 0, 0.2); color: #FFD700;"><i class="fa-solid fa-id-card"></i></div>
             <div class="drawer-text-group">
-              <strong class="drawer-item-title">Food Member Card 🍽️</strong>
+              <strong class="drawer-item-title">💳 Member Card</strong>
               <span class="drawer-item-sub">₹5 OFF & Express Delivery</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
