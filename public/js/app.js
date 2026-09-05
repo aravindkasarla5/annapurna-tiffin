@@ -200,6 +200,15 @@ class TiffinApp {
         this.currentRole = json.user.role;
         localStorage.setItem('tiffin_user', JSON.stringify(json.user));
         this.checkPasswordChangeRequired();
+      } else if (res.status === 401 || (json && json.success === false)) {
+        this.currentUser = null;
+        this.authToken = null;
+        this.currentRole = null;
+        localStorage.removeItem('tiffin_user');
+        localStorage.removeItem('tiffin_token');
+        sessionStorage.removeItem('tiffin_user');
+        sessionStorage.removeItem('tiffin_token');
+        this.updateUserAuthBadgeUI();
       }
     } catch (err) {
       console.error('Error refreshing profile:', err);
@@ -1250,6 +1259,10 @@ class TiffinApp {
       backdrop.classList.toggle('active', open);
       backdrop.classList.toggle('hidden', !open);
       backdrop.style.display = open ? 'flex' : 'none';
+      backdrop.style.opacity = open ? '1' : '0';
+      backdrop.style.visibility = open ? 'visible' : 'hidden';
+      backdrop.style.pointerEvents = open ? 'auto' : 'none';
+      backdrop.style.zIndex = open ? '9999999' : '';
       if (!open) {
         this.clearAuthFormInputs();
       }
@@ -1609,33 +1622,6 @@ class TiffinApp {
     if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
     if (digits.length > 10) return digits.slice(-10);
     return digits;
-  }
-
-  resetForgotFormState() {
-    const stepPhone = document.getElementById('stepForgotPhone');
-    const stepOtp = document.getElementById('stepForgotOtp');
-    const stepNewPass = document.getElementById('stepForgotNewPassword');
-    const inputId = document.getElementById('forgotIdentifier');
-    const inputOtp = document.getElementById('forgotOtp');
-    const inputNewPass = document.getElementById('forgotNewPassword');
-    const inputConfirmPass = document.getElementById('forgotConfirmPassword');
-
-    if (stepPhone) stepPhone.classList.remove('hidden');
-    if (stepOtp) stepOtp.classList.add('hidden');
-    if (stepNewPass) stepNewPass.classList.add('hidden');
-
-    if (inputId) {
-      inputId.readOnly = false;
-      inputId.value = '';
-    }
-    if (inputOtp) inputOtp.value = '';
-    if (inputNewPass) inputNewPass.value = '';
-    if (inputConfirmPass) inputConfirmPass.value = '';
-
-    if (this.resendOtpTimer) {
-      clearInterval(this.resendOtpTimer);
-      this.resendOtpTimer = null;
-    }
   }
 
   resetForgotFormState() {
