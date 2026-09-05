@@ -1254,16 +1254,21 @@ class TiffinApp {
   toggleAuthModal(open = true) {
     const backdrop = document.getElementById('authModalBackdrop');
     if (backdrop) {
-      backdrop.classList.toggle('open', open);
-      backdrop.classList.toggle('visible', open);
-      backdrop.classList.toggle('active', open);
-      backdrop.classList.toggle('hidden', !open);
-      backdrop.style.display = open ? 'flex' : 'none';
-      backdrop.style.opacity = open ? '1' : '0';
-      backdrop.style.visibility = open ? 'visible' : 'hidden';
-      backdrop.style.pointerEvents = open ? 'auto' : 'none';
-      backdrop.style.zIndex = open ? '9999999' : '';
-      if (!open) {
+      if (open) {
+        backdrop.classList.remove('hidden');
+        backdrop.classList.add('open', 'visible', 'active');
+        backdrop.style.setProperty('display', 'flex', 'important');
+        backdrop.style.setProperty('opacity', '1', 'important');
+        backdrop.style.setProperty('visibility', 'visible', 'important');
+        backdrop.style.setProperty('pointer-events', 'auto', 'important');
+        backdrop.style.setProperty('z-index', '99999999', 'important');
+      } else {
+        backdrop.classList.remove('open', 'visible', 'active');
+        backdrop.classList.add('hidden');
+        backdrop.style.setProperty('display', 'none', 'important');
+        backdrop.style.setProperty('opacity', '0', 'important');
+        backdrop.style.setProperty('visibility', 'hidden', 'important');
+        backdrop.style.setProperty('pointer-events', 'none', 'important');
         this.clearAuthFormInputs();
       }
     }
