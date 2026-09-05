@@ -1959,12 +1959,40 @@ textarea.form-control {
 
 @media (max-width: 680px) {
   .auth-card-wrapper {
-    flex-direction: column;
-    max-width: 440px;
-    max-height: 92vh;
-    max-height: 92dvh;
+    flex-direction: column !important;
+    max-width: 95% !important;
+    width: 440px !important;
+    max-height: 92vh !important;
+    max-height: 92dvh !important;
+    overflow-y: auto !important;
   }
   .auth-card-sidebar {
+    display: flex !important;
+    width: 100% !important;
+    min-height: 110px !important;
+    padding: 0.85rem 1.25rem !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    background-size: cover !important;
+    background-position: center !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+  }
+  .auth-sidebar-brand {
+    text-align: left !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+  .auth-sidebar-logo {
+    width: 44px !important;
+    height: 44px !important;
+    margin-bottom: 0 !important;
+  }
+  .auth-sidebar-quote,
+  .auth-sidebar-footer {
     display: none !important;
   }
 }
