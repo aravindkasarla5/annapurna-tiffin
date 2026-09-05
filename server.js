@@ -10149,6 +10149,109 @@ async function handleUnifiedAiOrderAssistant(req, res) {
     // 🤖 CUSTOMER MODE AI CAPABILITIES (ONE CUSTOMER AI AGENT)
     // =========================================================================
 
+    // 0. EXPLAIN MY PREVIOUS BILL ASSISTANT (Strict Authenticated Customer Scoping)
+    if (lowerPrompt.includes('bill') || lowerPrompt.includes('invoice') || lowerPrompt.includes('explain my bill') || lowerPrompt.includes('previous bill') || lowerPrompt.includes('my bill') || lowerPrompt.includes('why is my total')) {
+      if (!user) {
+        return res.json({
+          success: true,
+          role,
+          mode_label: modeLabel,
+          message: "🤖 Please log in to view and explain your previous bill!",
+          suggested_questions: ["What's available now?", "Show breakfast under ₹100"]
+        });
+      }
+
+      // Query authenticated customer's most recent order/bill ONLY
+      const prevOrderRes = await db.query(
+        `SELECT * FROM orders WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1;`,
+        [user.id]
+      );
+      const order = prevOrderRes.rows ? prevOrderRes.rows[0] : null;
+
+      // Ownership and Record Verification
+      if (!order || order.customer_id !== user.id) {
+        return res.json({
+          success: true,
+          role,
+          mode_label: modeLabel,
+          message: "🤖 I couldn't find a previous bill in your account.",
+          suggested_questions: ["What's available now?", "Show breakfast under ₹100"]
+        });
+      }
+
+      // Parse actual verified order items
+      let itemsList = [];
+      try {
+        itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+      } catch (e) { itemsList = []; }
+
+      // Parse actual add-ons if present
+      let addOnsList = [];
+      try {
+        addOnsList = typeof order.add_ons === 'string' ? JSON.parse(order.add_ons) : (order.add_ons || []);
+      } catch (e) { addOnsList = []; }
+
+      const itemsSubtotal = itemsList.reduce((sum, i) => sum + (Number(i.price || 0) * Number(i.quantity || 1)), 0);
+      const addOnsSubtotal = addOnsList.reduce((sum, a) => sum + (Number(a.price || 0) * Number(a.quantity || 1)), 0);
+      const deliveryFee = Number(order.delivery_fee || 0);
+      const loyaltyDiscount = Number(order.loyalty_discount || 0);
+      const memberDiscount = Number(order.food_member_discount || 0);
+      const totalDiscount = loyaltyDiscount + memberDiscount;
+      const finalTotal = Number(order.total_amount || 0);
+
+      const orderNum = order.order_number || order.id.substring(0, 8);
+      const orderDate = new Date(order.created_at).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+      const payStatus = order.payment_status || (order.payment_verified ? 'Paid' : 'Pending Verification');
+      const payMethod = order.payment_method || 'Online / UPI';
+
+      let message = `🧾 **Previous Bill Explanation (Order #${orderNum})**\n\n`;
+      message += `📅 **Date:** ${orderDate}\n`;
+      message += `📌 **Order Status:** ${order.order_status}\n`;
+      message += `💳 **Payment:** ${payStatus} (${payMethod})\n\n`;
+
+      message += `**Items Breakdown:**\n`;
+      if (itemsList.length === 0) {
+        message += `• Tiffin Meal Combo\n`;
+      } else {
+        itemsList.forEach((it, idx) => {
+          const qty = it.quantity || 1;
+          const price = Number(it.price || 0);
+          message += `${idx + 1}. **${it.name || 'Tiffin Item'}** × ${qty} @ ₹${price} = ₹${(price * qty).toFixed(2)}\n`;
+        });
+      }
+
+      if (addOnsList.length > 0) {
+        message += `\n**Add-ons:**\n`;
+        addOnsList.forEach(a => {
+          const qty = a.quantity || 1;
+          const price = Number(a.price || 0);
+          message += `• **${a.name}** × ${qty} = ₹${(price * qty).toFixed(2)}\n`;
+        });
+      }
+
+      message += `\n**Bill Calculation:**\n`;
+      message += `• **Items Subtotal:** ₹${itemsSubtotal.toFixed(2)}\n`;
+      if (addOnsSubtotal > 0) message += `• **Add-ons Subtotal:** ₹${addOnsSubtotal.toFixed(2)}\n`;
+      if (deliveryFee > 0) message += `• **Delivery Fee:** ₹${deliveryFee.toFixed(2)}\n`;
+      if (loyaltyDiscount > 0) message += `• **Loyalty Points Discount:** -₹${loyaltyDiscount.toFixed(2)}\n`;
+      if (memberDiscount > 0) message += `• **VIP Member Card Discount:** -₹${memberDiscount.toFixed(2)}\n`;
+      message += `• **Final Total Amount Paid:** ₹${finalTotal.toFixed(2)}\n`;
+
+      return res.json({
+        success: true,
+        role,
+        mode_label: modeLabel,
+        message,
+        data: {
+          order_id: order.id,
+          order_number: orderNum,
+          total_amount: finalTotal,
+          items_count: itemsList.length
+        },
+        suggested_questions: ["Where is my order?", "Order my usual", "How many loyalty points do I have?"]
+      });
+    }
+
     // 1. Order Status & Queue Intelligence
     if (lowerPrompt.includes('where is my order') || lowerPrompt.includes('order status') || lowerPrompt.includes('track order') || lowerPrompt.includes('my order status') || lowerPrompt.includes('status')) {
       if (!user) {
