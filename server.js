@@ -818,7 +818,8 @@ async function authenticateToken(req, res, next) {
     // AUTO-HEAL Token matching
     if (!tokenEntry && typeof token === 'string' && token.startsWith('tok_')) {
       const usersRes = await db.query('SELECT id, role FROM users;');
-      const matchingUser = usersRes.rows
+      const matchingUser = (usersRes.rows || [])
+        .filter(u => u && u.id)
         .sort((a, b) => b.id.length - a.id.length)
         .find(u => token.startsWith('tok_' + u.id + '_'));
       if (matchingUser) {
@@ -4901,7 +4902,7 @@ app.get('/api/payments', authenticateToken, async (req, res) => {
     params = [req.user.id];
   }
   const pRes = await db.query(queryStr, params);
-  const mappedPayments = pRes.rows.map(p => ({
+  const mappedPayments = (pRes.rows || []).map(p => ({
     ...p,
     payment_screenshot: p.payment_screenshot || p.screenshot_url || '',
     screenshot_url: p.screenshot_url || p.payment_screenshot || ''
@@ -9878,9 +9879,15 @@ async function handleUnifiedAiOrderAssistant(req, res) {
         if (!tokenEntry && typeof token === 'string' && token.startsWith('tok_')) {
           const usersRes = await db.query('SELECT id, role FROM users;');
           const matchingUser = (usersRes.rows || [])
+            .filter(u => u && u.id)
             .sort((a, b) => b.id.length - a.id.length)
             .find(u => token.startsWith('tok_' + u.id + '_'));
           if (matchingUser) {
+            const now = Date.now();
+            await db.query(
+              'INSERT INTO tokens (token, user_id, role, created_at, last_activity) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (token) DO NOTHING;',
+              [token, matchingUser.id, matchingUser.role, now, now]
+            );
             tokenEntry = { token, user_id: matchingUser.id, role: matchingUser.role };
           }
         }
@@ -10191,6 +10198,99 @@ async function handleUnifiedAiOrderAssistant(req, res) {
         mode_label: modeLabel,
         message: reply,
         suggested_questions: ["What's available now?", "Show breakfast under ₹100", "Where is my order?"]
+      });
+    }
+
+    // 0.01 PREVIOUS PAYMENT ASSISTANT (Strict Authenticated Customer Scoping)
+    if (lowerPrompt.includes('payment') || lowerPrompt.includes('previous payment') || lowerPrompt.includes('last payment') || lowerPrompt.includes('my payment') || lowerPrompt.includes('payment details') || lowerPrompt.includes('what is my payment') || lowerPrompt.includes('txn') || lowerPrompt.includes('utr')) {
+      if (!user) {
+        return res.json({
+          success: true,
+          role,
+          mode_label: modeLabel,
+          message: "🤖 Please log in to view your previous payment details!",
+          suggested_questions: ["What's available now?", "Show breakfast under ₹100"]
+        });
+      }
+
+      // Query authenticated customer's previous successful / completed payment ONLY
+      // Scoped strictly to user.id in payments table or linked orders table
+      const prevPayRes = await db.query(
+        `SELECT p.*, o.order_number as order_ref 
+         FROM payments p 
+         LEFT JOIN orders o ON p.order_id = o.id 
+         WHERE (p.customer_id = $1 OR o.customer_id = $1) 
+           AND p.payment_status IN ('Paid', 'Verified', 'Cash Received', 'Completed', 'SUCCESS', 'Processing', 'Pending Verification')
+         ORDER BY p.created_at DESC LIMIT 1;`,
+        [user.id]
+      );
+
+      let payRecord = prevPayRes.rows ? prevPayRes.rows[0] : null;
+
+      // Fallback: Check orders table directly if payments table record is absent
+      if (!payRecord) {
+        const prevOrderPayRes = await db.query(
+          `SELECT * FROM orders 
+           WHERE customer_id = $1 
+             AND (payment_verified = true OR payment_status IN ('Paid', 'Verified', 'Cash Received', 'Completed', 'SUCCESS', 'Processing', 'Pending Verification'))
+           ORDER BY created_at DESC LIMIT 1;`,
+          [user.id]
+        );
+        if (prevOrderPayRes.rows && prevOrderPayRes.rows.length > 0) {
+          const ord = prevOrderPayRes.rows[0];
+          payRecord = {
+            id: ord.id,
+            order_number: ord.order_number || ord.id.substring(0, 8),
+            amount: ord.total_amount,
+            payment_method: ord.payment_method || 'Online / UPI',
+            payment_status: ord.payment_status || (ord.payment_verified ? 'Paid' : 'Completed'),
+            utr_number: ord.utr_number || null,
+            created_at: ord.created_at
+          };
+        }
+      }
+
+      if (!payRecord) {
+        return res.json({
+          success: true,
+          role,
+          mode_label: modeLabel,
+          message: "💳 I couldn't find a previous payment record in your account.",
+          suggested_questions: ["What's available now?", "Show breakfast under ₹100", "Where is my order?"]
+        });
+      }
+
+      const payAmount = Number(payRecord.amount || 0).toFixed(2);
+      const payDate = new Date(payRecord.created_at || payRecord.date_time || Date.now()).toLocaleDateString('en-IN', {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      const payMethod = payRecord.payment_method || 'Online / UPI';
+      const payStatus = payRecord.payment_status || 'Paid';
+      const orderRef = payRecord.order_number || payRecord.order_ref || (payRecord.id ? payRecord.id.substring(0, 8) : 'N/A');
+      const utrRef = payRecord.utr_number ? payRecord.utr_number : null;
+
+      let message = `💳 **Previous Payment Details (Order #${orderRef})**\n\n`;
+      message += `• **Amount Paid:** ₹${payAmount}\n`;
+      message += `• **Payment Date:** ${payDate}\n`;
+      message += `• **Payment Status:** ${payStatus}\n`;
+      message += `• **Payment Method:** ${payMethod}\n`;
+      if (utrRef) {
+        message += `• **UTR / Txn Ref:** ${utrRef}\n`;
+      }
+
+      return res.json({
+        success: true,
+        role,
+        mode_label: modeLabel,
+        message,
+        data: {
+          order_number: orderRef,
+          amount: payAmount,
+          status: payStatus,
+          method: payMethod,
+          utr: utrRef
+        },
+        suggested_questions: ["Explain my bill", "Where is my order?", "Download payment statement"]
       });
     }
 

@@ -9595,43 +9595,62 @@ class TiffinApp {
     `;
   }
 
-  downloadCustomerPaymentStatementCSV() {
-    if (!this.currentUser) return;
-    const userMobileClean = (this.currentUser.mobile || '').replace(/[^0-9]/g, '');
-
-    const userPayments = (this.payments || []).filter(p => {
-      if (p.customer_mobile && p.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
-      const matchingOrder = (this.orders || []).find(o => o.order_number === p.order_number);
-      if (matchingOrder && matchingOrder.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
-      return false;
-    });
-
-    if (!userPayments.length) {
-      this.showToast('No payment history records to download.', 'info');
+  async downloadCustomerPaymentStatementCSV() {
+    if (!this.currentUser) {
+      this.showToast('Please log in to download your payment statement.', 'warning');
       return;
     }
 
-    const headers = ['Order Number', 'Amount (INR)', 'Payment Method', 'UTR Ref Number', 'Date & Time', 'Payment Status'];
-    const rows = userPayments.map(p => [
-      `"${p.order_number}"`,
-      `"${p.amount}"`,
-      `"${p.payment_method}"`,
-      `"${p.utr_number || 'N/A'}"`,
-      `"${p.date_time}"`,
-      `"${p.payment_status}"`
-    ]);
+    try {
+      // Always fetch fresh authorized payment records from backend for current user
+      const res = await this.fetchWithAuth(`${API_BASE}/payments`);
+      const json = await res.json();
+      const rawPayments = (json.success && Array.isArray(json.data)) ? json.data : (this.payments || []);
 
-    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Payment_Statement_${(this.currentUser.name || 'Customer').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    this.showToast('Payment statement downloaded (CSV)!', 'success');
+      const userMobileClean = (this.currentUser.mobile || '').replace(/[^0-9]/g, '');
+      const userPayments = rawPayments.filter(p => {
+        if (p.customer_id && p.customer_id === this.currentUser.id) return true;
+        if (p.customer_mobile && userMobileClean && p.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean) return true;
+        const matchingOrder = (this.orders || []).find(o => o.order_number === p.order_number || o.id === p.order_id);
+        if (matchingOrder && (matchingOrder.customer_id === this.currentUser.id || (matchingOrder.customer_mobile && matchingOrder.customer_mobile.replace(/[^0-9]/g, '') === userMobileClean))) return true;
+        return false;
+      });
+
+      if (!userPayments.length) {
+        this.showToast('No payment history records found to download.', 'info');
+        return;
+      }
+
+      const headers = ['Order Number', 'Amount (INR)', 'Payment Method', 'UTR Ref Number', 'Date & Time', 'Payment Status'];
+      const rows = userPayments.map(p => {
+        const dt = p.created_at || p.date_time || '';
+        const formattedDate = dt ? new Date(dt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : (p.date_time || 'N/A');
+        return [
+          `"${p.order_number || p.order_ref || p.order_id || 'N/A'}"`,
+          `"${Number(p.amount || 0).toFixed(2)}"`,
+          `"${p.payment_method || 'Online / UPI'}"`,
+          `"${p.utr_number || 'N/A'}"`,
+          `"${formattedDate}"`,
+          `"${p.payment_status || 'Completed'}"`
+        ];
+      });
+
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanName = (this.currentUser.name || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
+      a.download = `Payment_Statement_${cleanName}_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      this.showToast('Payment statement downloaded (CSV)!', 'success');
+    } catch (err) {
+      console.error('Error downloading payment statement:', err);
+      this.showToast('Failed to download payment statement.', 'error');
+    }
   }
 
   // =========================================================================
