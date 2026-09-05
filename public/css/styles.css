@@ -1699,12 +1699,12 @@ textarea.form-control {
   transform: translateY(0);
 }
 
-/* Toast Notifications */
+/* Toast Notifications (Always visible above all modal backdrops) */
 .toast-container {
   position: fixed;
   bottom: 80px;
   right: 20px;
-  z-index: 100001 !important;
+  z-index: 1000000 !important;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -6786,13 +6786,53 @@ body.guest-mode #btnMobileMenuToggle {
   position: fixed;
   top: 20px;
   right: 20px;
-  z-index: 100000;
+  z-index: 1000000 !important;
   display: flex;
   flex-direction: column;
   gap: 10px;
   pointer-events: none;
   width: min(380px, calc(100vw - 32px));
   max-width: 100%;
+}
+
+/* =========================================================================
+   CUSTOMER AI ASSISTANT SPECIFIC ADD TO CART BUTTON STYLES & INTERACTION
+   (Does NOT affect normal food-card Add to Cart buttons outside AI Assistant)
+   ========================================================================= */
+.btn-ai-add-cart {
+  background: linear-gradient(135deg, #2196F3, #1565C0);
+  border: none;
+  color: #FFFFFF;
+  font-weight: 800;
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.35);
+  position: relative;
+  z-index: 5;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-ai-add-cart:hover {
+  background: linear-gradient(135deg, #42A5F5, #1E88E5) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 18px rgba(33, 150, 243, 0.55) !important;
+}
+
+.btn-ai-add-cart:active,
+.btn-ai-add-cart:focus {
+  background: linear-gradient(135deg, #1E88E5, #1565C0) !important;
+  transform: translateY(0) scale(0.97) !important;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.4) !important;
+  outline: none !important;
 }
 
 @media (max-width: 600px) {

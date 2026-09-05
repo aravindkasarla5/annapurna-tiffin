@@ -10733,7 +10733,7 @@ async function handleUnifiedAiOrderAssistant(req, res) {
       });
     }
 
-    // 10. Complete Menu Search & Price Filter Engine (ALL Matching Available Items + Images)
+    // 10. Complete Menu Search & Category/Price Filter Engine (Strict Category Isolation & Zero Leakage)
     let maxPrice = null;
     const priceMatch = rawPrompt.match(/(?:under|within|below|less than|for|budget|\u20b9|rs\.?|in)?\s*(\d{2,4})/i);
     if (priceMatch) {
@@ -10758,33 +10758,53 @@ async function handleUnifiedAiOrderAssistant(req, res) {
       });
     }
 
-    // Category / Keyword Filtering
+    // Determine Requested Category
     let filteredTiffins = availableTiffins;
+    let categoryLabel = '';
 
-    if (lowerPrompt.includes('special') || lowerPrompt.includes('specials')) {
-      const specials = availableTiffins.filter(t => (t.category || '').toLowerCase().includes('special') || (t.name || '').toLowerCase().includes('special') || (t.name || '').toLowerCase().includes('ghee') || (t.name || '').toLowerCase().includes('karam'));
-      if (specials.length > 0) filteredTiffins = specials;
-    } else if (lowerPrompt.includes('dinner') || lowerPrompt.includes('night')) {
-      const dinners = availableTiffins.filter(t => (t.category || '').toLowerCase().includes('dinner') || (t.name || '').toLowerCase().includes('chapathi') || (t.name || '').toLowerCase().includes('parota') || (t.name || '').toLowerCase().includes('dosa'));
-      if (dinners.length > 0) filteredTiffins = dinners;
-    } else if (lowerPrompt.includes('crispy') || lowerPrompt.includes('dosa')) {
-      const dosas = availableTiffins.filter(t => t.name.toLowerCase().includes('dosa'));
-      if (dosas.length > 0) filteredTiffins = dosas;
-    } else if (lowerPrompt.includes('light') || lowerPrompt.includes('idly')) {
-      const idlis = availableTiffins.filter(t => t.name.toLowerCase().includes('idly'));
-      if (idlis.length > 0) filteredTiffins = idlis;
+    const isExplicitAllFood = lowerPrompt.includes('all available food') || lowerPrompt.includes('all food') || lowerPrompt.includes('what food is available') || lowerPrompt.includes('show all food') || lowerPrompt.includes('entire menu') || lowerPrompt.includes('what\'s available now');
+    const isSpecialReq = (lowerPrompt.includes('special') || lowerPrompt.includes('specials')) && !isExplicitAllFood;
+    const isDinnerReq = (lowerPrompt.includes('dinner') || lowerPrompt.includes('night')) && !isExplicitAllFood;
+    const isBreakfastReq = (lowerPrompt.includes('breakfast')) && !isExplicitAllFood;
+    const isTiffinReq = (lowerPrompt.includes('tiffin') || lowerPrompt.includes('tiffins')) && !isBreakfastReq && !isDinnerReq && !isSpecialReq && !isExplicitAllFood;
+
+    if (isSpecialReq) {
+      categoryLabel = 'Special';
+      filteredTiffins = availableTiffins.filter(t => {
+        const cat = (t.category || '').toLowerCase();
+        const nm = (t.name || '').toLowerCase();
+        return cat.includes('special') || nm.includes('special');
+      });
+    } else if (isDinnerReq) {
+      categoryLabel = 'Dinner';
+      filteredTiffins = availableTiffins.filter(t => {
+        const cat = (t.category || '').toLowerCase();
+        return cat.includes('dinner') || cat.includes('night');
+      });
+    } else if (isBreakfastReq) {
+      categoryLabel = 'Breakfast';
+      filteredTiffins = availableTiffins.filter(t => {
+        const cat = (t.category || '').toLowerCase();
+        return cat.includes('breakfast');
+      });
+    } else if (isTiffinReq) {
+      categoryLabel = 'Tiffin';
+      filteredTiffins = availableTiffins.filter(t => {
+        const cat = (t.category || '').toLowerCase();
+        return cat.includes('tiffin') || cat.includes('breakfast');
+      });
+    } else if (lowerPrompt.includes('dosa')) {
+      filteredTiffins = availableTiffins.filter(t => t.name.toLowerCase().includes('dosa'));
+    } else if (lowerPrompt.includes('idly')) {
+      filteredTiffins = availableTiffins.filter(t => t.name.toLowerCase().includes('idly'));
     } else if (lowerPrompt.includes('vada')) {
-      const vadas = availableTiffins.filter(t => t.name.toLowerCase().includes('vada'));
-      if (vadas.length > 0) filteredTiffins = vadas;
+      filteredTiffins = availableTiffins.filter(t => t.name.toLowerCase().includes('vada'));
     } else if (lowerPrompt.includes('poori')) {
-      const pooris = availableTiffins.filter(t => t.name.toLowerCase().includes('poori'));
-      if (pooris.length > 0) filteredTiffins = pooris;
+      filteredTiffins = availableTiffins.filter(t => t.name.toLowerCase().includes('poori'));
     } else if (lowerPrompt.includes('upma')) {
-      const upmas = availableTiffins.filter(t => t.name.toLowerCase().includes('upma'));
-      if (upmas.length > 0) filteredTiffins = upmas;
+      filteredTiffins = availableTiffins.filter(t => t.name.toLowerCase().includes('upma'));
     } else if (lowerPrompt.includes('pongal')) {
-      const pongals = availableTiffins.filter(t => t.name.toLowerCase().includes('pongal'));
-      if (pongals.length > 0) filteredTiffins = pongals;
+      filteredTiffins = availableTiffins.filter(t => t.name.toLowerCase().includes('pongal'));
     }
 
     // Apply Price Filter if requested
@@ -10795,8 +10815,8 @@ async function handleUnifiedAiOrderAssistant(req, res) {
     // No matching items guard
     if (filteredTiffins.length === 0) {
       let noMatchMsg = maxPrice 
-        ? `🤖 No available food items found under ₹${maxPrice}.`
-        : `🤖 No available food items found matching your request.`;
+        ? `🤖 No available ${categoryLabel ? categoryLabel.toLowerCase() + ' ' : ''}food items found under ₹${maxPrice}.`
+        : `🤖 No available ${categoryLabel ? categoryLabel.toLowerCase() + ' ' : ''}food items found matching your request.`;
       if (isTelugu) {
         noMatchMsg = maxPrice ? `🤖 ₹${maxPrice} కింద అందుబాటులో ఉన్న ఆహార పదార్థాలు ఏవీ లభించలేదు.` : `🤖 మ్యాచ్ అయ్యే ఆహార పదార్థాలు ఏవీ లభించలేదు.`;
       } else if (isHindi) {
@@ -10808,7 +10828,7 @@ async function handleUnifiedAiOrderAssistant(req, res) {
         mode_label: modeLabel,
         message: noMatchMsg,
         food_items: [],
-        suggested_questions: ["What's available now?", "Show breakfast under ₹100", "Show all available food items"]
+        suggested_questions: ["Show available tiffin", "Show available dinner", "Show available special items", "Show all available food"]
       });
     }
 
@@ -10823,7 +10843,7 @@ async function handleUnifiedAiOrderAssistant(req, res) {
       is_available: true
     }));
 
-    let responseMsg = `🍽️ **Found ${foodItems.length} Available Food Item${foodItems.length !== 1 ? 's' : ''}${maxPrice ? ` (Under ₹${maxPrice})` : ''}:**\n\n`;
+    let responseMsg = `🍽️ **Found ${foodItems.length} Available ${categoryLabel ? categoryLabel + ' ' : ''}Food Item${foodItems.length !== 1 ? 's' : ''}${maxPrice ? ` (Under ₹${maxPrice})` : ''}:**\n\n`;
     foodItems.forEach((f, idx) => {
       responseMsg += `${idx + 1}. **${f.name}** — ₹${f.price.toFixed(2)}\n`;
     });

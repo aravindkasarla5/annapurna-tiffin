@@ -17049,7 +17049,7 @@ class TiffinApp {
                   ₹${Number(item.price).toFixed(2)}
                 </div>
               </div>
-              <button type="button" onclick="app.addToCart('${item.id}')" style="background: linear-gradient(135deg, #2196F3, #1565C0); border: none; color: #FFF; font-weight: 800; padding: 9px 12px; font-size: 0.82rem; border-radius: 8px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <button type="button" class="btn-ai-add-cart" onclick="app.addToCart('${item.id}')">
                 <i class="fa-solid fa-cart-plus"></i> Add to Cart (₹${Number(item.price).toFixed(2)})
               </button>
             </div>
