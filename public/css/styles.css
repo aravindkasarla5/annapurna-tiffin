@@ -863,7 +863,8 @@ h1, h2, h3, h4, h5, h6 {
 .availability-badge {
   position: absolute;
   top: 10px;
-  right: 10px;
+  left: 10px;
+  right: auto;
   padding: 4px 9px;
   border-radius: var(--radius-full);
   font-size: 0.68rem;
@@ -873,6 +874,8 @@ h1, h2, h3, h4, h5, h6 {
   gap: 4px;
   backdrop-filter: blur(8px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  z-index: 4;
+  white-space: nowrap;
 }
 
 .availability-badge.available {
