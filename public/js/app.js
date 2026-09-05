@@ -17033,6 +17033,30 @@ class TiffinApp {
           </div>
         `;
 
+        if (Array.isArray(json.food_items) && json.food_items.length > 0) {
+          html += `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px;">`;
+          html += json.food_items.map(item => `
+            <div class="ai-food-card" style="background: rgba(0,0,0,0.4); border: 1.5px solid var(--border-color); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="width: 100%; height: 110px; border-radius: 10px; overflow: hidden; margin-bottom: 8px; background: rgba(255,255,255,0.05); position: relative;">
+                  <img src="${item.image || '/images/idly_sambar.png'}" alt="${item.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='/images/idly_sambar.png'">
+                  <span style="position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.85); color: var(--accent-gold); font-size: 0.7rem; font-weight: 800; padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2);">
+                    ${item.category || 'Tiffin'}
+                  </span>
+                </div>
+                <h4 style="margin: 0 0 4px 0; font-size: 0.96rem; font-weight: 800; color: #FFF;">${item.name}</h4>
+                <div style="font-size: 1.05rem; font-weight: 900; color: #4CAF50; margin-bottom: 8px; font-family: var(--font-number);">
+                  ₹${Number(item.price).toFixed(2)}
+                </div>
+              </div>
+              <button type="button" onclick="app.addToCart('${item.id}')" style="background: linear-gradient(135deg, #2196F3, #1565C0); border: none; color: #FFF; font-weight: 800; padding: 9px 12px; font-size: 0.82rem; border-radius: 8px; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                <i class="fa-solid fa-cart-plus"></i> Add to Cart (₹${Number(item.price).toFixed(2)})
+              </button>
+            </div>
+          `).join('');
+          html += `</div>`;
+        }
+
         if (this.currentAiOptions.length > 0) {
           html += `<div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">`;
           html += this.currentAiOptions.map((opt, idx) => `
