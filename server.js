@@ -772,6 +772,8 @@ function sanitizeUser(user) {
   if (!Array.isArray(userSafe.favorites)) userSafe.favorites = [];
 
   userSafe.wallet_balance = Number(userSafe.wallet_balance || 0);
+  userSafe.customer_wallet_balance = Number(userSafe.customer_wallet_balance || 0);
+  userSafe.layout_balance = Number(userSafe.layout_balance || 0);
   userSafe.loyalty_points = Number(userSafe.loyalty_points || 0);
   userSafe.sound_enabled = userSafe.sound_enabled !== false;
   userSafe.password_change_required = Boolean(user.password_change_required);
@@ -3268,7 +3270,6 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
             'SUCCESS'
           ]
         );
-      } else {
         // Partial wallet discount handling for Cash / UPI payment methods
         if (used_wallet_amount && Number(used_wallet_amount) > 0) {
           walletDeducted = Math.min(currentWallet, Number(used_wallet_amount), grand_total);
@@ -3293,7 +3294,50 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
             );
           }
         }
-        netAmount = Math.max(0, grand_total - walletDeducted);
+
+        // Deduct Normal Customer Wallet Balance if selected
+        const reqCustWallet = Number(req.body.used_customer_wallet_amount || 0);
+        let custWalletDeducted = 0;
+        if (reqCustWallet > 0) {
+          const custUserRes = await tx.query('SELECT customer_wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+          const currentCustWallet = Number(custUserRes.rows[0]?.customer_wallet_balance || 0);
+          custWalletDeducted = Math.min(currentCustWallet, reqCustWallet, Math.max(0, grand_total - walletDeducted));
+          if (custWalletDeducted > 0) {
+            const remCustBal = currentCustWallet - custWalletDeducted;
+            await tx.query('UPDATE users SET customer_wallet_balance = $1 WHERE id = $2;', [remCustBal, req.user.id]);
+            await tx.query(
+              `INSERT INTO customer_wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+              [
+                'cwtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                req.user.id,
+                custWalletDeducted,
+                'DEBIT',
+                `Redeemed on Order #${orderNum}`,
+                new Date().toLocaleString('en-IN'),
+                orderNum,
+                currentCustWallet,
+                remCustBal,
+                'SUCCESS'
+              ]
+            );
+          }
+        }
+
+        // Deduct Layout Balance if selected
+        const reqLayoutBal = Number(req.body.used_layout_amount || 0);
+        let layoutDeducted = 0;
+        if (reqLayoutBal > 0) {
+          const layoutUserRes = await tx.query('SELECT layout_balance FROM users WHERE id = $1;', [req.user.id]);
+          const currentLayout = Number(layoutUserRes.rows[0]?.layout_balance || 0);
+          layoutDeducted = Math.min(currentLayout, reqLayoutBal, Math.max(0, grand_total - walletDeducted - custWalletDeducted));
+          if (layoutDeducted > 0) {
+            const remLayoutBal = currentLayout - layoutDeducted;
+            await tx.query('UPDATE users SET layout_balance = $1 WHERE id = $2;', [remLayoutBal, req.user.id]);
+          }
+        }
+
+        netAmount = Math.max(0, grand_total - walletDeducted - custWalletDeducted - layoutDeducted);
         finalPayStatus = 'Pending';
       }
 
@@ -3437,14 +3481,18 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
       createdOrder.screenshot_url = createdOrder.screenshot_url || createdOrder.payment_screenshot || '';
     }
 
-    // Retrieve updated wallet balance for customer response
-    const updatedUserRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+    // Retrieve updated wallet balances for customer response
+    const updatedUserRes = await db.query('SELECT wallet_balance, customer_wallet_balance, layout_balance FROM users WHERE id = $1;', [req.user.id]);
     const updatedWalletBalance = Number(updatedUserRes.rows[0]?.wallet_balance || 0);
+    const updatedCustWalletBalance = Number(updatedUserRes.rows[0]?.customer_wallet_balance || 0);
+    const updatedLayoutBalance = Number(updatedUserRes.rows[0]?.layout_balance || 0);
 
     res.json({
       success: true,
       data: createdOrder,
       wallet_balance: updatedWalletBalance,
+      customer_wallet_balance: updatedCustWalletBalance,
+      layout_balance: updatedLayoutBalance,
       message: isReferralPayment
         ? `Order #${orderNum} paid successfully using Referral Wallet!`
         : `Order #${orderNum} placed successfully!`
@@ -3822,9 +3870,9 @@ app.get('/api/wallet/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     
-    // Fetch latest verified wallet balance
-    const uRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [userId]);
-    const available_balance = Number(uRes.rows[0]?.wallet_balance || 0);
+    // Fetch latest verified normal customer wallet balance
+    const uRes = await db.query('SELECT customer_wallet_balance FROM users WHERE id = $1;', [userId]);
+    const available_balance = Number(uRes.rows[0]?.customer_wallet_balance || 0);
 
     // Aggregate top-up amounts by status
     const reqRes = await db.query(
@@ -4143,80 +4191,91 @@ app.post('/api/owner/wallet/requests/:id/approve', authenticateToken, requireRol
       return res.status(400).json({ success: false, message: "Request ID parameter is required." });
     }
 
-    // 1. Fetch Request & Lock Check
-    const reqRes = await db.query('SELECT * FROM wallet_topup_requests WHERE id = $1 OR request_id = $1;', [id]);
-    if (!reqRes.rows || reqRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Wallet top-up request record not found." });
-    }
+    let requestObj = null;
+    let customerUser = null;
+    let previousBalance = 0;
+    let newBalance = 0;
+    let approvedAmount = 0;
 
-    const requestObj = reqRes.rows[0];
+    await db.executeTransaction(async (tx) => {
+      // 1. Fetch Request & Lock Check inside transaction
+      const reqRes = await tx.query('SELECT * FROM wallet_topup_requests WHERE id = $1 OR request_id = $1;', [id]);
+      if (!reqRes.rows || reqRes.rows.length === 0) {
+        const err = new Error("Wallet top-up request record not found.");
+        err.statusCode = 404;
+        throw err;
+      }
 
-    // Status transition guard: Request MUST be PENDING
-    if (requestObj.status.toUpperCase() !== 'PENDING') {
-      return res.status(409).json({
-        success: false,
-        message: `Request #${requestObj.request_id} has already been processed (Current status: ${requestObj.status}).`
-      });
-    }
+      requestObj = reqRes.rows[0];
 
-    const approvedAmount = Number(requestObj.amount || 0);
-    if (isNaN(approvedAmount) || approvedAmount <= 0) {
-      return res.status(400).json({ success: false, message: "Top-up request has an invalid stored amount." });
-    }
+      // Status transition guard: Request MUST be PENDING
+      if (requestObj.status.toUpperCase() !== 'PENDING') {
+        const err = new Error(`Request #${requestObj.request_id} has already been processed (Current status: ${requestObj.status}).`);
+        err.statusCode = 409;
+        throw err;
+      }
 
-    // 2. Fetch Customer Record
-    const userRes = await db.query('SELECT id, wallet_balance, name FROM users WHERE id = $1;', [requestObj.customer_id]);
-    if (!userRes.rows || userRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Associated customer account no longer exists." });
-    }
+      approvedAmount = Number(requestObj.amount || 0);
+      if (isNaN(approvedAmount) || approvedAmount <= 0) {
+        const err = new Error("Top-up request has an invalid stored amount.");
+        err.statusCode = 400;
+        throw err;
+      }
 
-    const customerUser = userRes.rows[0];
-    const previousBalance = Number(customerUser.wallet_balance || 0);
+      // 2. Fetch Customer Record
+      const userRes = await tx.query('SELECT id, customer_wallet_balance, name FROM users WHERE id = $1;', [requestObj.customer_id]);
+      if (!userRes.rows || userRes.rows.length === 0) {
+        const err = new Error("Associated customer account no longer exists.");
+        err.statusCode = 404;
+        throw err;
+      }
 
-    // 3. ATOMIC STATE TRANSITION LOCK QUERY:
-    // Update status from PENDING to APPROVED atomically.
-    // If rowCount === 0, another concurrent tab/request already approved it!
-    const nowIso = new Date().toISOString();
-    const updateReqRes = await db.query(
-      `UPDATE wallet_topup_requests
-       SET status = 'APPROVED', approved_at = $1, approved_by = $2, updated_at = $1
-       WHERE id = $3 AND UPPER(status) = 'PENDING';`,
-      [nowIso, req.user.id, requestObj.id]
-    );
+      customerUser = userRes.rows[0];
+      previousBalance = Number(customerUser.customer_wallet_balance || 0);
 
-    if (updateReqRes.rowCount === 0) {
-      return res.status(409).json({
-        success: false,
-        message: `Concurrent execution blocked: Request #${requestObj.request_id} was already approved or updated by another session.`
-      });
-    }
+      // 3. ATOMIC STATE TRANSITION LOCK QUERY:
+      // Update status from PENDING to APPROVED atomically.
+      const nowIso = new Date().toISOString();
+      const updateReqRes = await tx.query(
+        `UPDATE wallet_topup_requests
+         SET status = 'APPROVED', approved_at = $1, approved_by = $2, updated_at = $1
+         WHERE id = $3 AND UPPER(status) = 'PENDING';`,
+        [nowIso, req.user.id, requestObj.id]
+      );
 
-    // 4. Credit Customer Wallet Balance
-    const creditRes = await db.query(
-      `UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2 RETURNING wallet_balance;`,
-      [approvedAmount, customerUser.id]
-    );
-    const newBalance = Number(creditRes.rows[0]?.wallet_balance || (previousBalance + approvedAmount));
+      if (updateReqRes.rowCount === 0) {
+        const err = new Error(`Concurrent execution blocked: Request #${requestObj.request_id} was already approved or updated by another session.`);
+        err.statusCode = 409;
+        throw err;
+      }
 
-    // 5. Create Financial Source-of-Truth Ledger Entry in `wallet_transactions`
-    const txId = 'wtx_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
-    const dateTimeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+      // 4. Credit Customer Normal Wallet Balance ONLY (customer_wallet_balance)
+      const creditRes = await tx.query(
+        `UPDATE users SET customer_wallet_balance = customer_wallet_balance + $1 WHERE id = $2 RETURNING customer_wallet_balance;`,
+        [approvedAmount, customerUser.id]
+      );
+      newBalance = Number(creditRes.rows[0]?.customer_wallet_balance || (previousBalance + approvedAmount));
 
-    await db.query(
-      `INSERT INTO wallet_transactions (
-        id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
-      ) VALUES ($1, $2, $3, $4, 'CREDIT', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
-      [
-        txId,
-        customerUser.id,
-        requestObj.id,
-        approvedAmount,
-        `Wallet Top-Up Verified & Approved (Req #${requestObj.request_id})`,
-        dateTimeStr,
-        previousBalance,
-        newBalance
-      ]
-    );
+      // 5. Create Financial Source-of-Truth Ledger Entry in `customer_wallet_transactions`
+      const txId = 'cwtx_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+      const dateTimeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+      await tx.query(
+        `INSERT INTO customer_wallet_transactions (
+          id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
+        ) VALUES ($1, $2, $3, $4, 'TOPUP_APPROVED', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
+        [
+          txId,
+          customerUser.id,
+          requestObj.id,
+          approvedAmount,
+          `Wallet Top-Up Verified & Approved (Req #${requestObj.request_id})`,
+          dateTimeStr,
+          previousBalance,
+          newBalance
+        ]
+      );
+    });
 
     // 6. Send Customer Real-Time Notification
     try {
@@ -4224,7 +4283,7 @@ app.post('/api/owner/wallet/requests/:id/approve', authenticateToken, requireRol
         target_role: 'CUSTOMER',
         customer_id: customerUser.id,
         title: '✅ Wallet Top-Up Approved!',
-        message: `₹${approvedAmount.toFixed(2)} has been added to your wallet by the Owner. Your new available balance is ₹${newBalance.toFixed(2)}.`,
+        message: `₹${approvedAmount.toFixed(2)} has been added to your Wallet Balance by the Owner. Your new available balance is ₹${newBalance.toFixed(2)}.`,
         type: 'PAYMENT',
         action_url: '/#secCustomerWallet'
       });
@@ -4245,7 +4304,8 @@ app.post('/api/owner/wallet/requests/:id/approve', authenticateToken, requireRol
     });
   } catch (err) {
     console.error('Owner Wallet Approval Error:', err);
-    res.status(500).json({ success: false, message: "Failed to approve wallet top-up request." });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: err.message || "Failed to approve wallet top-up request." });
   }
 });
 
@@ -4263,38 +4323,42 @@ app.post('/api/owner/wallet/requests/:id/reject', authenticateToken, requireRole
       ? reason.trim()
       : 'Payment verification failed';
 
-    // 1. Fetch Request
-    const reqRes = await db.query('SELECT * FROM wallet_topup_requests WHERE id = $1 OR request_id = $1;', [id]);
-    if (!reqRes.rows || reqRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Wallet top-up request record not found." });
-    }
+    let requestObj = null;
 
-    const requestObj = reqRes.rows[0];
+    await db.executeTransaction(async (tx) => {
+      // 1. Fetch Request
+      const reqRes = await tx.query('SELECT * FROM wallet_topup_requests WHERE id = $1 OR request_id = $1;', [id]);
+      if (!reqRes.rows || reqRes.rows.length === 0) {
+        const err = new Error("Wallet top-up request record not found.");
+        err.statusCode = 404;
+        throw err;
+      }
 
-    // Status transition guard: Request MUST be PENDING
-    if (requestObj.status.toUpperCase() !== 'PENDING') {
-      return res.status(409).json({
-        success: false,
-        message: `Request #${requestObj.request_id} has already been processed (Current status: ${requestObj.status}).`
-      });
-    }
+      requestObj = reqRes.rows[0];
 
-    // 2. ATOMIC STATE TRANSITION LOCK QUERY:
-    // Update status to REJECTED. (Wallet Balance is NOT touched!)
-    const nowIso = new Date().toISOString();
-    const updateReqRes = await db.query(
-      `UPDATE wallet_topup_requests
-       SET status = 'REJECTED', rejection_reason = $1, rejected_at = $2, rejected_by = $3, updated_at = $2
-       WHERE id = $4 AND UPPER(status) = 'PENDING';`,
-      [rejectionReason, nowIso, req.user.id, requestObj.id]
-    );
+      // Status transition guard: Request MUST be PENDING
+      if (requestObj.status.toUpperCase() !== 'PENDING') {
+        const err = new Error(`Request #${requestObj.request_id} has already been processed (Current status: ${requestObj.status}).`);
+        err.statusCode = 409;
+        throw err;
+      }
 
-    if (updateReqRes.rowCount === 0) {
-      return res.status(409).json({
-        success: false,
-        message: `Concurrent execution blocked: Request #${requestObj.request_id} was already updated by another session.`
-      });
-    }
+      // 2. ATOMIC STATE TRANSITION LOCK QUERY:
+      // Update status to REJECTED. (Wallet Balance is NOT touched!)
+      const nowIso = new Date().toISOString();
+      const updateReqRes = await tx.query(
+        `UPDATE wallet_topup_requests
+         SET status = 'REJECTED', rejection_reason = $1, rejected_at = $2, rejected_by = $3, updated_at = $2
+         WHERE id = $4 AND UPPER(status) = 'PENDING';`,
+        [rejectionReason, nowIso, req.user.id, requestObj.id]
+      );
+
+      if (updateReqRes.rowCount === 0) {
+        const err = new Error(`Concurrent execution blocked: Request #${requestObj.request_id} was already updated by another session.`);
+        err.statusCode = 409;
+        throw err;
+      }
+    });
 
     // 3. Send Real-Time Notification to Customer
     try {
@@ -4321,23 +4385,24 @@ app.post('/api/owner/wallet/requests/:id/reject', authenticateToken, requireRole
     });
   } catch (err) {
     console.error('Owner Wallet Rejection Error:', err);
-    res.status(500).json({ success: false, message: "Failed to reject wallet top-up request." });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: err.message || "Failed to reject wallet top-up request." });
   }
 });
 
 app.get('/api/wallet/transactions', authenticateToken, async (req, res) => {
   try {
     const txRes = await db.query(
-      'SELECT * FROM wallet_transactions WHERE user_id = $1 ORDER BY created_at DESC;',
+      'SELECT * FROM customer_wallet_transactions WHERE user_id = $1 ORDER BY created_at DESC;',
       [req.user.id]
     );
-    const uRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [req.user.id]);
-    const wallet_balance = Number(uRes.rows[0]?.wallet_balance || 0);
+    const uRes = await db.query('SELECT customer_wallet_balance FROM users WHERE id = $1;', [req.user.id]);
+    const available_balance = Number(uRes.rows[0]?.customer_wallet_balance || 0);
 
     res.json({
       success: true,
       data: {
-        wallet_balance,
+        available_balance,
         transactions: txRes.rows || []
       }
     });
@@ -13550,7 +13615,9 @@ app.post('/api/delivery-zones/check-pincode', async (req, res) => {
         if (pinMatch) targetPin = pinMatch[0];
       }
     } else if (address_id) {
-      const addrRes = await db.query(`SELECT pincode FROM customer_addresses WHERE id = $1;`, [address_id]);
+      const queryStr = req.user ? `SELECT pincode FROM customer_addresses WHERE id = $1 AND customer_id = $2;` : `SELECT pincode FROM customer_addresses WHERE id = $1;`;
+      const queryParams = req.user ? [address_id, req.user.id] : [address_id];
+      const addrRes = await db.query(queryStr, queryParams);
       if (addrRes.rows && addrRes.rows.length > 0) {
         targetPin = (addrRes.rows[0].pincode || '').trim();
       }

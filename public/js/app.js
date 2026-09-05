@@ -1964,7 +1964,7 @@ class TiffinApp {
       }
 
       if (homeHeroWalletBal) {
-        const balNum = Number(this.currentUser.wallet_balance || 0);
+        const balNum = Number(this.currentUser.customer_wallet_balance || 0);
         homeHeroWalletBal.innerText = `₹${balNum.toFixed(2)}`;
       }
 
@@ -2585,7 +2585,7 @@ class TiffinApp {
     if (isCustomer) {
       const u = this.currentUser;
       const initial = u.name ? u.name.charAt(0).toUpperCase() : 'C';
-      const walletBal = u.wallet_balance || 0;
+      const walletBal = u.customer_wallet_balance || 0;
       const points = u.loyalty_points || 0;
 
       navContainer.innerHTML = `
@@ -3517,7 +3517,7 @@ class TiffinApp {
       statOrders.innerText = this.isLoadingOrders ? 'Loading...' : (this.orders || []).length;
     }
     if (statWallet) {
-      const bal = Number(this.currentUser?.wallet_balance || this.referralStats?.wallet_balance || 0).toFixed(2);
+      const bal = Number(this.currentUser?.customer_wallet_balance || 0).toFixed(2);
       statWallet.innerText = `₹${bal}`;
     }
   }
@@ -4499,6 +4499,7 @@ class TiffinApp {
     if (elCheckoutGrand) elCheckoutGrand.innerText = `₹${grandTotal}`;
 
     this.updatePhonePeAmountDisplay();
+    this.updateCheckoutPaymentSummary();
     this.renderCustomerAddonsWidget();
     this.evaluateSmartCartOptimizer();
   }
@@ -4608,20 +4609,148 @@ class TiffinApp {
     const chkWallet = document.getElementById('chkUseWallet');
     if (chkWallet) chkWallet.checked = false;
     this.appliedWalletDiscount = 0;
-    const breakdownBox = document.getElementById('referralAppliedBreakdown');
-    if (breakdownBox) breakdownBox.classList.add('hidden');
+    document.getElementById('referralAppliedBreakdown')?.classList.add('hidden');
+
+    const chkCustWallet = document.getElementById('chkUseCustomerWallet');
+    if (chkCustWallet) chkCustWallet.checked = false;
+    this.appliedCustomerWalletDiscount = 0;
+    document.getElementById('customerWalletAppliedBreakdown')?.classList.add('hidden');
+
+    const chkLayout = document.getElementById('chkUseLayout');
+    if (chkLayout) chkLayout.checked = false;
+    this.appliedLayoutDiscount = 0;
+    document.getElementById('layoutAppliedBreakdown')?.classList.add('hidden');
 
     this.handleCheckoutOrderTypeChange();
     this.updateCartUI();
     this.selectPaymentMethod(this.selectedPaymentMethod || 'Cash');
 
     this.fetchReferralStats().then(() => {
-      const walletBal = Number(this.referralStats?.wallet_balance || this.currentUser?.wallet_balance || 0);
-      const elText = document.getElementById('checkoutWalletAvailableText');
-      if (elText) elText.innerHTML = `Available Balance: <strong>₹${walletBal}</strong>`;
-    }).catch(() => {});
+      this.updateCheckoutConditionalOptionsVisibility();
+      this.updateCheckoutPaymentSummary();
+    }).catch(() => {
+      this.updateCheckoutConditionalOptionsVisibility();
+      this.updateCheckoutPaymentSummary();
+    });
 
+    this.updateCheckoutConditionalOptionsVisibility();
+    this.updateCheckoutPaymentSummary();
     this.toggleCheckoutModal(true);
+  }
+
+  async updateCheckoutPaymentSummary() {
+    const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { subtotal: 0 };
+    const baseSubtotal = Number(cartTotals.subtotal || 0);
+
+    const orderType = document.getElementById('ordType')?.value || 'Takeaway';
+    const deliveryCharges = (orderType.toLowerCase() === 'delivery') ? Number(this.currentDeliveryFee || 0) : 0;
+
+    let isPremiumActive = false;
+    let premiumDiscount = 0.00;
+
+    if (this.currentUser) {
+      if (!this.currentMemberState && typeof this.fetchWithAuth === 'function') {
+        try {
+          const res = await this.fetchWithAuth(`${API_BASE}/food-member/status`);
+          const json = await res.json();
+          if (json && json.success) {
+            this.currentMemberState = json;
+          }
+        } catch (e) {}
+      }
+
+      if (this.currentMemberState) {
+        const st = this.currentMemberState.status;
+        const cardStatus = this.currentMemberState.card?.status;
+        if (st === 'ACTIVE' || cardStatus === 'ACTIVE') {
+          isPremiumActive = true;
+        }
+      }
+    }
+
+    const totalBeforeMemberDiscount = baseSubtotal + deliveryCharges;
+    if (isPremiumActive && totalBeforeMemberDiscount > 5.00) {
+      premiumDiscount = 5.00;
+    }
+
+    const walletDiscount = Number(this.appliedWalletDiscount || 0);
+    const customerWalletDiscount = Number(this.appliedCustomerWalletDiscount || 0);
+    const layoutDiscount = Number(this.appliedLayoutDiscount || 0);
+    const totalBalanceDiscount = walletDiscount + customerWalletDiscount + layoutDiscount;
+
+    const finalTotalPayable = Math.max(0, baseSubtotal + deliveryCharges - premiumDiscount - totalBalanceDiscount);
+
+    // Update DOM Elements
+    const elSubtotal = document.getElementById('chkBreakdownSubtotal');
+    const elDeliveryRow = document.getElementById('chkBreakdownDeliveryRow');
+    const elDeliveryVal = document.getElementById('chkBreakdownDelivery');
+    const elPremiumRow = document.getElementById('chkBreakdownPremiumRow');
+    const elPremiumVal = document.getElementById('chkBreakdownPremiumDiscount');
+    const elWalletRow = document.getElementById('chkBreakdownWalletRow');
+    const elWalletVal = document.getElementById('chkBreakdownWalletDiscount');
+    const elCustWalletRow = document.getElementById('chkBreakdownCustomerWalletRow');
+    const elCustWalletVal = document.getElementById('chkBreakdownCustomerWalletDiscount');
+    const elLayoutRow = document.getElementById('chkBreakdownLayoutRow');
+    const elLayoutVal = document.getElementById('chkBreakdownLayoutDiscount');
+    const elFinalTotal = document.getElementById('chkBreakdownFinalTotal');
+
+    const elCheckoutGrandDisplay = document.getElementById('checkoutGrandTotalDisplay');
+    const elPhonePeAmount = document.getElementById('phonePePayableAmount');
+    const elPhonePeBtnAmount = document.getElementById('phonePeBtnAmount');
+
+    if (elSubtotal) elSubtotal.innerText = `₹${baseSubtotal}`;
+
+    if (elDeliveryRow) {
+      if (orderType.toLowerCase() === 'delivery') {
+        elDeliveryRow.classList.remove('hidden');
+        if (elDeliveryVal) elDeliveryVal.innerText = `₹${deliveryCharges}`;
+      } else {
+        elDeliveryRow.classList.add('hidden');
+      }
+    }
+
+    if (elPremiumRow) {
+      if (premiumDiscount > 0) {
+        elPremiumRow.classList.remove('hidden');
+        if (elPremiumVal) elPremiumVal.innerText = `-₹${premiumDiscount}`;
+      } else {
+        elPremiumRow.classList.add('hidden');
+      }
+    }
+
+    if (elWalletRow) {
+      if (walletDiscount > 0) {
+        elWalletRow.classList.remove('hidden');
+        if (elWalletVal) elWalletVal.innerText = `-₹${walletDiscount}`;
+      } else {
+        elWalletRow.classList.add('hidden');
+      }
+    }
+
+    if (elCustWalletRow) {
+      if (customerWalletDiscount > 0) {
+        elCustWalletRow.classList.remove('hidden');
+        if (elCustWalletVal) elCustWalletVal.innerText = `-₹${customerWalletDiscount}`;
+      } else {
+        elCustWalletRow.classList.add('hidden');
+      }
+    }
+
+    if (elLayoutRow) {
+      if (layoutDiscount > 0) {
+        elLayoutRow.classList.remove('hidden');
+        if (elLayoutVal) elLayoutVal.innerText = `-₹${layoutDiscount}`;
+      } else {
+        elLayoutRow.classList.add('hidden');
+      }
+    }
+
+    if (elFinalTotal) elFinalTotal.innerText = `₹${finalTotalPayable}`;
+
+    // Sync button displays and PhonePe payment display
+    if (elCheckoutGrandDisplay) elCheckoutGrandDisplay.innerText = `₹${finalTotalPayable}`;
+    if (elPhonePeAmount) elPhonePeAmount.innerText = finalTotalPayable;
+    if (elPhonePeBtnAmount) elPhonePeBtnAmount.innerText = finalTotalPayable;
   }
 
   handleCheckoutOrderTypeChange() {
@@ -4648,6 +4777,7 @@ class TiffinApp {
       input.placeholder = "House/Flat No, Building, Street, Landmark, Area details...";
       this.loadCheckoutSavedAddresses();
     }
+    this.updateCheckoutPaymentSummary();
   }
 
   toggleCheckoutModal(open = true) {
@@ -5552,19 +5682,22 @@ class TiffinApp {
     }
 
     const chkWalletUsed = document.getElementById('chkUseWallet')?.checked === true;
+    const chkCustWalletUsed = document.getElementById('chkUseCustomerWallet')?.checked === true;
+    const chkLayoutUsed = document.getElementById('chkUseLayout')?.checked === true;
+
     const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
     const grandTotal = cartTotals.grandTotal || 0;
 
-    let finalUsedWalletAmount = 0;
+    let finalUsedWalletAmount = (chkWalletUsed && this.appliedWalletDiscount > 0) ? this.appliedWalletDiscount : 0;
+    let finalUsedCustomerWalletAmount = (chkCustWalletUsed && this.appliedCustomerWalletDiscount > 0) ? this.appliedCustomerWalletDiscount : 0;
+    let finalUsedLayoutAmount = (chkLayoutUsed && this.appliedLayoutDiscount > 0) ? this.appliedLayoutDiscount : 0;
+
     let payMethodName = this.selectedPaymentMethod === 'UPI'
       ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
       : 'Cash';
 
-    if (chkWalletUsed && this.appliedWalletDiscount > 0) {
-      finalUsedWalletAmount = this.appliedWalletDiscount;
-      if (finalUsedWalletAmount >= grandTotal) {
-        payMethodName = 'REFERRAL';
-      }
+    if (chkWalletUsed && finalUsedWalletAmount >= grandTotal) {
+      payMethodName = 'REFERRAL';
     }
 
     const payload = {
@@ -5578,6 +5711,8 @@ class TiffinApp {
       payment_screenshot: this.tempPaymentScreenshot || '',
       utr_number: utrNumber || '',
       used_wallet_amount: finalUsedWalletAmount,
+      used_customer_wallet_amount: finalUsedCustomerWalletAmount,
+      used_layout_amount: finalUsedLayoutAmount,
       items: this.cart,
       add_ons: this.getSelectedAddonsPayload ? this.getSelectedAddonsPayload() : []
     };
@@ -5602,15 +5737,30 @@ class TiffinApp {
           if (this.currentUser) this.currentUser.wallet_balance = json.wallet_balance;
           if (this.referralStats) this.referralStats.wallet_balance = json.wallet_balance;
         }
+        if (json.customer_wallet_balance !== undefined && this.currentUser) {
+          this.currentUser.customer_wallet_balance = json.customer_wallet_balance;
+        }
+        if (json.layout_balance !== undefined && this.currentUser) {
+          this.currentUser.layout_balance = json.layout_balance;
+        }
         this.cart = [];
         this.selectedCartAddons = {};
         try { localStorage.removeItem('tiffin_selected_addons'); } catch (e) {}
         this.tempPaymentScreenshot = null;
         this.appliedWalletDiscount = 0;
+        this.appliedCustomerWalletDiscount = 0;
+        this.appliedLayoutDiscount = 0;
+
         const chk = document.getElementById('chkUseWallet');
         if (chk) chk.checked = false;
-        const breakdownBox = document.getElementById('referralAppliedBreakdown');
-        if (breakdownBox) breakdownBox.classList.add('hidden');
+        const chkCust = document.getElementById('chkUseCustomerWallet');
+        if (chkCust) chkCust.checked = false;
+        const chkLay = document.getElementById('chkUseLayout');
+        if (chkLay) chkLay.checked = false;
+
+        document.getElementById('referralAppliedBreakdown')?.classList.add('hidden');
+        document.getElementById('customerWalletAppliedBreakdown')?.classList.add('hidden');
+        document.getElementById('layoutAppliedBreakdown')?.classList.add('hidden');
 
         this.updateCartUI();
         this.toggleCheckoutModal(false);
@@ -10744,6 +10894,140 @@ class TiffinApp {
     } catch (err) {
       console.error('Error toggling privacy:', err);
     }
+  }
+
+  updateCheckoutConditionalOptionsVisibility() {
+    const referralBal = Number(this.referralStats?.wallet_balance || this.currentUser?.wallet_balance || 0);
+    const customerWalletBal = Number(this.currentUser?.customer_wallet_balance || 0);
+    const layoutBal = Number(this.currentUser?.layout_balance || 0);
+
+    // 1. Layout Balance Option Card: HIDE if <= 0, SHOW if > 0
+    const layoutBox = document.getElementById('checkoutLayoutBox');
+    const chkLayout = document.getElementById('chkUseLayout');
+    const layoutText = document.getElementById('checkoutLayoutAvailableText');
+    if (layoutBox) {
+      if (layoutBal > 0) {
+        layoutBox.classList.remove('hidden');
+        if (layoutText) layoutText.innerHTML = `Available Balance: <strong>₹${layoutBal}</strong>`;
+      } else {
+        layoutBox.classList.add('hidden');
+        if (chkLayout) chkLayout.checked = false;
+        this.appliedLayoutDiscount = 0;
+        document.getElementById('layoutAppliedBreakdown')?.classList.add('hidden');
+      }
+    }
+
+    // 2. Referral Wallet Option Card: HIDE if <= 0, SHOW if > 0
+    const refBox = document.getElementById('checkoutWalletBox');
+    const chkRef = document.getElementById('chkUseWallet');
+    const refText = document.getElementById('checkoutWalletAvailableText');
+    if (refBox) {
+      if (referralBal > 0) {
+        refBox.classList.remove('hidden');
+        if (refText) refText.innerHTML = `Available Balance: <strong>₹${referralBal}</strong>`;
+      } else {
+        refBox.classList.add('hidden');
+        if (chkRef) chkRef.checked = false;
+        this.appliedWalletDiscount = 0;
+        document.getElementById('referralAppliedBreakdown')?.classList.add('hidden');
+      }
+    }
+
+    // 3. Normal Customer Wallet Balance Option Card: HIDE if <= 0, SHOW if > 0
+    const custWalletBox = document.getElementById('checkoutCustomerWalletBox');
+    const chkCustWallet = document.getElementById('chkUseCustomerWallet');
+    const custWalletText = document.getElementById('checkoutCustomerWalletAvailableText');
+    if (custWalletBox) {
+      if (customerWalletBal > 0) {
+        custWalletBox.classList.remove('hidden');
+        if (custWalletText) custWalletText.innerHTML = `Available Balance: <strong>₹${customerWalletBal}</strong>`;
+      } else {
+        custWalletBox.classList.add('hidden');
+        if (chkCustWallet) chkCustWallet.checked = false;
+        this.appliedCustomerWalletDiscount = 0;
+        document.getElementById('customerWalletAppliedBreakdown')?.classList.add('hidden');
+      }
+    }
+  }
+
+  async toggleCheckoutCustomerWalletDiscount() {
+    const chk = document.getElementById('chkUseCustomerWallet');
+    const breakdownBox = document.getElementById('customerWalletAppliedBreakdown');
+    
+    if (chk && chk.checked) {
+      const walletBal = Number(this.currentUser?.customer_wallet_balance || 0);
+      const elText = document.getElementById('checkoutCustomerWalletAvailableText');
+      if (elText) elText.innerHTML = `Available Balance: <strong>₹${walletBal}</strong>`;
+
+      if (walletBal <= 0) {
+        this.showToast('Your wallet balance is ₹0.', 'warning');
+        chk.checked = false;
+        this.appliedCustomerWalletDiscount = 0;
+        if (breakdownBox) breakdownBox.classList.add('hidden');
+        this.updateCheckoutConditionalOptionsVisibility();
+        this.updateCheckoutPaymentSummary();
+        return;
+      }
+
+      const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
+      const grandTotal = cartTotals.grandTotal || 0;
+      const currentPayable = grandTotal - Number(this.appliedWalletDiscount || 0) - Number(this.appliedLayoutDiscount || 0);
+      const applied = Math.max(0, Math.min(walletBal, currentPayable));
+
+      this.appliedCustomerWalletDiscount = applied;
+
+      const elApplied = document.getElementById('customerWalletBreakdownAppliedVal');
+      if (elApplied) elApplied.innerText = `-₹${applied}`;
+      if (breakdownBox) breakdownBox.classList.remove('hidden');
+
+      this.showToast(`Wallet balance applied (-₹${applied})!`, 'success');
+    } else {
+      this.appliedCustomerWalletDiscount = 0;
+      if (breakdownBox) breakdownBox.classList.add('hidden');
+      this.showToast('Wallet balance unapplied.', 'info');
+    }
+
+    this.updateCheckoutPaymentSummary();
+  }
+
+  async toggleCheckoutLayoutDiscount() {
+    const chk = document.getElementById('chkUseLayout');
+    const breakdownBox = document.getElementById('layoutAppliedBreakdown');
+    
+    if (chk && chk.checked) {
+      const layoutBal = Number(this.currentUser?.layout_balance || 0);
+      const elText = document.getElementById('checkoutLayoutAvailableText');
+      if (elText) elText.innerHTML = `Available Balance: <strong>₹${layoutBal}</strong>`;
+
+      if (layoutBal <= 0) {
+        this.showToast('Your layout balance is ₹0.', 'warning');
+        chk.checked = false;
+        this.appliedLayoutDiscount = 0;
+        if (breakdownBox) breakdownBox.classList.add('hidden');
+        this.updateCheckoutConditionalOptionsVisibility();
+        this.updateCheckoutPaymentSummary();
+        return;
+      }
+
+      const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
+      const grandTotal = cartTotals.grandTotal || 0;
+      const currentPayable = grandTotal - Number(this.appliedWalletDiscount || 0) - Number(this.appliedCustomerWalletDiscount || 0);
+      const applied = Math.max(0, Math.min(layoutBal, currentPayable));
+
+      this.appliedLayoutDiscount = applied;
+
+      const elApplied = document.getElementById('layoutBreakdownAppliedVal');
+      if (elApplied) elApplied.innerText = `-₹${applied}`;
+      if (breakdownBox) breakdownBox.classList.remove('hidden');
+
+      this.showToast(`Layout balance applied (-₹${applied})!`, 'success');
+    } else {
+      this.appliedLayoutDiscount = 0;
+      if (breakdownBox) breakdownBox.classList.add('hidden');
+      this.showToast('Layout balance unapplied.', 'info');
+    }
+
+    this.updateCheckoutPaymentSummary();
   }
 
   async toggleCheckoutWalletDiscount() {
@@ -19932,7 +20216,7 @@ class TiffinApp {
 
         // Update local user wallet balance if changed
         if (this.currentUser) {
-          this.currentUser.wallet_balance = Number(s.available_balance || 0);
+          this.currentUser.customer_wallet_balance = Number(s.available_balance || 0);
           this.updateUserAuthBadgeUI();
         }
       }

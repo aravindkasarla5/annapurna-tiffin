@@ -132,6 +132,8 @@ async function initDatabase() {
       referred_by VARCHAR(100),
       referred_by_code VARCHAR(50),
       wallet_balance NUMERIC(10, 2) DEFAULT 0.00,
+      customer_wallet_balance NUMERIC(10, 2) DEFAULT 0.00,
+      layout_balance NUMERIC(10, 2) DEFAULT 0.00,
       loyalty_points INT DEFAULT 0,
       cart JSONB DEFAULT '[]'::jsonb,
       favorites JSONB DEFAULT '[]'::jsonb,
@@ -696,6 +698,21 @@ async function initDatabase() {
       notes TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS customer_wallet_transactions (
+      id VARCHAR(100) PRIMARY KEY,
+      user_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
+      request_id VARCHAR(100),
+      order_id VARCHAR(100),
+      amount NUMERIC(10, 2) NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      description TEXT,
+      date_time VARCHAR(100),
+      balance_before NUMERIC(10, 2) DEFAULT 0.00,
+      balance_after NUMERIC(10, 2) DEFAULT 0.00,
+      status VARCHAR(50) DEFAULT 'SUCCESS',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`
   ];
 
@@ -724,6 +741,7 @@ async function initDatabase() {
     await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_customer ON wallet_topup_requests(customer_id);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_status ON wallet_topup_requests(status);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_utr ON wallet_topup_requests(utr_number);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_cust_wallet_tx_user ON customer_wallet_transactions(user_id);`);
     try { await query(`ALTER TABLE wallet_transactions ADD COLUMN request_id VARCHAR(100);`); } catch (colErr) {}
   } catch (idxErr) {
     console.warn('Index creation notice:', idxErr.message);
@@ -854,6 +872,8 @@ async function initDatabase() {
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS temp_password_expires_at BIGINT;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_points INT DEFAULT 0;`);
         await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_reward_balance NUMERIC(10, 2) DEFAULT 0.00;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS customer_wallet_balance NUMERIC(10, 2) DEFAULT 0.00;`);
+        await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS layout_balance NUMERIC(10, 2) DEFAULT 0.00;`);
         await query(`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS last_activity BIGINT;`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS balance_before NUMERIC(10, 2);`);
@@ -912,6 +932,8 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE users ADD COLUMN temp_password_expires_at INTEGER;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN loyalty_points INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE users ADD COLUMN loyalty_reward_balance NUMERIC(10, 2) DEFAULT 0.00;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN customer_wallet_balance NUMERIC(10, 2) DEFAULT 0.00;`);
+      await safeAlter(`ALTER TABLE users ADD COLUMN layout_balance NUMERIC(10, 2) DEFAULT 0.00;`);
       await safeAlter(`ALTER TABLE tokens ADD COLUMN last_activity INTEGER;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN order_id TEXT;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN balance_before REAL;`);

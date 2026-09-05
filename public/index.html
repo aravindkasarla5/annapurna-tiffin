@@ -4166,7 +4166,30 @@
               placeholder="e.g. Less spicy, extra coconut chutney..."></textarea>
           </div>
 
-          <div class="form-group referral-payment-card" id="checkoutWalletBox">
+          <div class="form-group referral-payment-card hidden" id="checkoutLayoutBox" style="margin-top: 10px; border-color: #00BCD4;">
+            <div class="referral-payment-card-inner">
+              <div class="referral-wallet-info">
+                <span class="referral-wallet-title" style="color: #B2EBF2;">
+                  <i class="fa-solid fa-layer-group" style="color: #00BCD4;"></i> Layout Balance
+                </span>
+                <span class="referral-wallet-bal-text" id="checkoutLayoutAvailableText" style="color: #B2EBF2;">Available Balance: ₹0</span>
+              </div>
+              <label class="referral-checkbox-label" for="chkUseLayout" id="lblUseLayout">
+                <input type="checkbox" id="chkUseLayout" class="referral-payment-checkbox"
+                  onchange="app.toggleCheckoutLayoutDiscount()">
+                <span>Use Layout Balance</span>
+              </label>
+            </div>
+            <div id="layoutAppliedBreakdown" class="hidden"
+              style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed rgba(0, 188, 212, 0.4); font-size: 0.82rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="color: #B2EBF2; font-weight: 700;">Layout Balance Applied:</span>
+                <strong style="color: #00E676; font-weight: 800;" id="layoutBreakdownAppliedVal">-₹0</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group referral-payment-card hidden" id="checkoutWalletBox">
             <div class="referral-payment-card-inner">
               <div class="referral-wallet-info">
                 <span class="referral-wallet-title">
@@ -4195,6 +4218,29 @@
                 style="display: flex; justify-content: space-between; align-items: center; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1);">
                 <span style="color: #FFF; font-weight: 700;">Amount Remaining to Pay:</span>
                 <strong style="color: var(--accent-gold); font-size: 0.95rem;" id="refBreakdownNetPayable">₹0</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group referral-payment-card hidden" id="checkoutCustomerWalletBox" style="margin-top: 10px; border-color: #2196F3;">
+            <div class="referral-payment-card-inner">
+              <div class="referral-wallet-info">
+                <span class="referral-wallet-title" style="color: #90CAF9;">
+                  <i class="fa-solid fa-wallet" style="color: #2196F3;"></i> Wallet Balance
+                </span>
+                <span class="referral-wallet-bal-text" id="checkoutCustomerWalletAvailableText" style="color: #90CAF9;">Available Balance: ₹0</span>
+              </div>
+              <label class="referral-checkbox-label" for="chkUseCustomerWallet" id="lblUseCustomerWallet">
+                <input type="checkbox" id="chkUseCustomerWallet" class="referral-payment-checkbox"
+                  onchange="app.toggleCheckoutCustomerWalletDiscount()">
+                <span>Use Wallet Balance</span>
+              </label>
+            </div>
+            <div id="customerWalletAppliedBreakdown" class="hidden"
+              style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed rgba(33, 150, 243, 0.4); font-size: 0.82rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="color: #90CAF9; font-weight: 700;">Wallet Applied:</span>
+                <strong style="color: #00E676; font-weight: 800;" id="customerWalletBreakdownAppliedVal">-₹0</strong>
               </div>
             </div>
           </div>
@@ -4403,10 +4449,41 @@
                   12-digit UTR/Ref number from GPay/PhonePe/Paytm transaction details.</span>
               </div>
             </div>
+          <!-- Checkout Payable Amount Breakdown Card (Placed immediately above Confirm to Pay button) -->
+          <div id="checkoutPayableBreakdownCard"
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: var(--radius-md, 12px); padding: 0.9rem 1.1rem; margin-top: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.86rem; color: var(--text-muted, #AAA);">
+              <span>Total Payable Amount</span>
+              <strong style="color: #FFF;" id="chkBreakdownSubtotal">₹0</strong>
+            </div>
+            <div id="chkBreakdownDeliveryRow" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.86rem; color: var(--text-muted, #AAA);">
+              <span>Delivery Charges</span>
+              <strong style="color: #FFF;" id="chkBreakdownDelivery">₹0</strong>
+            </div>
+            <div id="chkBreakdownPremiumRow" class="hidden" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.86rem; color: #4CAF50;">
+              <span><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> Premium Card Discount</span>
+              <strong style="color: #00E676;" id="chkBreakdownPremiumDiscount">-₹5</strong>
+            </div>
+            <div id="chkBreakdownWalletRow" class="hidden" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.86rem; color: var(--accent-gold, #FFB300);">
+              <span><i class="fa-solid fa-gift"></i> Referral Wallet Discount</span>
+              <strong style="color: #00E676;" id="chkBreakdownWalletDiscount">-₹0</strong>
+            </div>
+            <div id="chkBreakdownCustomerWalletRow" class="hidden" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.86rem; color: #2196F3;">
+              <span><i class="fa-solid fa-wallet"></i> Customer Wallet Discount</span>
+              <strong style="color: #00E676;" id="chkBreakdownCustomerWalletDiscount">-₹0</strong>
+            </div>
+            <div id="chkBreakdownLayoutRow" class="hidden" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.86rem; color: #00BCD4;">
+              <span><i class="fa-solid fa-layer-group"></i> Layout Balance Discount</span>
+              <strong style="color: #00E676;" id="chkBreakdownLayoutDiscount">-₹0</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; margin-top: 6px; border-top: 1px dashed rgba(255,255,255,0.2); font-size: 0.96rem; font-weight: 800;">
+              <span style="color: #FFF;">Final Total Payable Amount</span>
+              <strong style="color: var(--accent-gold, #FFB300); font-size: 1.15rem;" id="chkBreakdownFinalTotal">₹0</strong>
+            </div>
           </div>
 
           <button type="submit" class="btn-primary-block btn-checkout-submit" id="btnCheckoutSubmit"
-            style="margin-top: 1.25rem;">
+            style="margin-top: 0.85rem;">
             <i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span
                 id="checkoutGrandTotalDisplay">₹0</span>)</span>
           </button>
