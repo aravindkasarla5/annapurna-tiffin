@@ -2357,6 +2357,7 @@ class TiffinApp {
             <a class="nav-item ${this.activeView === 'secCustomerMealPasses' ? 'active' : ''}" onclick="app.switchView('secCustomerMealPasses')"><i class="fa-solid fa-qrcode" style="color: var(--accent-gold);"></i> 🎟️ My Passes</a>
             <a class="nav-item ${this.activeView === 'secCustomerMemberCard' ? 'active' : ''}" onclick="app.switchView('secCustomerMemberCard')"><i class="fa-solid fa-id-card" style="color: #FFD700;"></i> 💳 Member Card</a>
             <a class="nav-item ${this.activeView === 'secCustomerFavorites' ? 'active' : ''}" onclick="app.switchView('secCustomerFavorites')"><i class="fa-solid fa-heart" style="color: #E53935;"></i> My Favorites ❤️</a>
+            <a class="nav-item ${this.activeView === 'secCustomerWallet' ? 'active' : ''}" onclick="app.switchView('secCustomerWallet')"><i class="fa-solid fa-wallet" style="color: var(--primary);"></i> Wallet Balance 💰</a>
             <a class="nav-item" onclick="app.toggleCartDrawer()"><i class="fa-solid fa-cart-shopping"></i> Shopping Cart (<span class="cart-count-text">0</span>)</a>
             <a class="nav-item ${this.activeView === 'secCustomerOrders' ? 'active' : ''}" onclick="app.switchView('secCustomerOrders')"><i class="fa-solid fa-receipt"></i> My Orders</a>
             <a class="nav-item ${this.activeView === 'secQueueProgress' ? 'active' : ''}" onclick="app.switchView('secQueueProgress')"><i class="fa-solid fa-ticket" style="color: var(--accent-gold);"></i> 🎟️ Queue Progress</a>
@@ -2370,6 +2371,7 @@ class TiffinApp {
           const unreadNotifCount = (this.notifications || []).filter(n => !n.is_read && !n.read && n.target_role === 'OWNER').length;
           desktopNav.innerHTML = `
             <a class="nav-item ${this.activeView === 'secOwnerDashboard' ? 'active' : ''}" onclick="app.switchView('secOwnerDashboard')"><i class="fa-solid fa-chart-line"></i> Dashboard</a>
+            <a class="nav-item ${this.activeView === 'secOwnerWallet' ? 'active' : ''}" onclick="app.switchView('secOwnerWallet')"><i class="fa-solid fa-wallet" style="color: var(--primary);"></i> Wallet Management</a>
             <a class="nav-item ${this.activeView === 'secOwnerDeliveryZones' ? 'active' : ''}" onclick="app.switchView('secOwnerDeliveryZones')"><i class="fa-solid fa-map-location-dot" style="color: #4CAF50;"></i> 🗺️ Delivery Zones</a>
             <a class="nav-item ${this.activeView === 'secOwnerSubscriptionPlans' ? 'active' : ''}" onclick="app.switchView('secOwnerSubscriptionPlans')"><i class="fa-solid fa-basket-shopping" style="color: #FF9800;"></i> 🧺 Subscription Plans</a>
             <a class="nav-item ${this.activeView === 'secOwnerMealPassScanner' ? 'active' : ''}" onclick="app.switchView('secOwnerMealPassScanner')"><i class="fa-solid fa-qrcode" style="color: #00E676;"></i> 🎫 Meal Pass Scanner</a>
@@ -3090,7 +3092,7 @@ class TiffinApp {
     if (!viewId || !document.getElementById(viewId)) return false;
     if (!this.currentUser) {
       if (viewId.startsWith('secOwner')) return false;
-      if (['secCustomerOrders', 'secCustomerPayments', 'secCustomerReferral', 'secCustomerFavorites', 'secCustomerLoyalty', 'secCustomerMemberCard', 'secCustomerProfile'].includes(viewId)) {
+      if (['secCustomerWallet', 'secCustomerOrders', 'secCustomerPayments', 'secCustomerReferral', 'secCustomerFavorites', 'secCustomerLoyalty', 'secCustomerMemberCard', 'secCustomerProfile'].includes(viewId)) {
         return false;
       }
       return true;
@@ -3273,8 +3275,8 @@ class TiffinApp {
 
     // Access Control Guard - Require login for features
     if (!this.currentUser) {
-      if (viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites' || viewId === 'secCustomerLoyalty' || viewId === 'secCustomerMemberCard') {
-        this.showToast('Please Login or Register to view favorites, orders, payments, referral rewards, loyalty points & member card.', 'error');
+      if (viewId === 'secCustomerWallet' || viewId === 'secCustomerOrders' || viewId === 'secCustomerPayments' || viewId === 'secCustomerReferral' || viewId === 'secCustomerFavorites' || viewId === 'secCustomerLoyalty' || viewId === 'secCustomerMemberCard') {
+        this.showToast('Please Login or Register to access your Wallet Balance, favorites, orders, payments, referral rewards, loyalty points & member card.', 'error');
         this.openAuthModal('CUSTOMER', 'LOGIN');
         return;
       }
@@ -3370,6 +3372,9 @@ class TiffinApp {
       this.fetchFavorites();
       this.renderFavorites();
     }
+    if (this.activeView === 'secCustomerWallet') {
+      this.loadCustomerWalletData();
+    }
     if (this.activeView === 'secCustomerPayments') {
       this.fetchPayments();
       this.renderCustomerPayments();
@@ -3417,6 +3422,9 @@ class TiffinApp {
     if (this.activeView === 'secOwnerOrders') this.renderOrders();
     if (this.activeView === 'secOwnerCustomers') this.fetchOwnerCustomers();
     if (this.activeView === 'secOwnerReviews') this.fetchOwnerReviews();
+    if (this.activeView === 'secOwnerWallet') {
+      this.loadOwnerWalletData();
+    }
     if (this.activeView === 'secOwnerPayments') {
       this.fetchPayments();
       this.renderPayments();
@@ -19866,6 +19874,633 @@ class TiffinApp {
       }
     } catch (err) {
       console.error('Pincode check error:', err);
+    }
+  }
+
+  // =========================================================================
+  // CUSTOMER WALLET SYSTEM (SINGLE PAGE CONTROLLER)
+  // =========================================================================
+
+  async loadCustomerWalletData() {
+    if (!this.currentUser) return;
+
+    try {
+      // 1. Fetch Summary Balances
+      const resSummary = await fetch('/api/wallet/summary', {
+        headers: {
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        }
+      });
+      const dataSummary = await resSummary.json();
+
+      if (dataSummary.success && dataSummary.data) {
+        const s = dataSummary.data;
+        const availEl = document.getElementById('walletAvailableDisplay');
+        const pendEl = document.getElementById('walletPendingDisplay');
+        const apprEl = document.getElementById('walletApprovedDisplay');
+        const rejEl = document.getElementById('walletRejectedDisplay');
+
+        if (availEl) availEl.innerText = `₹${Number(s.available_balance || 0).toFixed(2)}`;
+        if (pendEl) pendEl.innerText = `₹${Number(s.pending_amount || 0).toFixed(2)}`;
+        if (apprEl) apprEl.innerText = `₹${Number(s.approved_amount || 0).toFixed(2)}`;
+        if (rejEl) rejEl.innerText = `₹${Number(s.rejected_amount || 0).toFixed(2)}`;
+
+        // Update local user wallet balance if changed
+        if (this.currentUser) {
+          this.currentUser.wallet_balance = Number(s.available_balance || 0);
+          this.updateUserAuthBadgeUI();
+        }
+      }
+
+      // 2. Fetch Requests History (Pending + History)
+      const resReq = await fetch('/api/wallet/requests', {
+        headers: {
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        }
+      });
+      const dataReq = await resReq.json();
+      const requests = (dataReq.success && Array.isArray(dataReq.data)) ? dataReq.data : [];
+
+      this.renderCustomerPendingWalletRequests(requests);
+
+      // Populate Wallet Support Modal Requests Dropdown
+      const selReq = document.getElementById('selWalletSupportRequest');
+      if (selReq) {
+        selReq.innerHTML = `<option value="">-- No specific request --</option>` + requests.map(r => `
+          <option value="${r.request_id}">Req #${r.request_id} - ₹${Number(r.amount).toFixed(2)} (${r.status})</option>
+        `).join('');
+      }
+
+      // 3. Fetch Wallet Ledger Transactions
+      const resTx = await fetch('/api/wallet/transactions', {
+        headers: {
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        }
+      });
+      const dataTx = await resTx.json();
+      const txs = (dataTx.success && dataTx.data && Array.isArray(dataTx.data.transactions)) ? dataTx.data.transactions : [];
+
+      this.renderCustomerWalletTransactions(txs);
+
+      // Refresh UPI QR details
+      this.updateWalletPaymentSummary();
+    } catch (err) {
+      console.error('Error loading customer wallet data:', err);
+    }
+  }
+
+  renderCustomerPendingWalletRequests(requests) {
+    const container = document.getElementById('containerWalletPendingRequests');
+    if (!container) return;
+
+    const pendingList = requests.filter(r => (r.status || '').toUpperCase() === 'PENDING');
+
+    if (pendingList.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+          <i class="fa-solid fa-circle-check" style="font-size: 2.5rem; color: #4CAF50; margin-bottom: 8px;"></i>
+          <p style="margin: 0; font-size: 0.95rem;">No pending wallet top-up requests. All submitted payments have been verified.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = pendingList.map(r => `
+      <div class="pending-request-card">
+        <div class="pending-card-left">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="req-id-badge">#${r.request_id}</span>
+            <span class="req-status-pill pending"><i class="fa-solid fa-spinner fa-spin"></i> PENDING VERIFICATION</span>
+          </div>
+          <div class="req-utr-text">Method: <strong>${r.payment_method || 'UPI'}</strong> ${r.utr_number ? `| Ref: <code>${r.utr_number}</code>` : ''}</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">Submitted: ${new Date(r.created_at || Date.now()).toLocaleString('en-IN')}</div>
+        </div>
+        <div class="pending-card-right">
+          <div class="req-amount-display">₹${Number(r.amount || 0).toFixed(2)}</div>
+          <div style="font-size: 0.75rem; color: #FF9800; font-weight: 600; margin-top: 2px;">Waiting for Owner Approval</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  renderCustomerWalletTransactions(transactions) {
+    const container = document.getElementById('containerWalletTxHistory');
+    if (!container) return;
+
+    if (!transactions || transactions.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+          <i class="fa-solid fa-receipt" style="font-size: 2.5rem; opacity: 0.4; margin-bottom: 8px;"></i>
+          <p style="margin: 0; font-size: 0.95rem;">No wallet transactions recorded yet.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="overflow-x: auto;">
+        <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.88rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: var(--text-muted);">
+              <th style="padding: 10px;">Date & Time</th>
+              <th style="padding: 10px;">Type</th>
+              <th style="padding: 10px;">Description</th>
+              <th style="padding: 10px;">Amount</th>
+              <th style="padding: 10px;">Balance After</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${transactions.map(tx => {
+              const isCredit = (tx.type || '').toUpperCase() === 'CREDIT';
+              return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 10px; color: var(--text-muted);">${tx.date_time || new Date(tx.created_at).toLocaleString('en-IN')}</td>
+                  <td style="padding: 10px;">
+                    <span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: ${isCredit ? 'rgba(76,175,80,0.2)' : 'rgba(244,67,54,0.2)'}; color: ${isCredit ? '#4CAF50' : '#FF5252'};">
+                      ${isCredit ? '🟢 CREDIT' : '🔴 DEBIT'}
+                    </span>
+                  </td>
+                  <td style="padding: 10px; color: #DDD;">${tx.description || 'Wallet Transaction'}</td>
+                  <td style="padding: 10px; font-weight: 800; color: ${isCredit ? '#4CAF50' : '#FF5252'};">
+                    ${isCredit ? '+' : '-'}₹${Number(tx.amount || 0).toFixed(2)}
+                  </td>
+                  <td style="padding: 10px; font-weight: 700; color: var(--primary);">₹${Number(tx.balance_after || 0).toFixed(2)}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  selectWalletPreset(amount) {
+    const inp = document.getElementById('inpWalletAmount');
+    if (inp) inp.value = amount;
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.innerText.includes(amount));
+    });
+
+    this.updateWalletPaymentSummary();
+  }
+
+  updateWalletPaymentSummary() {
+    const inp = document.getElementById('inpWalletAmount');
+    const amtText = document.getElementById('walletQrAmountText');
+    const upiDisplay = document.getElementById('walletUpiIdDisplay');
+    const qrImg = document.getElementById('imgWalletUpiQr');
+
+    const amt = inp ? Number(inp.value || 0) : 0;
+    if (amtText) amtText.innerText = `₹${amt.toFixed(2)}`;
+
+    if (this.settings && this.settings.upi_id) {
+      if (upiDisplay) upiDisplay.innerText = this.settings.upi_id;
+    }
+
+    if (qrImg && this.settings && this.settings.upi_qr_code) {
+      qrImg.src = this.settings.upi_qr_code;
+    }
+  }
+
+  toggleWalletPaymentViews() {
+    const radios = document.getElementsByName('walletPayMethod');
+    let selMethod = 'UPI';
+    for (const r of radios) {
+      if (r.checked) selMethod = r.value;
+    }
+
+    const qrBox = document.getElementById('walletQrDetailsBox');
+    const proofBox = document.getElementById('walletProofFieldsBox');
+
+    if (qrBox) qrBox.classList.toggle('hidden', selMethod === 'Cash');
+    if (proofBox) proofBox.classList.toggle('hidden', selMethod === 'Cash');
+  }
+
+  copyWalletUpiId() {
+    const upiDisplay = document.getElementById('walletUpiIdDisplay');
+    if (upiDisplay && upiDisplay.innerText) {
+      navigator.clipboard.writeText(upiDisplay.innerText).then(() => {
+        this.showToast('UPI ID copied to clipboard!', 'success');
+      }).catch(() => {
+        this.showToast(`UPI ID: ${upiDisplay.innerText}`, 'info');
+      });
+    }
+  }
+
+  handleWalletScreenshotChange(e) {
+    const file = e.target.files[0];
+    const preview = document.getElementById('walletScreenshotPreview');
+    if (!file || !preview) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      this.showToast('Image file size must be less than 5MB.', 'error');
+      e.target.value = '';
+      preview.classList.add('hidden');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      this.tempWalletScreenshotBase64 = evt.target.result;
+      preview.innerHTML = `<img src="${evt.target.result}" style="max-height: 120px; border-radius: 8px; border: 1px solid var(--primary); margin-top: 8px;" alt="Preview">`;
+      preview.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async handleWalletTopupSubmit(e) {
+    e.preventDefault();
+    if (!this.currentUser) {
+      this.showToast('Please login to add money to wallet.', 'error');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
+
+    const inpAmount = document.getElementById('inpWalletAmount');
+    const inpUtr = document.getElementById('inpWalletUtr');
+    const radios = document.getElementsByName('walletPayMethod');
+
+    let selMethod = 'UPI';
+    for (const r of radios) {
+      if (r.checked) selMethod = r.value;
+    }
+
+    const amount = Number(inpAmount ? inpAmount.value : 0);
+    const utr = inpUtr ? inpUtr.value.trim() : '';
+
+    if (isNaN(amount) || amount <= 0) {
+      this.showToast('Please enter a valid positive amount.', 'error');
+      return;
+    }
+
+    if (selMethod !== 'Cash' && (!utr || utr.length < 4)) {
+      this.showToast('Please enter a valid 12-digit UTR or Reference Number.', 'error');
+      return;
+    }
+
+    const btnSubmit = document.getElementById('btnSubmitWalletTopup');
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Submitting Top-Up Request...`;
+    }
+
+    try {
+      const payload = {
+        amount,
+        payment_method: selMethod,
+        utr_number: utr,
+        payment_screenshot: this.tempWalletScreenshotBase64 || null
+      };
+
+      const res = await fetch('/api/wallet/topup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        this.showToast(data.message || 'Top-up request submitted! Waiting for Owner verification.', 'success');
+        if (inpUtr) inpUtr.value = '';
+        this.tempWalletScreenshotBase64 = null;
+        const prevBox = document.getElementById('walletScreenshotPreview');
+        if (prevBox) { prevBox.innerHTML = ''; prevBox.classList.add('hidden'); }
+        this.loadCustomerWalletData();
+      } else {
+        this.showToast(data.message || 'Failed to submit wallet top-up request.', 'error');
+      }
+    } catch (err) {
+      console.error('Error submitting topup:', err);
+      this.showToast('Network connection error submitting top-up request.', 'error');
+    } finally {
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Submit Payment for Verification`;
+      }
+    }
+  }
+
+  openWalletSupportModal() {
+    const modal = document.getElementById('modalWalletSupport');
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('open');
+    }
+  }
+
+  closeWalletSupportModal() {
+    const modal = document.getElementById('modalWalletSupport');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('open');
+    }
+  }
+
+  async handleWalletSupportSubmit(e) {
+    e.preventDefault();
+    const selCat = document.getElementById('selWalletSupportCategory');
+    const selReq = document.getElementById('selWalletSupportRequest');
+    const txtMsg = document.getElementById('txtWalletSupportMsg');
+
+    const category = selCat ? selCat.value : 'General';
+    const requestId = selReq ? selReq.value : '';
+    const message = txtMsg ? txtMsg.value.trim() : '';
+
+    if (!message) {
+      this.showToast('Please describe your issue.', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/wallet/support', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        },
+        body: JSON.stringify({ category, request_id: requestId, message })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        this.showToast(data.message || 'Wallet support ticket submitted!', 'success');
+        if (txtMsg) txtMsg.value = '';
+        this.closeWalletSupportModal();
+      } else {
+        this.showToast(data.message || 'Failed to submit wallet support ticket.', 'error');
+      }
+    } catch (err) {
+      console.error('Error submitting wallet support:', err);
+      this.showToast('Network error submitting wallet support.', 'error');
+    }
+  }
+
+  // =========================================================================
+  // OWNER WALLET MANAGEMENT SYSTEM CONTROLLER
+  // =========================================================================
+
+  async loadOwnerWalletData() {
+    if (!this.currentUser || this.currentUser.role !== 'OWNER') return;
+
+    try {
+      const searchInp = document.getElementById('inpOwnerWalletSearch');
+      const statusSel = document.getElementById('selOwnerWalletStatusFilter');
+      const methodSel = document.getElementById('selOwnerWalletMethodFilter');
+      const dateSel = document.getElementById('selOwnerWalletDateFilter');
+      const sortSel = document.getElementById('selOwnerWalletSort');
+
+      const search = searchInp ? searchInp.value.trim() : '';
+      const status = statusSel ? statusSel.value : 'ALL';
+      const payment_method = methodSel ? methodSel.value : 'ALL';
+      const date_range = dateSel ? dateSel.value : 'ALL';
+      const sort = sortSel ? sortSel.value : 'newest';
+
+      const queryParams = new URLSearchParams({
+        search,
+        status,
+        payment_method,
+        date_range,
+        sort
+      });
+
+      const res = await fetch(`/api/owner/wallet/requests?${queryParams.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        }
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        const requests = data.data || [];
+        const metrics = data.metrics || {};
+
+        // Update Overview Metrics Cards
+        const mPend = document.getElementById('ownerMetricPending');
+        const mAppr = document.getElementById('ownerMetricApproved');
+        const mRej = document.getElementById('ownerMetricRejected');
+        const mCust = document.getElementById('ownerMetricCustomers');
+
+        if (mPend) mPend.innerText = metrics.pending_count || 0;
+        if (mAppr) mAppr.innerText = `₹${Number(metrics.total_approved_amount || 0).toFixed(2)}`;
+        if (mRej) mRej.innerText = metrics.rejected_count || 0;
+        if (mCust) mCust.innerText = metrics.unique_wallet_customers || 0;
+
+        this.renderOwnerWalletRequestsList(requests);
+      } else {
+        this.showToast(data.message || 'Failed to load owner wallet requests.', 'error');
+      }
+    } catch (err) {
+      console.error('Error loading owner wallet data:', err);
+    }
+  }
+
+  filterOwnerWalletRequests() {
+    if (this.ownerWalletFilterTimeout) clearTimeout(this.ownerWalletFilterTimeout);
+    this.ownerWalletFilterTimeout = setTimeout(() => {
+      this.loadOwnerWalletData();
+    }, 250);
+  }
+
+  renderOwnerWalletRequestsList(requests) {
+    const container = document.getElementById('containerOwnerWalletRequests');
+    if (!container) return;
+
+    if (!requests || requests.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted); background: var(--card-bg, #1A1715); border-radius: 14px; border: 1px solid rgba(255,255,255,0.08);">
+          <i class="fa-solid fa-wallet" style="font-size: 3rem; opacity: 0.3; margin-bottom: 12px;"></i>
+          <h4 style="margin: 0 0 6px 0; color: #FFF;">No Wallet Top-Up Requests Found</h4>
+          <p style="margin: 0; font-size: 0.85rem;">Try clearing your search terms or changing status filters.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = requests.map(r => {
+      const isPending = (r.status || '').toUpperCase() === 'PENDING';
+      const isApproved = (r.status || '').toUpperCase() === 'APPROVED';
+      const isRejected = (r.status || '').toUpperCase() === 'REJECTED';
+
+      let statusClass = 'pending';
+      let statusLabel = '⏳ PENDING VERIFICATION';
+      if (isApproved) { statusClass = 'approved'; statusLabel = '✅ APPROVED'; }
+      if (isRejected) { statusClass = 'rejected'; statusLabel = '❌ REJECTED'; }
+
+      return `
+        <div class="owner-request-card" style="border-left: 4px solid ${isPending ? '#FF9800' : (isApproved ? '#4CAF50' : '#F44336')};">
+          <div class="owner-card-header">
+            <div>
+              <div class="cust-name">${app.escapeHtml(r.customer_name || 'Customer')}</div>
+              <div class="cust-mobile">📱 ${app.escapeHtml(r.customer_mobile || '')} | Req ID: <strong style="color: var(--primary);">#${r.request_id}</strong></div>
+            </div>
+            <div>
+              <span class="req-status-pill ${statusClass}">${statusLabel}</span>
+            </div>
+          </div>
+
+          <div class="owner-card-body">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Submitted Amount</div>
+              <div style="font-size: 1.3rem; font-weight: 900; color: var(--primary);">₹${Number(r.amount || 0).toFixed(2)}</div>
+            </div>
+
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Payment Method & Ref</div>
+              <div style="font-size: 0.9rem; font-weight: 700; color: #DDD;">${r.payment_method || 'UPI'}</div>
+              <div style="font-size: 0.8rem; font-family: monospace; color: var(--text-muted);">${r.utr_number ? `UTR: ${app.escapeHtml(r.utr_number)}` : 'No UTR provided'}</div>
+            </div>
+
+            <div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">Submitted Date</div>
+              <div style="font-size: 0.85rem; color: #CCC;">${new Date(r.created_at).toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+
+          ${r.screenshot_url ? `
+            <div style="margin-bottom: 12px;">
+              <button type="button" class="btn-secondary-sm" onclick="app.viewWalletScreenshot('${r.screenshot_url}')">
+                <i class="fa-solid fa-image"></i> View Payment Screenshot
+              </button>
+            </div>
+          ` : ''}
+
+          ${isRejected && r.rejection_reason ? `
+            <div style="background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); color: #FF8A80; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; margin-bottom: 12px;">
+              <strong>Rejection Reason:</strong> ${app.escapeHtml(r.rejection_reason)}
+            </div>
+          ` : ''}
+
+          ${isPending ? `
+            <div class="owner-card-actions">
+              <button type="button" class="btn-reject-wallet" onclick="app.openOwnerWalletRejectModal('${r.id}', '${r.request_id}', '${app.escapeHtml(r.customer_name)}', ${r.amount})">
+                <i class="fa-solid fa-xmark"></i> Reject
+              </button>
+              <button type="button" class="btn-approve-wallet" onclick="app.approveOwnerWalletRequest('${r.id}')">
+                <i class="fa-solid fa-check"></i> Verify & Approve ₹${Number(r.amount || 0).toFixed(2)}
+              </button>
+            </div>
+          ` : `
+            <div style="font-size: 0.78rem; color: var(--text-muted); text-align: right;">
+              ${isApproved ? `Approved at: ${new Date(r.approved_at || r.updated_at).toLocaleString('en-IN')}` : `Rejected at: ${new Date(r.rejected_at || r.updated_at).toLocaleString('en-IN')}`}
+            </div>
+          `}
+        </div>
+      `;
+    }).join('');
+  }
+
+  viewWalletScreenshot(url) {
+    if (!url) return;
+    window.open(url, '_blank');
+  }
+
+  async approveOwnerWalletRequest(reqId) {
+    if (!confirm('Are you sure you want to APPROVE this wallet top-up request?\n\nThis will instantly credit the verified money to the customer\'s available wallet balance.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/owner/wallet/requests/${reqId}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        }
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        this.showToast(data.message || 'Wallet top-up approved successfully!', 'success');
+        this.loadOwnerWalletData();
+      } else {
+        this.showToast(data.message || 'Failed to approve wallet top-up.', 'error');
+      }
+    } catch (err) {
+      console.error('Error approving wallet request:', err);
+      this.showToast('Network error approving wallet request.', 'error');
+    }
+  }
+
+  openOwnerWalletRejectModal(reqId, reqNum, custName, amount) {
+    const modal = document.getElementById('modalOwnerWalletReject');
+    const inpId = document.getElementById('inpRejectReqId');
+    const txtNum = document.getElementById('txtRejectReqNum');
+    const txtCust = document.getElementById('txtRejectCustName');
+    const txtAmt = document.getElementById('txtRejectAmount');
+
+    if (inpId) inpId.value = reqId;
+    if (txtNum) txtNum.innerText = `#${reqNum}`;
+    if (txtCust) txtCust.innerText = custName;
+    if (txtAmt) txtAmt.innerText = `₹${Number(amount || 0).toFixed(2)}`;
+
+    if (modal) {
+      modal.classList.remove('hidden');
+      modal.classList.add('open');
+    }
+  }
+
+  closeOwnerWalletRejectModal() {
+    const modal = document.getElementById('modalOwnerWalletReject');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('open');
+    }
+  }
+
+  toggleRejectCustomReason() {
+    const sel = document.getElementById('selRejectReason');
+    const customBox = document.getElementById('boxCustomRejectReason');
+    if (sel && customBox) {
+      customBox.classList.toggle('hidden', sel.value !== 'Other');
+    }
+  }
+
+  async handleOwnerWalletRejectSubmit(e) {
+    e.preventDefault();
+    const reqId = document.getElementById('inpRejectReqId')?.value;
+    const selReason = document.getElementById('selRejectReason')?.value;
+    const txtCustom = document.getElementById('txtCustomRejectReason')?.value;
+
+    let finalReason = selReason || 'Payment verification failed';
+    if (selReason === 'Other') {
+      finalReason = txtCustom && txtCustom.trim() ? txtCustom.trim() : 'Payment verification failed';
+    }
+
+    if (!reqId) return;
+
+    try {
+      const res = await fetch(`/api/owner/wallet/requests/${reqId}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken || ''}`,
+          'X-Auth-Token': this.authToken || ''
+        },
+        body: JSON.stringify({ reason: finalReason })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        this.showToast(data.message || 'Wallet top-up request rejected.', 'info');
+        this.closeOwnerWalletRejectModal();
+        this.loadOwnerWalletData();
+      } else {
+        this.showToast(data.message || 'Failed to reject request.', 'error');
+      }
+    } catch (err) {
+      console.error('Error rejecting wallet request:', err);
+      this.showToast('Network error rejecting request.', 'error');
     }
   }
 }

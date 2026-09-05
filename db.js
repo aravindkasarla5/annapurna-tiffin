@@ -674,6 +674,28 @@ async function initDatabase() {
       status VARCHAR(50) DEFAULT 'ACTIVE',
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS wallet_topup_requests (
+      id VARCHAR(100) PRIMARY KEY,
+      request_id VARCHAR(100) NOT NULL UNIQUE,
+      customer_id VARCHAR(100) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      customer_name VARCHAR(255) NOT NULL,
+      customer_mobile VARCHAR(50) NOT NULL,
+      amount NUMERIC(10, 2) NOT NULL,
+      payment_method VARCHAR(100) DEFAULT 'UPI',
+      utr_number VARCHAR(100),
+      transaction_id VARCHAR(100),
+      screenshot_url TEXT,
+      status VARCHAR(50) DEFAULT 'PENDING',
+      rejection_reason TEXT,
+      approved_at TIMESTAMPTZ,
+      approved_by VARCHAR(100),
+      rejected_at TIMESTAMPTZ,
+      rejected_by VARCHAR(100),
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`
   ];
 
@@ -699,6 +721,10 @@ async function initDatabase() {
     await query(`CREATE INDEX IF NOT EXISTS idx_order_add_ons_order ON order_add_ons(order_id);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_smart_cart_analytics_offer_id ON smart_cart_analytics(offer_id);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_ai_assistant_analytics_created ON ai_assistant_analytics(created_at);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_customer ON wallet_topup_requests(customer_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_status ON wallet_topup_requests(status);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_utr ON wallet_topup_requests(utr_number);`);
+    try { await query(`ALTER TABLE wallet_transactions ADD COLUMN request_id VARCHAR(100);`); } catch (colErr) {}
   } catch (idxErr) {
     console.warn('Index creation notice:', idxErr.message);
   }

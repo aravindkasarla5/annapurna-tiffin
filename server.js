@@ -3812,6 +3812,519 @@ app.post('/api/orders/:id/cancel', authenticateToken, requireRole('CUSTOMER'), a
     res.status(500).json({ success: false, message: "Database server error cancelling order." });
   }
 });
+
+// =========================================================================
+// CUSTOMER & OWNER WALLET MANAGEMENT SYSTEM (STRICT SECURITY & LEDGER)
+// =========================================================================
+
+// 1. Customer Wallet Summary & Balances
+app.get('/api/wallet/summary', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Fetch latest verified wallet balance
+    const uRes = await db.query('SELECT wallet_balance FROM users WHERE id = $1;', [userId]);
+    const available_balance = Number(uRes.rows[0]?.wallet_balance || 0);
+
+    // Aggregate top-up amounts by status
+    const reqRes = await db.query(
+      `SELECT 
+         SUM(CASE WHEN UPPER(status) = 'PENDING' THEN amount ELSE 0 END) as pending_amount,
+         SUM(CASE WHEN UPPER(status) = 'APPROVED' THEN amount ELSE 0 END) as approved_amount,
+         SUM(CASE WHEN UPPER(status) = 'REJECTED' THEN amount ELSE 0 END) as rejected_amount
+       FROM wallet_topup_requests WHERE customer_id = $1;`,
+      [userId]
+    );
+
+    const pending_amount = Number(reqRes.rows[0]?.pending_amount || 0);
+    const approved_amount = Number(reqRes.rows[0]?.approved_amount || 0);
+    const rejected_amount = Number(reqRes.rows[0]?.rejected_amount || 0);
+
+    res.json({
+      success: true,
+      data: {
+        available_balance,
+        pending_amount,
+        approved_amount,
+        rejected_amount
+      }
+    });
+  } catch (err) {
+    console.error('Fetch Wallet Summary Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch wallet balance summary." });
+  }
+});
+
+// 2. Customer Wallet Requests List
+app.get('/api/wallet/requests', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const reqRes = await db.query(
+      'SELECT * FROM wallet_topup_requests WHERE customer_id = $1 ORDER BY created_at DESC;',
+      [userId]
+    );
+    res.json({
+      success: true,
+      data: reqRes.rows || []
+    });
+  } catch (err) {
+    console.error('Fetch Wallet Requests Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch wallet top-up requests." });
+  }
+});
+
+// 3. Customer Add Money / Submit Top-Up Payment Request
+app.post('/api/wallet/topup', authenticateToken, handleIdempotencyMiddleware, async (req, res) => {
+  try {
+    const { amount, payment_method, utr_number, payment_screenshot, screenshot_url } = req.body;
+
+    // Strict Amount Validation
+    if (amount === undefined || amount === null || amount === '') {
+      return res.status(400).json({ success: false, message: "Amount is required." });
+    }
+
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid amount. Please enter a positive valid number." });
+    }
+
+    if (numAmount < 1) {
+      return res.status(400).json({ success: false, message: "Minimum top-up amount is ₹1.00." });
+    }
+
+    if (numAmount > 50000) {
+      return res.status(400).json({ success: false, message: "Maximum single top-up limit is ₹50,000.00." });
+    }
+
+    // Payment Method Normalization
+    const cleanMethod = (payment_method && typeof payment_method === 'string') ? payment_method.trim() : 'UPI';
+
+    // UTR / Reference ID Handling & Sanitization
+    const cleanUtr = (utr_number && typeof utr_number === 'string') ? utr_number.trim() : '';
+
+    // Check UTR Deduplication across pending top-up requests & orders if provided
+    if (cleanUtr && cleanUtr.length >= 4) {
+      const dupCheckReq = await db.query(
+        'SELECT request_id FROM wallet_topup_requests WHERE UPPER(utr_number) = UPPER($1) AND UPPER(status) IN (\'PENDING\', \'APPROVED\');',
+        [cleanUtr]
+      );
+      if (dupCheckReq.rows && dupCheckReq.rows.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `This UTR / Reference number (${cleanUtr}) has already been submitted for wallet top-up request #${dupCheckReq.rows[0].request_id}. Duplicate payment references are not allowed.`
+        });
+      }
+    }
+
+    // Image Upload Handling
+    let finalScreenshotUrl = null;
+    if (payment_screenshot) {
+      finalScreenshotUrl = await saveBase64Image(payment_screenshot, 'wallet_screenshots');
+    } else if (screenshot_url) {
+      finalScreenshotUrl = screenshot_url;
+    }
+
+    const id = 'wtr_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+    const request_id = 'WTR-' + Date.now().toString(36).toUpperCase() + '-' + crypto.randomBytes(2).toString('hex').toUpperCase();
+    const nowIso = new Date().toISOString();
+
+    // Insert Top-Up Request with PENDING Status (Wallet Balance is NOT modified!)
+    await db.query(
+      `INSERT INTO wallet_topup_requests (
+        id, request_id, customer_id, customer_name, customer_mobile,
+        amount, payment_method, utr_number, screenshot_url, status, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', $10, $10);`,
+      [
+        id,
+        request_id,
+        req.user.id,
+        req.user.name,
+        req.user.mobile,
+        numAmount,
+        cleanMethod,
+        cleanUtr || null,
+        finalScreenshotUrl || null,
+        nowIso
+      ]
+    );
+
+    const newRequestObj = {
+      id,
+      request_id,
+      customer_id: req.user.id,
+      customer_name: req.user.name,
+      customer_mobile: req.user.mobile,
+      amount: numAmount,
+      payment_method: cleanMethod,
+      utr_number: cleanUtr || null,
+      screenshot_url: finalScreenshotUrl || null,
+      status: 'PENDING',
+      created_at: nowIso
+    };
+
+    // Real-Time Notification to Owner
+    try {
+      createAndDispatchNotification({
+        target_role: 'OWNER',
+        title: '💰 New Wallet Top-Up Request',
+        message: `Customer ${req.user.name} (${req.user.mobile}) submitted ₹${numAmount.toFixed(2)} for wallet top-up verification (Req #${request_id}).`,
+        type: 'PAYMENT',
+        action_url: '/#secOwnerWallet'
+      });
+    } catch (nErr) {
+      console.warn('Wallet Top-Up Notification Notice:', nErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `Wallet top-up request #${request_id} submitted successfully! Money will be credited to your available wallet balance after Owner verification.`,
+      data: newRequestObj
+    });
+  } catch (err) {
+    console.error('Submit Wallet Topup Error:', err);
+    res.status(500).json({ success: false, message: "Failed to submit wallet top-up request." });
+  }
+});
+
+// 4. Customer Wallet Support Ticket Submission
+app.post('/api/wallet/support', authenticateToken, async (req, res) => {
+  try {
+    const { category, subject, message, request_id } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: "Support issue description is required." });
+    }
+
+    const ticketId = 'tkt_w_' + Date.now() + '_' + crypto.randomBytes(3).toString('hex');
+    const ticketNum = 'TKT-W-' + Date.now().toString(36).toUpperCase();
+    const finalCategory = category || 'Wallet Issue';
+    const finalSubject = subject || `[Wallet Support] ${finalCategory} (Req #${request_id || 'N/A'})`;
+    const fullMsg = request_id ? `[Associated Wallet Request ID: ${request_id}]\n\n${message.trim()}` : message.trim();
+
+    await db.query(
+      `INSERT INTO support_tickets (id, ticket_number, user_id, customer_id, customer_name, customer_mobile, subject, category, priority, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, 'High', 'Open', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);`,
+      [ticketId, ticketNum, req.user.id, req.user.name, req.user.mobile, finalSubject, finalCategory]
+    );
+
+    const msgId = 'msg_w_' + Date.now() + '_' + crypto.randomBytes(3).toString('hex');
+    await db.query(
+      `INSERT INTO support_messages (id, ticket_id, sender_role, sender_name, message, date_time, created_at)
+       VALUES ($1, $2, 'CUSTOMER', $3, $4, $5, CURRENT_TIMESTAMP);`,
+      [msgId, ticketId, req.user.name, fullMsg, new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })]
+    );
+
+    // Real-time Owner Notification
+    try {
+      createAndDispatchNotification({
+        target_role: 'OWNER',
+        title: '🎧 New Wallet Support Request',
+        message: `Customer ${req.user.name} logged a wallet support issue: "${finalCategory}"`,
+        type: 'SUPPORT',
+        action_url: '/#secOwnerSupport'
+      });
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      message: `Wallet support ticket #${ticketNum} submitted successfully! The Owner will contact you shortly.`,
+      ticket_number: ticketNum
+    });
+  } catch (err) {
+    console.error('Wallet Support Submission Error:', err);
+    res.status(500).json({ success: false, message: "Failed to submit wallet support ticket." });
+  }
+});
+
+// 5. Owner Wallet Requests Search & Management (`requireRole('OWNER')`)
+app.get('/api/owner/wallet/requests', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { search, status, payment_method, date_range, sort } = req.query;
+
+    let sql = `SELECT * FROM wallet_topup_requests WHERE 1=1`;
+    let params = [];
+
+    // Filter by Status
+    if (status && status.toUpperCase() !== 'ALL') {
+      params.push(status.toUpperCase());
+      sql += ` AND UPPER(status) = $${params.length}`;
+    }
+
+    // Filter by Payment Method
+    if (payment_method && payment_method.toUpperCase() !== 'ALL') {
+      params.push(`%${payment_method.trim()}%`);
+      sql += ` AND UPPER(payment_method) LIKE UPPER($${params.length})`;
+    }
+
+    // Search query: customer_name, customer_mobile, request_id, utr_number, transaction_id
+    if (search && search.trim()) {
+      const searchTerm = `%${search.trim()}%`;
+      params.push(searchTerm);
+      const pIdx = params.length;
+      sql += ` AND (
+        UPPER(customer_name) LIKE UPPER($${pIdx}) OR
+        customer_mobile LIKE $${pIdx} OR
+        UPPER(request_id) LIKE UPPER($${pIdx}) OR
+        UPPER(utr_number) LIKE UPPER($${pIdx}) OR
+        UPPER(transaction_id) LIKE UPPER($${pIdx})
+      )`;
+    }
+
+    // Filter by Date Range
+    if (date_range) {
+      const dr = date_range.toLowerCase();
+      const now = new Date();
+      if (dr === 'today') {
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        params.push(startOfDay);
+        sql += ` AND created_at >= $${params.length}`;
+      } else if (dr === 'yesterday') {
+        const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString();
+        const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        params.push(startOfYesterday);
+        sql += ` AND created_at >= $${params.length}`;
+        params.push(endOfYesterday);
+        sql += ` AND created_at < $${params.length}`;
+      } else if (dr === 'last_7_days') {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        params.push(sevenDaysAgo);
+        sql += ` AND created_at >= $${params.length}`;
+      } else if (dr === 'last_30_days') {
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        params.push(thirtyDaysAgo);
+        sql += ` AND created_at >= $${params.length}`;
+      }
+    }
+
+    // Sorting
+    if (sort === 'amount_asc') {
+      sql += ` ORDER BY amount ASC`;
+    } else if (sort === 'amount_desc') {
+      sql += ` ORDER BY amount DESC`;
+    } else {
+      sql += ` ORDER BY created_at DESC`;
+    }
+
+    const rRes = await db.query(sql, params);
+    const requests = rRes.rows || [];
+
+    // Calculate Summary Metrics
+    const metricsRes = await db.query(`
+      SELECT 
+        COUNT(CASE WHEN UPPER(status) = 'PENDING' THEN 1 END) as pending_count,
+        SUM(CASE WHEN UPPER(status) = 'APPROVED' THEN amount ELSE 0 END) as total_approved_amount,
+        COUNT(CASE WHEN UPPER(status) = 'REJECTED' THEN 1 END) as rejected_count,
+        COUNT(DISTINCT customer_id) as unique_wallet_customers
+      FROM wallet_topup_requests;
+    `);
+
+    const metrics = {
+      pending_count: Number(metricsRes.rows[0]?.pending_count || 0),
+      total_approved_amount: Number(metricsRes.rows[0]?.total_approved_amount || 0),
+      rejected_count: Number(metricsRes.rows[0]?.rejected_count || 0),
+      unique_wallet_customers: Number(metricsRes.rows[0]?.unique_wallet_customers || 0)
+    };
+
+    res.json({
+      success: true,
+      data: requests,
+      metrics
+    });
+  } catch (err) {
+    console.error('Owner Wallet Requests Search Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch owner wallet requests." });
+  }
+});
+
+// 6. Owner Approve Wallet Top-Up Request (`requireRole('OWNER')`)
+app.post('/api/owner/wallet/requests/:id/approve', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Request ID parameter is required." });
+    }
+
+    // 1. Fetch Request & Lock Check
+    const reqRes = await db.query('SELECT * FROM wallet_topup_requests WHERE id = $1 OR request_id = $1;', [id]);
+    if (!reqRes.rows || reqRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Wallet top-up request record not found." });
+    }
+
+    const requestObj = reqRes.rows[0];
+
+    // Status transition guard: Request MUST be PENDING
+    if (requestObj.status.toUpperCase() !== 'PENDING') {
+      return res.status(409).json({
+        success: false,
+        message: `Request #${requestObj.request_id} has already been processed (Current status: ${requestObj.status}).`
+      });
+    }
+
+    const approvedAmount = Number(requestObj.amount || 0);
+    if (isNaN(approvedAmount) || approvedAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Top-up request has an invalid stored amount." });
+    }
+
+    // 2. Fetch Customer Record
+    const userRes = await db.query('SELECT id, wallet_balance, name FROM users WHERE id = $1;', [requestObj.customer_id]);
+    if (!userRes.rows || userRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Associated customer account no longer exists." });
+    }
+
+    const customerUser = userRes.rows[0];
+    const previousBalance = Number(customerUser.wallet_balance || 0);
+
+    // 3. ATOMIC STATE TRANSITION LOCK QUERY:
+    // Update status from PENDING to APPROVED atomically.
+    // If rowCount === 0, another concurrent tab/request already approved it!
+    const nowIso = new Date().toISOString();
+    const updateReqRes = await db.query(
+      `UPDATE wallet_topup_requests
+       SET status = 'APPROVED', approved_at = $1, approved_by = $2, updated_at = $1
+       WHERE id = $3 AND UPPER(status) = 'PENDING';`,
+      [nowIso, req.user.id, requestObj.id]
+    );
+
+    if (updateReqRes.rowCount === 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Concurrent execution blocked: Request #${requestObj.request_id} was already approved or updated by another session.`
+      });
+    }
+
+    // 4. Credit Customer Wallet Balance
+    const creditRes = await db.query(
+      `UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2 RETURNING wallet_balance;`,
+      [approvedAmount, customerUser.id]
+    );
+    const newBalance = Number(creditRes.rows[0]?.wallet_balance || (previousBalance + approvedAmount));
+
+    // 5. Create Financial Source-of-Truth Ledger Entry in `wallet_transactions`
+    const txId = 'wtx_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+    const dateTimeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+    await db.query(
+      `INSERT INTO wallet_transactions (
+        id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
+      ) VALUES ($1, $2, $3, $4, 'CREDIT', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
+      [
+        txId,
+        customerUser.id,
+        requestObj.id,
+        approvedAmount,
+        `Wallet Top-Up Verified & Approved (Req #${requestObj.request_id})`,
+        dateTimeStr,
+        previousBalance,
+        newBalance
+      ]
+    );
+
+    // 6. Send Customer Real-Time Notification
+    try {
+      createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: customerUser.id,
+        title: '✅ Wallet Top-Up Approved!',
+        message: `₹${approvedAmount.toFixed(2)} has been added to your wallet by the Owner. Your new available balance is ₹${newBalance.toFixed(2)}.`,
+        type: 'PAYMENT',
+        action_url: '/#secCustomerWallet'
+      });
+    } catch (nErr) {
+      console.warn('Approval Customer Notification Notice:', nErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `🟢 SUCCESS: Wallet top-up #${requestObj.request_id} approved! ₹${approvedAmount.toFixed(2)} credited to ${customerUser.name}.`,
+      data: {
+        request_id: requestObj.request_id,
+        customer_id: customerUser.id,
+        previous_balance: previousBalance,
+        new_balance: newBalance,
+        credited_amount: approvedAmount
+      }
+    });
+  } catch (err) {
+    console.error('Owner Wallet Approval Error:', err);
+    res.status(500).json({ success: false, message: "Failed to approve wallet top-up request." });
+  }
+});
+
+// 7. Owner Reject Wallet Top-Up Request (`requireRole('OWNER')`)
+app.post('/api/owner/wallet/requests/:id/reject', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Request ID parameter is required." });
+    }
+
+    const rejectionReason = (reason && typeof reason === 'string' && reason.trim())
+      ? reason.trim()
+      : 'Payment verification failed';
+
+    // 1. Fetch Request
+    const reqRes = await db.query('SELECT * FROM wallet_topup_requests WHERE id = $1 OR request_id = $1;', [id]);
+    if (!reqRes.rows || reqRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Wallet top-up request record not found." });
+    }
+
+    const requestObj = reqRes.rows[0];
+
+    // Status transition guard: Request MUST be PENDING
+    if (requestObj.status.toUpperCase() !== 'PENDING') {
+      return res.status(409).json({
+        success: false,
+        message: `Request #${requestObj.request_id} has already been processed (Current status: ${requestObj.status}).`
+      });
+    }
+
+    // 2. ATOMIC STATE TRANSITION LOCK QUERY:
+    // Update status to REJECTED. (Wallet Balance is NOT touched!)
+    const nowIso = new Date().toISOString();
+    const updateReqRes = await db.query(
+      `UPDATE wallet_topup_requests
+       SET status = 'REJECTED', rejection_reason = $1, rejected_at = $2, rejected_by = $3, updated_at = $2
+       WHERE id = $4 AND UPPER(status) = 'PENDING';`,
+      [rejectionReason, nowIso, req.user.id, requestObj.id]
+    );
+
+    if (updateReqRes.rowCount === 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Concurrent execution blocked: Request #${requestObj.request_id} was already updated by another session.`
+      });
+    }
+
+    // 3. Send Real-Time Notification to Customer
+    try {
+      createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: requestObj.customer_id,
+        title: '❌ Wallet Top-Up Request Rejected',
+        message: `Your wallet top-up request #${requestObj.request_id} for ₹${Number(requestObj.amount).toFixed(2)} was rejected. Reason: ${rejectionReason}.`,
+        type: 'PAYMENT',
+        action_url: '/#secCustomerWallet'
+      });
+    } catch (nErr) {
+      console.warn('Rejection Customer Notification Notice:', nErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `🔴 Wallet top-up request #${requestObj.request_id} rejected. Customer balance remains unchanged.`,
+      data: {
+        request_id: requestObj.request_id,
+        status: 'REJECTED',
+        rejection_reason: rejectionReason
+      }
+    });
+  } catch (err) {
+    console.error('Owner Wallet Rejection Error:', err);
+    res.status(500).json({ success: false, message: "Failed to reject wallet top-up request." });
+  }
+});
+
 app.get('/api/wallet/transactions', authenticateToken, async (req, res) => {
   try {
     const txRes = await db.query(

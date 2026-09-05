@@ -551,6 +551,167 @@
       </div>
     </section>
 
+    <!-- SINGLE CUSTOMER WALLET BALANCE PAGE -->
+    <section id="secCustomerWallet" class="view-section hidden">
+      <div class="wallet-page-container">
+        
+        <!-- Header Banner & Action bar -->
+        <div class="wallet-header-card">
+          <div class="wallet-header-main">
+            <div class="wallet-header-info">
+              <span class="wallet-badge"><i class="fa-solid fa-shield-halved"></i> 100% Verified Wallet</span>
+              <h2 class="wallet-title"><i class="fa-solid fa-wallet"></i> Customer Wallet Balance</h2>
+              <p class="wallet-subtitle">Owner-verified secure balance for instant tiffin ordering</p>
+            </div>
+            <button type="button" class="btn-wallet-support-trigger" onclick="app.openWalletSupportModal()">
+              <i class="fa-solid fa-headset"></i> <span>Wallet Support</span>
+            </button>
+          </div>
+
+          <!-- Main Verified Balance Card -->
+          <div class="wallet-balance-card">
+            <div class="wallet-bal-main">
+              <div class="bal-label">💰 Available Wallet Balance</div>
+              <div class="bal-value" id="walletAvailableDisplay">₹0.00</div>
+              <div class="bal-note"><i class="fa-solid fa-circle-check" style="color: var(--primary);"></i> Owner Verified & Approved Money Only</div>
+            </div>
+            <div class="wallet-stats-grid">
+              <div class="stat-box pending">
+                <div class="stat-title">⏳ Pending Verification</div>
+                <div class="stat-amount" id="walletPendingDisplay">₹0.00</div>
+              </div>
+              <div class="stat-box approved">
+                <div class="stat-title">✅ Approved Amount</div>
+                <div class="stat-amount" id="walletApprovedDisplay">₹0.00</div>
+              </div>
+              <div class="stat-box rejected">
+                <div class="stat-title">❌ Rejected Requests</div>
+                <div class="stat-amount" id="walletRejectedDisplay">₹0.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Add Money Section Card -->
+        <div class="wallet-card-section">
+          <div class="card-section-header">
+            <h3><i class="fa-solid fa-circle-plus" style="color: var(--primary);"></i> Add Money to Wallet</h3>
+            <p>Select preset or enter custom amount. Payment will be submitted for Owner verification.</p>
+          </div>
+
+          <!-- Preset Amounts Bar -->
+          <div class="wallet-presets-container">
+            <label class="input-label">Select Quick Amount:</label>
+            <div class="presets-grid">
+              <button type="button" class="preset-btn" onclick="app.selectWalletPreset(100)">+ ₹100</button>
+              <button type="button" class="preset-btn" onclick="app.selectWalletPreset(200)">+ ₹200</button>
+              <button type="button" class="preset-btn active" onclick="app.selectWalletPreset(500)">+ ₹500</button>
+              <button type="button" class="preset-btn" onclick="app.selectWalletPreset(1000)">+ ₹1,000</button>
+            </div>
+          </div>
+
+          <!-- Custom Amount Input Form -->
+          <form id="formAddWalletMoney" onsubmit="app.handleWalletTopupSubmit(event)" style="margin-top: 1rem;">
+            <div class="form-group">
+              <label for="inpWalletAmount" class="input-label">Enter Custom Amount (₹):</label>
+              <div class="custom-amount-input-wrapper">
+                <span class="currency-symbol">₹</span>
+                <input type="number" id="inpWalletAmount" class="form-control wallet-amount-input" min="1" max="50000" step="1" value="500" required placeholder="Enter amount (e.g. 500)" oninput="app.updateWalletPaymentSummary()">
+              </div>
+            </div>
+
+            <!-- Payment Method Selector -->
+            <div class="form-group">
+              <label class="input-label">Choose Payment Method:</label>
+              <div class="payment-method-selector">
+                <label class="pm-option active">
+                  <input type="radio" name="walletPayMethod" value="UPI" checked onchange="app.toggleWalletPaymentViews()">
+                  <span class="pm-box"><i class="fa-solid fa-qrcode"></i> UPI / QR Code</span>
+                </label>
+                <label class="pm-option">
+                  <input type="radio" name="walletPayMethod" value="PhonePe" onchange="app.toggleWalletPaymentViews()">
+                  <span class="pm-box"><i class="fa-solid fa-mobile-screen-button"></i> PhonePe</span>
+                </label>
+                <label class="pm-option">
+                  <input type="radio" name="walletPayMethod" value="Cash" onchange="app.toggleWalletPaymentViews()">
+                  <span class="pm-box"><i class="fa-solid fa-money-bill-wave"></i> Cash at Center</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- UPI QR Pay Details Box -->
+            <div id="walletQrDetailsBox" class="wallet-qr-box">
+              <div class="qr-info-header">
+                <div>
+                  <div class="qr-vpa-title">Scan & Pay via UPI / GPay / PhonePe / Paytm:</div>
+                  <div class="qr-vpa-id" id="walletUpiIdDisplay">9392974900@ybl</div>
+                </div>
+                <button type="button" class="btn-copy-upi" onclick="app.copyWalletUpiId()"><i class="fa-regular fa-copy"></i> Copy UPI ID</button>
+              </div>
+              <div class="qr-image-container">
+                <img id="imgWalletUpiQr" src="/images/tiffin_logo.png" alt="UPI QR Code" class="wallet-qr-img">
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Scan with any UPI app and enter exact amount <strong id="walletQrAmountText" style="color: var(--primary);">₹500.00</strong></p>
+              </div>
+            </div>
+
+            <!-- Payment Reference / UTR & Screenshot -->
+            <div id="walletProofFieldsBox">
+              <div class="form-group">
+                <label for="inpWalletUtr" class="input-label">UTR / Reference / Transaction Number <span style="color: var(--primary);">*</span></label>
+                <input type="text" id="inpWalletUtr" class="form-control" placeholder="12-digit UTR or Txn Reference ID (e.g. 4239XXXXXXXX)" required>
+              </div>
+
+              <div class="form-group">
+                <label for="inpWalletScreenshot" class="input-label">Payment Screenshot (Optional)</label>
+                <input type="file" id="inpWalletScreenshot" class="form-control" accept="image/*" onchange="app.handleWalletScreenshotChange(event)">
+                <div id="walletScreenshotPreview" class="screenshot-preview-box hidden"></div>
+              </div>
+            </div>
+
+            <button type="submit" id="btnSubmitWalletTopup" class="btn-primary-block" style="margin-top: 1.25rem; font-size: 1.05rem; padding: 14px;">
+              <i class="fa-solid fa-paper-plane"></i> Submit Payment for Verification
+            </button>
+          </form>
+        </div>
+
+        <!-- Pending Verification Requests Section -->
+        <div class="wallet-card-section">
+          <div class="card-section-header">
+            <h3><i class="fa-solid fa-clock-rotate-left" style="color: #FF9800;"></i> Pending Verification Requests</h3>
+            <p>Requests currently waiting for Owner approval</p>
+          </div>
+
+          <div class="wallet-pending-alert">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <div>
+              <strong>Owner Verification Required:</strong>
+              Submitted payments do NOT immediately add to your available wallet balance. Amount will be credited automatically once the Owner approves your payment.
+            </div>
+          </div>
+
+          <div id="containerWalletPendingRequests" class="pending-requests-list">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Wallet Transaction History Ledger -->
+        <div class="wallet-card-section">
+          <div class="card-section-header" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h3><i class="fa-solid fa-list-check" style="color: var(--accent-gold);"></i> Wallet Ledger & History</h3>
+              <p>Complete record of approved credits and spending debits</p>
+            </div>
+            <button type="button" class="btn-secondary-sm" onclick="app.loadCustomerWalletData()"><i class="fa-solid fa-arrows-rotate"></i> Refresh Ledger</button>
+          </div>
+
+          <div id="containerWalletTxHistory" class="tx-history-table-container">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+      </div>
+    </section>
+
     <!-- Customer Payment History Section -->
     <section id="secCustomerPayments" class="view-section hidden">
       <div class="section-header"
@@ -1910,6 +2071,98 @@
 
       <div class="orders-list" id="ownerReviewsList">
         <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- OWNER WALLET MANAGEMENT SECTION -->
+    <section id="secOwnerWallet" class="view-section hidden">
+      <div class="wallet-page-container">
+        
+        <div class="section-header" style="margin-bottom: 1.5rem; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h2 class="section-title"><i class="fa-solid fa-wallet" style="color: var(--primary);"></i> Owner Wallet Management</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Verify, search, filter, approve, and manage customer wallet top-up requests</p>
+          </div>
+          <button type="button" class="btn-primary-block" onclick="app.loadOwnerWalletData()" style="width: auto; padding: 10px 20px;">
+            <i class="fa-solid fa-arrows-rotate"></i> Refresh Requests
+          </button>
+        </div>
+
+        <!-- Metrics Overview Bar -->
+        <div class="owner-wallet-metrics-grid">
+          <div class="metric-card yellow">
+            <div class="metric-title">⏳ Pending Requests</div>
+            <div class="metric-value" id="ownerMetricPending">0</div>
+          </div>
+          <div class="metric-card green">
+            <div class="metric-title">💰 Total Approved</div>
+            <div class="metric-value" id="ownerMetricApproved">₹0.00</div>
+          </div>
+          <div class="metric-card red">
+            <div class="metric-title">❌ Rejected Requests</div>
+            <div class="metric-value" id="ownerMetricRejected">0</div>
+          </div>
+          <div class="metric-card blue">
+            <div class="metric-title">👥 Wallet Customers</div>
+            <div class="metric-value" id="ownerMetricCustomers">0</div>
+          </div>
+        </div>
+
+        <!-- Search & Filter Controls Panel -->
+        <div class="owner-wallet-filter-panel">
+          <div class="filter-row-top">
+            <div class="search-input-wrapper" style="flex: 2; min-width: 260px;">
+              <i class="fa-solid fa-magnifying-glass search-icon"></i>
+              <input type="text" id="inpOwnerWalletSearch" class="form-control" placeholder="Search by customer name, mobile, request ID, UTR..." oninput="app.filterOwnerWalletRequests()">
+            </div>
+            <div style="flex: 1; min-width: 150px;">
+              <select id="selOwnerWalletStatusFilter" class="form-control" onchange="app.filterOwnerWalletRequests()">
+                <option value="ALL">All Statuses</option>
+                <option value="PENDING" selected>Pending Only</option>
+                <option value="APPROVED">Approved Only</option>
+                <option value="REJECTED">Rejected Only</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="filter-row-bottom">
+            <div class="filter-group">
+              <label class="filter-label">Payment Method:</label>
+              <select id="selOwnerWalletMethodFilter" class="form-control" onchange="app.filterOwnerWalletRequests()">
+                <option value="ALL">All Methods</option>
+                <option value="UPI">UPI / QR</option>
+                <option value="PhonePe">PhonePe</option>
+                <option value="Cash">Cash</option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label class="filter-label">Date Range:</label>
+              <select id="selOwnerWalletDateFilter" class="form-control" onchange="app.filterOwnerWalletRequests()">
+                <option value="ALL">All Time</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="last_7_days">Last 7 Days</option>
+                <option value="last_30_days">Last 30 Days</option>
+              </select>
+            </div>
+
+            <div class="filter-group">
+              <label class="filter-label">Sort Amount:</label>
+              <select id="selOwnerWalletSort" class="form-control" onchange="app.filterOwnerWalletRequests()">
+                <option value="newest">Newest First</option>
+                <option value="amount_desc">Amount: High to Low</option>
+                <option value="amount_asc">Amount: Low to High</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Requests List Container -->
+        <div id="containerOwnerWalletRequests" class="owner-requests-container">
+          <!-- Rendered dynamically -->
+        </div>
+
       </div>
     </section>
 
@@ -5979,10 +6232,95 @@
       </div>
     </div>
 
+    <!-- CUSTOMER WALLET SUPPORT MODAL -->
+    <div id="modalWalletSupport" class="modal-backdrop hidden">
+      <div class="modal-card wallet-support-modal">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-headset" style="color: var(--primary);"></i> 🎧 Customer Wallet Support</h3>
+          <button type="button" class="btn-close-modal" onclick="app.closeWalletSupportModal()">&times;</button>
+        </div>
+        <form id="formWalletSupport" onsubmit="app.handleWalletSupportSubmit(event)">
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="input-label">Support Category:</label>
+              <select id="selWalletSupportCategory" class="form-control" required>
+                <option value="Balance not updated">Balance not updated</option>
+                <option value="Payment pending">Payment pending</option>
+                <option value="Payment rejected">Payment rejected</option>
+                <option value="Verification problem">Verification problem</option>
+                <option value="Wrong wallet amount">Wrong wallet amount</option>
+                <option value="Transaction issue">Transaction issue</option>
+                <option value="Other">Other Wallet Query</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="input-label">Select Related Request (Optional):</label>
+              <select id="selWalletSupportRequest" class="form-control">
+                <option value="">-- No specific request --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="input-label">Describe your Issue:</label>
+              <textarea id="txtWalletSupportMsg" class="form-control" rows="4" placeholder="Provide payment details or questions for the Owner..." required></textarea>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="app.closeWalletSupportModal()">Cancel</button>
+            <button type="submit" id="btnSubmitWalletSupport" class="btn-primary-block" style="width: auto;">
+              <i class="fa-solid fa-paper-plane"></i> Send Support Ticket
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- OWNER WALLET REJECTION MODAL -->
+    <div id="modalOwnerWalletReject" class="modal-backdrop hidden">
+      <div class="modal-card wallet-reject-modal">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-circle-xmark" style="color: #F44336;"></i> Reject Wallet Top-Up Request</h3>
+          <button type="button" class="btn-close-modal" onclick="app.closeOwnerWalletRejectModal()">&times;</button>
+        </div>
+        <form id="formOwnerWalletReject" onsubmit="app.handleOwnerWalletRejectSubmit(event)">
+          <input type="hidden" id="inpRejectReqId" value="">
+          <div class="modal-body">
+            <p>You are about to reject top-up request <strong id="txtRejectReqNum">#WTR-0000</strong> for <strong id="txtRejectCustName">Customer</strong> (Amount: <strong id="txtRejectAmount" style="color: var(--primary);">₹0.00</strong>).</p>
+
+            <div class="form-group" style="margin-top: 1rem;">
+              <label class="input-label">Select Rejection Reason:</label>
+              <select id="selRejectReason" class="form-control" required onchange="app.toggleRejectCustomReason()">
+                <option value="Payment not received">Payment not received in bank account</option>
+                <option value="Invalid UTR">Invalid UTR / Reference number</option>
+                <option value="Duplicate payment">Duplicate payment submission</option>
+                <option value="Screenshot mismatch">Screenshot mismatch / unclear proof</option>
+                <option value="Payment verification failed">Payment verification failed</option>
+                <option value="Other">Other (Custom reason)</option>
+              </select>
+            </div>
+
+            <div id="boxCustomRejectReason" class="form-group hidden">
+              <label class="input-label">Enter Custom Rejection Reason:</label>
+              <textarea id="txtCustomRejectReason" class="form-control" rows="2" placeholder="Specify why this payment was rejected..."></textarea>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="app.closeOwnerWalletRejectModal()">Cancel</button>
+            <button type="submit" id="btnConfirmWalletReject" class="btn-confirm-reject" style="width: auto; background: #D32F2F; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer;">
+              <i class="fa-solid fa-ban"></i> Confirm Rejection
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=42"></script>
+    <script src="/js/app.js?v=43"></script>
 </body>
 
 </html>
