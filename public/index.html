@@ -75,6 +75,14 @@
         <span class="badge hidden" id="cartBadgeCount">0</span>
       </button>
 
+      <!-- 2.5 Wallet Balance Header Button (Visible ONLY after login) -->
+      <button class="header-wallet-btn hidden" id="btnHeaderWallet"
+        onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerWallet' : 'secCustomerWallet')"
+        title="Wallet Balance">
+        <i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i>
+        <span class="header-wallet-amount" id="headerWalletAmount">₹0.00</span>
+      </button>
+
       <!-- 3. Profile Icon & Badge with Full Name (Visible ONLY after login, clicking switches to My Profile) -->
       <button class="header-profile-card hidden" id="btnHeaderProfile"
         onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerSettings' : 'secCustomerProfile')"
@@ -145,6 +153,15 @@
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Today's Menu</strong>
               <span class="drawer-item-sub">Idly, Dosa, Meals & Vada</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.switchView(app.currentRole === 'OWNER' ? 'secOwnerWallet' : 'secCustomerWallet');">
+            <div class="drawer-icon-box gold"><i class="fa-solid fa-wallet"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Wallet Balance 💰</strong>
+              <span class="drawer-item-sub">Add money, top-up status & ledger</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
@@ -314,6 +331,7 @@
             traditional family love.
           </p>
           <div class="hero-badges-wrapper">
+            <span class="hero-badge" onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerWallet' : 'secCustomerWallet')" style="cursor: pointer;" title="View Wallet Balance"><i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i> Wallet: <strong id="homeHeroWalletBal">₹0.00</strong></span>
             <span class="hero-badge"><i class="fa-solid fa-fire-flame-curved" style="color: var(--primary);"></i> Hot &
               Fresh Daily</span>
             <span class="hero-badge"><i class="fa-solid fa-mortar-pestle" style="color: var(--accent-gold);"></i>
@@ -1208,7 +1226,7 @@
               <i class="fa-solid fa-chevron-right stat-arrow"></i>
             </div>
 
-            <div class="profile-stat-box" onclick="app.switchView('secCustomerReferral')">
+            <div class="profile-stat-box" onclick="app.switchView('secCustomerWallet')">
               <div class="stat-icon-circle gold"><i class="fa-solid fa-wallet"></i></div>
               <div class="stat-info">
                 <span class="stat-val" id="profStatWalletBal">Loading...</span>
@@ -6320,7 +6338,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=43"></script>
+    <script src="/js/app.js?v=44"></script>
 </body>
 
 </html>

@@ -1941,6 +1941,9 @@ class TiffinApp {
     const btnCart = document.getElementById('btnCart');
     const btnNotif = document.getElementById('btnNotifications');
     const btnProfile = document.getElementById('btnHeaderProfile');
+    const btnWallet = document.getElementById('btnHeaderWallet');
+    const headerWalletAmount = document.getElementById('headerWalletAmount');
+    const homeHeroWalletBal = document.getElementById('homeHeroWalletBal');
     const lblProfile = document.getElementById('headerProfileLabel');
     const bannerGreeting = document.getElementById('bannerGreeting');
     const ownerGreetingText = document.getElementById('ownerGreetingText');
@@ -1960,6 +1963,15 @@ class TiffinApp {
         } else {
           btnCart.classList.add('hidden');
         }
+      }
+
+      // 2.5 Header Wallet Button (Visible ONLY when logged in)
+      if (btnWallet) {
+        btnWallet.classList.remove('hidden');
+        const balNum = Number(this.currentUser.wallet_balance || 0);
+        const balStr = `₹${balNum.toFixed(2)}`;
+        if (headerWalletAmount) headerWalletAmount.innerText = balStr;
+        if (homeHeroWalletBal) homeHeroWalletBal.innerText = balStr;
       }
 
       // 3. Profile Card Badge with Full Name (Visible ONLY when logged in)
@@ -2024,6 +2036,7 @@ class TiffinApp {
       // HIDE all authenticated buttons for Guests
       if (btnNotif) btnNotif.classList.add('hidden');
       if (btnCart) btnCart.classList.add('hidden');
+      if (btnWallet) btnWallet.classList.add('hidden');
       if (btnProfile) btnProfile.classList.add('hidden');
       if (btnLogout) btnLogout.classList.add('hidden');
 
@@ -3493,7 +3506,7 @@ class TiffinApp {
       statOrders.innerText = this.isLoadingOrders ? 'Loading...' : (this.orders || []).length;
     }
     if (statWallet) {
-      const bal = this.referralStats?.wallet_balance || 0;
+      const bal = Number(this.currentUser?.wallet_balance || this.referralStats?.wallet_balance || 0).toFixed(2);
       statWallet.innerText = `₹${bal}`;
     }
   }

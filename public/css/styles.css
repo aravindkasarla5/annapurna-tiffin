@@ -5198,10 +5198,40 @@ body.guest-mode #btnMobileMenuToggle {
   box-shadow: 0 12px 32px rgba(255, 87, 34, 0.6);
 }
 
-/* ==========================================================================
-   CUSTOMER HEADER ACTION BUTTONS SEQUENCE STYLING
-   Sequence: 1. Bell Icon -> 2. Cart Icon -> 3. Profile Icon -> 4. Logout Button
-   ========================================================================== */
+/* Premium Glassmorphic Header Wallet Button */
+.header-wallet-btn {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.16) 0%, rgba(255, 179, 0, 0.12) 100%);
+  border: 1.5px solid var(--accent-gold);
+  border-radius: var(--radius-full);
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  height: 44px;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #FFFFFF;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.header-wallet-btn:hover {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.32) 0%, rgba(255, 179, 0, 0.25) 100%);
+  border-color: #4CAF50;
+  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.header-wallet-amount {
+  color: var(--accent-gold);
+  font-weight: 800;
+  font-size: 0.92rem;
+  letter-spacing: 0.3px;
+}
 
 /* Premium Glassmorphic Header Profile Badge */
 .header-profile-card {
