@@ -8687,24 +8687,24 @@ body.guest-mode #btnMobileMenuToggle {
   bottom: 90px;
   right: 24px;
   z-index: 9999;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+  justify-content: center;
   background: linear-gradient(135deg, #2196F3, #1E88E5, #9C27B0);
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
-  border-radius: 30px;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
   color: #FFF;
-  font-weight: 800;
-  font-size: 0.86rem;
+  font-size: 1.35rem;
   box-shadow: 0 8px 24px rgba(33, 150, 243, 0.5), 0 2px 8px rgba(0, 0, 0, 0.6);
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .floating-ai-btn:hover {
-  transform: translateY(-3px) scale(1.05);
-  box-shadow: 0 12px 30px rgba(33, 150, 243, 0.65);
+  transform: translateY(-3px) scale(1.1);
+  box-shadow: 0 12px 30px rgba(33, 150, 243, 0.7);
 }
 
 .ai-btn-pulse {
@@ -8726,8 +8726,9 @@ body.guest-mode #btnMobileMenuToggle {
   .floating-ai-btn {
     bottom: calc(var(--bottom-nav-height, 64px) + 82px) !important;
     right: 16px !important;
-    padding: 9px 14px !important;
-    font-size: 0.82rem !important;
+    width: 48px !important;
+    height: 48px !important;
+    font-size: 1.25rem !important;
   }
   .ai-assistant-modal-card {
     width: 98% !important;
