@@ -4770,6 +4770,7 @@ class TiffinApp {
       }
     }
 
+    this.lastCalculatedFinalTotal = finalTotalPayable;
     if (elFinalTotal) elFinalTotal.innerText = `₹${finalTotalPayable}`;
 
     // Sync button displays and PhonePe payment display
@@ -4815,6 +4816,19 @@ class TiffinApp {
     document.getElementById('optPayCash')?.classList.toggle('selected', method === 'Cash');
     document.getElementById('optPayUPI')?.classList.toggle('selected', method === 'UPI');
     document.getElementById('upiQrBox')?.classList.toggle('hidden', method !== 'UPI');
+
+    const btnSubmit = document.getElementById('btnCheckoutSubmit');
+    if (btnSubmit) {
+      const btnSpan = btnSubmit.querySelector('span');
+      if (btnSpan) {
+        const amt = this.lastCalculatedFinalTotal !== undefined ? this.lastCalculatedFinalTotal : 0;
+        if (method === 'Cash') {
+          btnSpan.innerHTML = `Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${amt}</span>)`;
+        } else {
+          btnSpan.innerHTML = `Confirm & Pay (<span id="checkoutGrandTotalDisplay">₹${amt}</span>)`;
+        }
+      }
+    }
 
     if (method === 'UPI') {
       this.updateOnlinePaymentOptionsVisibility();
