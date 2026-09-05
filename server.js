@@ -3419,6 +3419,9 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
         related_order_id: newOrderId
       });
 
+      // Clear customer's cart in backend PostgreSQL database upon order placement
+      await tx.query("UPDATE users SET cart = '[]' WHERE id = $1;", [req.user.id]);
+
       // Fetch created order object
       const createdRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
       createdOrder = createdRes.rows[0];

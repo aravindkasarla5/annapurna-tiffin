@@ -1893,6 +1893,7 @@ class TiffinApp {
     this.currentRole = 'CUSTOMER';
     this.activeView = 'secCustomerHome';
     this.cart = [];
+    this.selectedCartAddons = {};
     this.favorites = [];
     this.orders = [];
     this.payments = [];
@@ -1912,6 +1913,7 @@ class TiffinApp {
     localStorage.removeItem('tiffin_token');
     localStorage.removeItem('tiffin_user');
     localStorage.removeItem('tiffin_customer_last_activity');
+    try { localStorage.removeItem('tiffin_selected_addons'); } catch (e) {}
     sessionStorage.clear();
 
     this.showToast('Logged out successfully.', 'info');
@@ -3653,6 +3655,10 @@ class TiffinApp {
       const json = await res.json();
       if (json.success) {
         this.cart = Array.isArray(json.data) ? json.data : [];
+        if (this.currentUser) {
+          this.currentUser.cart = this.cart;
+          try { localStorage.setItem('tiffin_user', JSON.stringify(this.currentUser)); } catch (e) {}
+        }
         this.updateCartUI();
       }
     } catch (err) {
@@ -3663,10 +3669,14 @@ class TiffinApp {
   async saveCartBackend() {
     if (!this.currentUser || this.currentRole !== 'CUSTOMER') return;
     try {
+      if (this.currentUser) {
+        this.currentUser.cart = this.cart || [];
+        try { localStorage.setItem('tiffin_user', JSON.stringify(this.currentUser)); } catch (e) {}
+      }
       await this.fetchWithAuth(`${API_BASE}/cart`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cart: this.cart })
+        body: JSON.stringify({ cart: this.cart || [] })
       });
     } catch (err) {
       console.error('Error saving cart:', err);
@@ -4292,7 +4302,7 @@ class TiffinApp {
   // SHOPPING CART & CHECKOUT
   // =========================================================================
 
-  addToCart(itemId) {
+  addToCart(itemOrId, customQty = null) {
     if (!this.currentUser) {
       this.showToast('Please Login or Register to add items to cart & order food!', 'error');
       this.openAuthModal('LOGIN');
@@ -4304,13 +4314,14 @@ class TiffinApp {
       return;
     }
 
-    const item = this.menu.find(m => m.id === itemId);
-    if (!item || !item.is_available) {
+    const itemId = (typeof itemOrId === 'object' && itemOrId) ? itemOrId.id : itemOrId;
+    const item = (typeof itemOrId === 'object' && itemOrId) ? itemOrId : (this.menu || []).find(m => m.id === itemId);
+    if (!item || item.is_available === false) {
       this.showToast('Item is currently not available', 'error');
       return;
     }
 
-    const qty = this.quantities[itemId] || 1;
+    const qty = customQty !== null ? customQty : (this.quantities[itemId] || 1);
     const existing = this.cart.find(c => c.id === itemId);
 
     if (existing) {
@@ -4327,6 +4338,7 @@ class TiffinApp {
 
     this.quantities[itemId] = 1;
     this.updateCartUI();
+    if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
     this.showToast(`Added ${qty}x ${item.name} to cart!`, 'success');
   }
 
@@ -4452,11 +4464,13 @@ class TiffinApp {
       this.cart = this.cart.filter(c => c.id !== itemId);
     }
     this.updateCartUI();
+    if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
   }
 
   removeCartItem(itemId) {
     this.cart = this.cart.filter(c => c.id !== itemId);
     this.updateCartUI();
+    if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
   }
 
   toggleCartDrawer(open = null) {
@@ -4940,6 +4954,7 @@ class TiffinApp {
         this.cart = [];
         this.tempPaymentScreenshot = null;
         this.updateCartUI();
+        if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
 
         this.switchView('secCustomerOrders');
         this.showToast(`🟢 PAYMENT SUCCESSFUL! Order #${json.data.order_number} confirmed with PhonePe.`, 'success');
@@ -16525,6 +16540,7 @@ class TiffinApp {
           });
         }
         this.updateCartUI();
+        if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
       }
       this.showToast(`🎉 Added ${neededQty} ${itemName}! Discount unlocked!`, 'success');
 
@@ -16544,6 +16560,7 @@ class TiffinApp {
           cartItem.quantity -= neededQty;
         }
         this.updateCartUI();
+        if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
         this.showToast(`Removed ${itemName} offer from cart.`, 'info');
       }
     }
@@ -16849,6 +16866,7 @@ class TiffinApp {
     });
 
     this.updateCartUI();
+    if (typeof this.saveCartBackend === 'function') this.saveCartBackend();
     this.toggleAiAssistantModal(false);
     this.showToast(`🎉 Added ${opt.title} (₹${opt.total}) to your cart!`, 'success');
     this.toggleCartDrawer(true);
