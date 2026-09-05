@@ -217,6 +217,32 @@ class TiffinApp {
 
   async init() {
     console.log('Initializing Annapurna Tiffin Center App...');
+
+    // Move authModalBackdrop directly under document.body for top-level fixed z-index rendering
+    const authBackdrop = document.getElementById('authModalBackdrop');
+    if (authBackdrop && authBackdrop.parentElement !== document.body) {
+      document.body.appendChild(authBackdrop);
+    }
+
+    // Attach direct click event handlers to Login and Register header buttons
+    const btnLoginHeader = document.getElementById('btnLoginHeader');
+    if (btnLoginHeader) {
+      btnLoginHeader.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openAuthModal('CUSTOMER', 'LOGIN');
+      });
+    }
+
+    const btnRegisterHeader = document.getElementById('btnRegisterHeader');
+    if (btnRegisterHeader) {
+      btnRegisterHeader.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openAuthModal('CUSTOMER', 'REGISTER');
+      });
+    }
+
     this.bindGlobalQuickActionListeners();
     this.startLivePrepTicker();
 
