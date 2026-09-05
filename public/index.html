@@ -75,14 +75,6 @@
         <span class="badge hidden" id="cartBadgeCount">0</span>
       </button>
 
-      <!-- 2.5 Wallet Balance Header Button (Visible ONLY after login) -->
-      <button class="header-wallet-btn hidden" id="btnHeaderWallet"
-        onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerWallet' : 'secCustomerWallet')"
-        title="Wallet Balance">
-        <i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i>
-        <span class="header-wallet-amount" id="headerWalletAmount">₹0.00</span>
-      </button>
-
       <!-- 3. Profile Icon & Badge with Full Name (Visible ONLY after login, clicking switches to My Profile) -->
       <button class="header-profile-card hidden" id="btnHeaderProfile"
         onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerSettings' : 'secCustomerProfile')"
@@ -6338,7 +6330,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=44"></script>
+    <script src="/js/app.js?v=45"></script>
 </body>
 
 </html>
