@@ -14227,50 +14227,74 @@ class TiffinApp {
     }
   }
 
-  async submitCustomerVote(pollId) {
+  async submitCustomerVote(arg1, arg2) {
+    let event = null;
+    let pollId = null;
+
+    if (arg1 && typeof arg1 === 'object' && arg1.preventDefault) {
+      event = arg1;
+      pollId = arg2;
+      event.preventDefault();
+    } else {
+      pollId = arg1 || arg2;
+    }
+
     if (!this.currentUser) {
       this.showToast('🔐 Login Required. Please login to your account to vote.', 'warning');
       this.openAuthModal('CUSTOMER', 'LOGIN');
       return;
     }
 
-    if (!this.selectedPollOptionId) {
-      const selectedRadio = document.querySelector('input[name="pollOptionRadio"]:checked');
-      if (selectedRadio) this.selectedPollOptionId = selectedRadio.value;
+    let option_id = this.selectedPollOptionId;
+    if (!option_id) {
+      const selectedRadio = document.querySelector('input[name="pollOptionRadio"]:checked') || document.querySelector('input[name="radPollOption"]:checked');
+      if (selectedRadio && selectedRadio.value) {
+        option_id = selectedRadio.value;
+      }
     }
 
-    if (!this.selectedPollOptionId) {
-      this.showToast('Please select a food option before voting.', 'warning');
+    if (!option_id) {
+      this.showToast('Please select one food option before voting.', 'warning');
       return;
     }
 
-    try {
-      const btn = document.getElementById('btnSubmitCustomerVote');
-      if (btn) { btn.disabled = true; btn.innerText = 'Submitting Vote...'; }
+    const btn = document.getElementById('btnSubmitCustomerVote') || document.getElementById('btnSubmitCustVote');
+    const origBtnText = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting vote...';
+    }
 
+    try {
       const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ option_id: this.selectedPollOptionId })
+        body: JSON.stringify({ option_id })
       });
       const json = await res.json();
 
       if (json.success) {
-        this.showToast(json.message || '✅ Your vote has been recorded!', 'success');
-        this.renderCustomerVotingCard(json.poll, true, json.voted_option_id);
+        this.selectedPollOptionId = null;
+        this.showToast(json.message || '🎉 Vote recorded successfully!', 'success');
+        if (typeof this.loadActivePoll === 'function') this.loadActivePoll();
+        if (typeof this.loadCustomerVoting === 'function') this.loadCustomerVoting();
       } else {
         this.showToast(json.message || 'Failed to submit vote.', 'error');
         if (json.message && json.message.includes('Voting Closed')) {
-          this.loadActivePoll();
-          this.loadCustomerVoting();
+          if (typeof this.loadActivePoll === 'function') this.loadActivePoll();
+          if (typeof this.loadCustomerVoting === 'function') this.loadCustomerVoting();
         } else if (btn) {
           btn.disabled = false;
-          btn.innerText = '🗳️ Vote Now';
+          btn.innerHTML = origBtnText || '<i class="fa-solid fa-square-check"></i> 🗳️ Vote Now';
         }
       }
     } catch (err) {
       console.error('Submit vote error:', err);
       this.showToast('Network error submitting vote.', 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origBtnText || '<i class="fa-solid fa-square-check"></i> 🗳️ Vote Now';
+      }
     }
   }
 
@@ -17519,56 +17543,7 @@ class TiffinApp {
     }
   }
 
-  async submitCustomerVote(event, pollId) {
-    if (event && event.preventDefault) event.preventDefault();
 
-    if (!this.currentUser) {
-      this.showToast('🔐 Login Required. Please login to your account to vote.', 'warning');
-      this.openAuthModal('CUSTOMER', 'LOGIN');
-      return;
-    }
-
-    const selectedRad = document.querySelector('input[name="radPollOption"]:checked');
-    if (!selectedRad || !selectedRad.value) {
-      this.showToast('Please select one food option before voting.', 'warning');
-      return;
-    }
-
-    const option_id = selectedRad.value;
-    const btn = document.getElementById('btnSubmitCustVote');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting vote...';
-    }
-
-    try {
-      const res = await this.fetchWithAuth(`${API_BASE}/menu-voting/polls/${pollId}/vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ option_id })
-      });
-
-      const json = await res.json();
-
-      if (json.success) {
-        this.showToast(json.message || '🎉 Vote recorded successfully!', 'success');
-        this.loadCustomerVoting();
-      } else {
-        this.showToast(json.message || 'Failed to submit vote.', 'error');
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-square-check"></i> 🗳️ Vote Now';
-        }
-      }
-    } catch (err) {
-      console.error('Submit vote error:', err);
-      this.showToast('Network error submitting vote.', 'error');
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-square-check"></i> 🗳️ Vote Now';
-      }
-    }
-  }
 
   /* ============================================================
      🧺 SUBSCRIPTION MEAL PLANS + 🎫 DIGITAL MEAL PASS MODULE
