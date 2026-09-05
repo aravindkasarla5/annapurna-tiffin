@@ -2032,10 +2032,34 @@ class TiffinApp {
       }
     }
 
+    this.updateAiFloatingButtonVisibility();
+  }
+
+  updateAiFloatingButtonVisibility() {
     const floatingAiBtn = document.getElementById('btnFloatingAiAssistant');
-    if (floatingAiBtn) {
-      floatingAiBtn.style.display = this.currentUser ? 'flex' : 'none';
+    if (!floatingAiBtn) return;
+
+    if (!this.currentUser) {
+      floatingAiBtn.style.display = 'none';
+      return;
     }
+
+    const role = (this.currentUser.role || this.currentRole || '').toUpperCase();
+    const activeView = this.activeView;
+
+    let shouldShow = false;
+
+    if (role === 'CUSTOMER') {
+      if (activeView === 'secCustomerHome') {
+        shouldShow = true;
+      }
+    } else if (role === 'OWNER') {
+      if (activeView === 'secOwnerDashboard') {
+        shouldShow = true;
+      }
+    }
+
+    floatingAiBtn.style.display = shouldShow ? 'flex' : 'none';
   }
 
   // =========================================================================
@@ -3402,6 +3426,8 @@ class TiffinApp {
       this.isSettingsFormPopulated = false;
       this.fetchSettings().then(() => this.populateSettingsForm());
     }
+
+    this.updateAiFloatingButtonVisibility();
   }
 
   // =========================================================================
