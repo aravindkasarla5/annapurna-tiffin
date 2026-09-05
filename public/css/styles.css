@@ -8681,10 +8681,10 @@ body.guest-mode #btnMobileMenuToggle {
   transform: scale(1.04) !important;
 }
 
-/* 🤖 Floating AI Assistant Button (Bottom Right) */
+/* 🤖 Floating AI Assistant Button */
 .floating-ai-btn {
   position: fixed;
-  bottom: 24px;
+  bottom: 90px;
   right: 24px;
   z-index: 9999;
   display: flex;
@@ -8722,12 +8722,12 @@ body.guest-mode #btnMobileMenuToggle {
   100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .floating-ai-btn {
-    bottom: 18px;
-    right: 18px;
-    padding: 10px 14px;
-    font-size: 0.8rem;
+    bottom: calc(var(--bottom-nav-height, 64px) + 82px) !important;
+    right: 16px !important;
+    padding: 9px 14px !important;
+    font-size: 0.82rem !important;
   }
   .ai-assistant-modal-card {
     width: 98% !important;
