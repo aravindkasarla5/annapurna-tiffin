@@ -2610,14 +2610,6 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
-          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.openAiAssistantModal();">
-            <div class="drawer-icon-box blue" style="background: linear-gradient(135deg, #2196F3, #1565C0); color: #FFF;"><i class="fa-solid fa-robot"></i></div>
-            <div class="drawer-text-group">
-              <strong class="drawer-item-title" style="color: #2196F3;">🤖 AI Order Assistant</strong>
-              <span class="drawer-item-sub">Smart natural language menu assistant</span>
-            </div>
-            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
-          </a>
 
           <a class="drawer-item ${this.activeView === 'secCustomerAddresses' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerAddresses');">
             <div class="drawer-icon-box" style="background: rgba(255,87,34,0.15); color: #FF5722;"><i class="fa-solid fa-location-dot"></i></div>
@@ -2813,14 +2805,6 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
-          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.openAiAssistantModal();">
-            <div class="drawer-icon-box blue" style="background: linear-gradient(135deg, #2196F3, #9C27B0); color: #FFF;"><i class="fa-solid fa-robot"></i></div>
-            <div class="drawer-text-group">
-              <strong class="drawer-item-title" style="color: #2196F3;">🤖 AI Order Assistant</strong>
-              <span class="drawer-item-sub">Owner AI Agent & Business Analytics</span>
-            </div>
-            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
-          </a>
 
           <a class="drawer-item ${this.activeView === 'secOwnerDeliveryZones' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerDeliveryZones');">
             <div class="drawer-icon-box" style="background: rgba(76,175,80,0.15); color: #4CAF50;"><i class="fa-solid fa-map-location-dot"></i></div>
