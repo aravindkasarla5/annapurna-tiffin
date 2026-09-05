@@ -90,6 +90,11 @@ function sanitizeHTMLInput(input) {
     .replace(/\//g, '&#x2F;');
 }
 
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
@@ -3002,7 +3007,8 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
       return res.status(400).json({ success: false, message: "Hotel is currently closed. Orders are not being accepted." });
     }
 
-    const { order_type, delivery_address, notes, payment_method, items, used_wallet_amount, payment_screenshot, utr_number } = req.body;
+    const body = req.body || {};
+    const { order_type, delivery_address, notes, payment_method, items, used_wallet_amount, payment_screenshot, utr_number } = body;
 
     if (!items || !items.length) {
       return res.status(400).json({ success: false, message: "Ordered items are required." });
