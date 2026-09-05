@@ -2632,6 +2632,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item ${this.activeView === 'secCustomerWallet' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secCustomerWallet');">
+            <div class="drawer-icon-box gold" style="background: rgba(255, 179, 0, 0.2); color: var(--accent-gold);"><i class="fa-solid fa-wallet"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Wallet Balance 💰</strong>
+              <span class="drawer-item-sub">Available: ₹${Number(walletBal).toFixed(2)} • Add Money & Ledger</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.toggleCartDrawer();">
             <div class="drawer-icon-box primary"><i class="fa-solid fa-cart-shopping"></i></div>
             <div class="drawer-text-group">
@@ -2833,6 +2842,15 @@ class TiffinApp {
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Dashboard & Analytics</strong>
               <span class="drawer-item-sub">Real-time sales & order stats</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
+          <a class="drawer-item ${this.activeView === 'secOwnerWallet' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerWallet');">
+            <div class="drawer-icon-box gold" style="background: rgba(255, 179, 0, 0.2); color: var(--accent-gold);"><i class="fa-solid fa-wallet"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title">Wallet Management 💰</strong>
+              <span class="drawer-item-sub">Approve requests, search & multi-filter</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
