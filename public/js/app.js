@@ -14113,6 +14113,7 @@ class TiffinApp {
     const optionsHtml = poll.options.map((opt) => {
       const isSelected = votedOptionId === opt.id || this.selectedPollOptionId === opt.id;
       const isWinner = poll.winner_food_id === opt.food_id;
+      const optImage = this.getPollOptionImage(opt);
 
       return `
         <div class="poll-option-card ${isSelected ? 'selected' : ''} ${hasVoted ? 'voted-mode' : ''}"
@@ -14125,13 +14126,13 @@ class TiffinApp {
               ${isLoggedIn && !hasVoted && poll.status === 'ACTIVE' ? `
                 <input type="radio" name="pollOptionRadio" id="optRadio_${opt.id}" value="${opt.id}" ${isSelected ? 'checked' : ''} style="width: 18px; height: 18px; accent-color: var(--accent-gold);">
               ` : ''}
-              ${opt.image ? `<img src="${opt.image}" alt="${opt.food_name}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">` : ''}
+              <img src="${optImage}" alt="${escapeHtml(opt.food_name || '')}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;" onerror="this.src='/images/idly_sambar.png'">
               <div>
                 <h4 style="margin: 0 0 2px 0; font-size: 1rem; color: #FFF; font-weight: 700; display: flex; align-items: center; gap: 6px;">
                   ${opt.food_name} ${isWinner ? '🏆' : ''}
                 </h4>
                 <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">${opt.description || 'Delicious South Indian special.'}</p>
-                <span style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">₹${opt.price}</span>
+                <span style="font-size: 0.82rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">₹${opt.price || opt.food_price || 0}</span>
               </div>
             </div>
 
@@ -14359,6 +14360,18 @@ class TiffinApp {
     this.loadOwnerPolls();
   }
 
+  getPollOptionImage(opt) {
+    if (!opt) return '/images/idly_sambar.png';
+    const menuItem = (this.menu || this.menuItems || []).find(m =>
+      (opt.food_id && m.id === opt.food_id) ||
+      (opt.food_name && m.name && m.name.toLowerCase().trim() === opt.food_name.toLowerCase().trim())
+    );
+    if (opt.food_image && opt.food_image !== '/images/idly_sambar.png') return opt.food_image;
+    if (opt.image && opt.image !== '/images/idly_sambar.png') return opt.image;
+    if (menuItem && menuItem.image) return menuItem.image;
+    return opt.food_image || opt.image || '/images/idly_sambar.png';
+  }
+
   renderOwnerPollCard(poll) {
     const statusBadges = {
       'ACTIVE': '<span class="status-badge" style="background: rgba(76, 175, 80, 0.15); color: #4CAF50; border: 1px solid #4CAF50;">🟢 Active</span>',
@@ -14368,20 +14381,23 @@ class TiffinApp {
       'CANCELLED': '<span class="status-badge" style="background: rgba(158, 158, 158, 0.15); color: #9E9E9E; border: 1px solid #9E9E9E;">⚪ Cancelled</span>'
     };
 
-    const optionsHtml = (poll.options || []).map(opt => `
-      <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px;">
-        <img src="${opt.food_image || opt.image || '/images/idly_sambar.png'}" style="width: 42px; height: 42px; border-radius: 8px; object-fit: cover;">
-        <div style="flex: 1;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-            <span style="font-weight: 700; color: #FFF; font-size: 0.92rem;">${opt.food_name || 'Special Dish'} <strong style="color: var(--accent-gold); font-size: 0.84rem;">(₹${opt.price || opt.food_price || 0})</strong></span>
-            <span style="font-size: 0.85rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">${opt.votes || opt.votes_count || 0} votes (${opt.percentage || opt.vote_percentage || 0}%)</span>
-          </div>
-          <div style="width: 100%; background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
-            <div style="width: ${opt.percentage || opt.vote_percentage || 0}%; background: linear-gradient(90deg, #9C27B0, var(--accent-gold)); height: 100%;"></div>
+    const optionsHtml = (poll.options || []).map(opt => {
+      const optImage = this.getPollOptionImage(opt);
+      return `
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px;">
+          <img src="${optImage}" style="width: 42px; height: 42px; border-radius: 8px; object-fit: cover;" onerror="this.src='/images/idly_sambar.png'">
+          <div style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-weight: 700; color: #FFF; font-size: 0.92rem;">${opt.food_name || 'Special Dish'} <strong style="color: var(--accent-gold); font-size: 0.84rem;">(₹${opt.price || opt.food_price || 0})</strong></span>
+              <span style="font-size: 0.85rem; font-weight: 800; color: var(--accent-gold); font-family: var(--font-number);">${opt.votes || opt.votes_count || 0} votes (${opt.percentage || opt.vote_percentage || 0}%)</span>
+            </div>
+            <div style="width: 100%; background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden;">
+              <div style="width: ${opt.percentage || opt.vote_percentage || 0}%; background: linear-gradient(90deg, #9C27B0, var(--accent-gold)); height: 100%;"></div>
+            </div>
           </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     let tieBoxHtml = '';
     if (poll.is_tie && poll.leading_options && poll.leading_options.length > 1) {
@@ -16981,12 +16997,13 @@ class TiffinApp {
         `;
 
         (poll.options || []).forEach(opt => {
+          const optImage = this.getPollOptionImage(opt);
           html += `
             <div class="voting-option-row" onclick="app.openAuthModal('CUSTOMER', 'LOGIN')" style="cursor: pointer;">
-              <img src="${opt.food_image || '/images/idly_sambar.png'}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover;">
+              <img src="${optImage}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover;" onerror="this.src='/images/idly_sambar.png'">
               <div style="flex: 1;">
                 <strong style="color: #FFF; font-size: 0.95rem; display: block;">${opt.food_name}</strong>
-                <span style="color: var(--text-muted); font-size: 0.8rem;">₹${opt.food_price} • ${opt.category || 'Special Dish'}</span>
+                <span style="color: var(--text-muted); font-size: 0.8rem;">₹${opt.food_price || opt.price || 0} • ${opt.category || 'Special Dish'}</span>
               </div>
             </div>
           `;
@@ -17012,13 +17029,14 @@ class TiffinApp {
         `;
 
         (poll.options || []).forEach(opt => {
+          const optImage = this.getPollOptionImage(opt);
           html += `
             <label class="voting-option-row">
               <input type="radio" name="radPollOption" value="${opt.id}" required style="accent-color: #9C27B0; transform: scale(1.2);">
-              <img src="${opt.food_image || '/images/idly_sambar.png'}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover;">
+              <img src="${optImage}" style="width: 44px; height: 44px; border-radius: 8px; object-fit: cover;" onerror="this.src='/images/idly_sambar.png'">
               <div style="flex: 1;">
                 <strong style="color: #FFF; font-size: 0.95rem; display: block;">${opt.food_name}</strong>
-                <span style="color: var(--text-muted); font-size: 0.8rem;">₹${opt.food_price} • ${opt.category || 'Special Dish'}</span>
+                <span style="color: var(--text-muted); font-size: 0.8rem;">₹${opt.food_price || opt.price || 0} • ${opt.category || 'Special Dish'}</span>
               </div>
             </label>
           `;

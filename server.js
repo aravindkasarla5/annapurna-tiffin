@@ -7334,16 +7334,21 @@ async function updateAndFormatPoll(poll) {
       leadingOptions.push({ option_id: opt.option_id, food_id: opt.food_id, food_name: opt.food_name, votes: count, percentage: pct });
     }
 
+    const imgUrl = opt.food_image || '/images/idly_sambar.png';
     return {
       id: opt.option_id,
       food_id: opt.food_id,
       food_name: opt.food_name || 'Menu Dish',
       description: opt.food_description || '',
       price: Number(opt.food_price || 0),
-      image: opt.food_image || '',
+      food_price: Number(opt.food_price || 0),
+      image: imgUrl,
+      food_image: imgUrl,
       is_available: opt.is_available !== false,
       votes: count,
-      percentage: pct
+      votes_count: count,
+      percentage: pct,
+      vote_percentage: pct
     };
   });
 
@@ -8793,10 +8798,10 @@ app.get('/api/add-ons/analytics', authenticateToken, requireRole('OWNER'), async
 async function formatMenuPoll(pollRow, reqUserId = null) {
   try {
     const optionsRes = await db.query(
-      `SELECT o.id, o.food_id, t.name as food_name, t.description, t.price, t.image,
+      `SELECT o.id, o.food_id, COALESCE(t.name, 'Special Dish') as food_name, COALESCE(t.description, '') as description, COALESCE(t.price, 0) as price, t.image,
               (SELECT COUNT(*) FROM menu_poll_votes v WHERE v.option_id = o.id) as votes
        FROM menu_poll_options o
-       JOIN tiffins t ON o.food_id = t.id
+       LEFT JOIN tiffins t ON o.food_id = t.id
        WHERE o.poll_id = $1
        ORDER BY o.created_at ASC;`,
       [pollRow.id]
@@ -8809,20 +8814,23 @@ async function formatMenuPoll(pollRow, reqUserId = null) {
       totalVotes += opt.votes;
     });
 
-    const options = rawOptions.map(opt => ({
-      id: opt.id,
-      food_id: opt.food_id,
-      food_name: opt.food_name,
-      description: opt.description || '',
-      price: Number(opt.price || 0),
-      food_price: Number(opt.price || 0),
-      image: opt.image || '/images/idly_sambar.png',
-      food_image: opt.image || '/images/idly_sambar.png',
-      votes: opt.votes,
-      votes_count: opt.votes,
-      percentage: totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0,
-      vote_percentage: totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0
-    }));
+    const options = rawOptions.map(opt => {
+      const imgUrl = opt.image || '/images/idly_sambar.png';
+      return {
+        id: opt.id,
+        food_id: opt.food_id,
+        food_name: opt.food_name,
+        description: opt.description || '',
+        price: Number(opt.price || 0),
+        food_price: Number(opt.price || 0),
+        image: imgUrl,
+        food_image: imgUrl,
+        votes: opt.votes,
+        votes_count: opt.votes,
+        percentage: totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0,
+        vote_percentage: totalVotes > 0 ? Math.round((opt.votes / totalVotes) * 100) : 0
+      };
+    });
 
     let hasVoted = false;
     let votedOptionId = null;
