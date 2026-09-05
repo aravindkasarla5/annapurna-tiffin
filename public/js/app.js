@@ -2031,6 +2031,11 @@ class TiffinApp {
         bannerGreeting.innerText = `Welcome to Sri Lakshmi Annapurna Tiffin Center! 🍲`;
       }
     }
+
+    const floatingAiBtn = document.getElementById('btnFloatingAiAssistant');
+    if (floatingAiBtn) {
+      floatingAiBtn.style.display = this.currentUser ? 'flex' : 'none';
+    }
   }
 
   // =========================================================================
@@ -2485,15 +2490,6 @@ class TiffinApp {
             <div class="drawer-text-group">
               <strong class="drawer-item-title">Today's Menu</strong>
               <span class="drawer-item-sub">Idly, Dosa, Meals & Vada</span>
-            </div>
-            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
-          </a>
-
-          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.openAiAssistantModal();">
-            <div class="drawer-icon-box blue" style="background: linear-gradient(135deg, #2196F3, #1565C0); color: #FFF;"><i class="fa-solid fa-robot"></i></div>
-            <div class="drawer-text-group">
-              <strong class="drawer-item-title" style="color: #2196F3;">🤖 AI Order Assistant</strong>
-              <span class="drawer-item-sub">Smart natural language menu assistant</span>
             </div>
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
@@ -16779,7 +16775,32 @@ class TiffinApp {
   aiTtsEnabled = false;
   recognitionInstance = null;
 
+  resetAiChatView() {
+    const container = document.getElementById('aiAssistantResultsContainer');
+    const input = document.getElementById('txtAiAssistantPrompt');
+    if (input) input.value = '';
+    if (container) {
+      container.innerHTML = `
+        <div class="ai-chat-welcome" style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+          <div style="width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, rgba(33,150,243,0.2), rgba(156,39,176,0.2)); border: 1.5px solid rgba(33,150,243,0.4); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 0.8rem;">
+            <i class="fa-solid fa-robot" style="font-size: 1.6rem; color: #2196F3;"></i>
+          </div>
+          <h4 style="color: #FFF; font-size: 1.05rem; margin-bottom: 0.3rem; font-weight: 800;">Hello! How can I help you today?</h4>
+          <p style="font-size: 0.84rem; max-width: 320px; margin: 0 auto; color: var(--text-muted); line-height: 1.4;">
+            Ask anything about our fresh tiffin menu, recommendations, order tracking, previous bill, or loyalty points!
+          </p>
+        </div>
+      `;
+    }
+  }
+
   openAiAssistantModal() {
+    if (!this.currentUser) {
+      this.showToast('🔒 Please log in to access the AI Order Assistant.', 'warning');
+      this.openAuthModal('CUSTOMER', 'LOGIN');
+      return;
+    }
+    this.resetAiChatView();
     this.renderAiRoleChips();
     this.toggleAiAssistantModal(true);
   }
@@ -16792,6 +16813,7 @@ class TiffinApp {
         this.renderAiRoleChips();
       } else {
         modal.classList.remove('active');
+        this.resetAiChatView();
         if (window.speechSynthesis) window.speechSynthesis.cancel();
       }
     }

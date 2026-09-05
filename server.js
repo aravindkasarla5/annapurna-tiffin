@@ -9894,6 +9894,13 @@ async function handleUnifiedAiOrderAssistant(req, res) {
       } catch (e) {}
     }
 
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "🔒 Authentication required. Please log in to access the AI Order Assistant."
+      });
+    }
+
     const isOwner = user && user.role === 'OWNER';
     const role = isOwner ? 'OWNER' : 'CUSTOMER';
     const modeLabel = isOwner ? '👑 Owner AI Agent' : '🤖 Customer AI Agent';
@@ -10148,6 +10155,44 @@ async function handleUnifiedAiOrderAssistant(req, res) {
     // =========================================================================
     // 🤖 CUSTOMER MODE AI CAPABILITIES (ONE CUSTOMER AI AGENT)
     // =========================================================================
+
+    // 0.0 CONVERSATIONAL & COURTESY MESSAGES ("Thank you", "Thanks", "Bye", "Hi")
+    const thankKeywords = ['thank you', 'thanks', 'thx', 'thanku', 'thank u', 'great thanks', 'that\'s helpful', 'helpful', 'bye', 'goodbye', 'good night', 'awesome thanks', 'dhanyavad', 'dhanyavadalu', 'shukriya'];
+    const greetingKeywords = ['hi', 'hello', 'hey', 'good morning', 'good evening', 'good afternoon', 'namaste', 'namaskaram'];
+
+    if (thankKeywords.some(kw => lowerPrompt.includes(kw))) {
+      let reply = "You're very welcome! 😊 Let me know if you need anything else.";
+      if (isTelugu) {
+        reply = "చాలా సంతోషం! 😊 మీకు ఇంకేమైనా సహాయం కావాలా?";
+      } else if (isHindi) {
+        reply = "आपका बहुत-बहुत धन्यवाद! 😊 क्या मैं आपकी कुछ और मदद कर सकता हूँ?";
+      } else if (lowerPrompt.includes('bye') || lowerPrompt.includes('goodbye') || lowerPrompt.includes('good night')) {
+        reply = "Goodbye! Have a wonderful day and enjoy your meal! 🌟";
+      }
+      return res.json({
+        success: true,
+        role,
+        mode_label: modeLabel,
+        message: reply,
+        suggested_questions: ["What's available now?", "Show breakfast under ₹100", "Where is my order?"]
+      });
+    }
+
+    if (greetingKeywords.some(kw => lowerPrompt === kw || lowerPrompt.startsWith(kw + ' ') || lowerPrompt.endsWith(' ' + kw))) {
+      let reply = "Hello! 👋 Welcome to Sri Lakshmi Annapurna Tiffin Center. How can I help you today?";
+      if (isTelugu) {
+        reply = "నమస్కారం! 👋 శ్రీ లక్ష్మి అన్నపూర్ణ టిఫిన్ సెంటర్‌కు స్వాగతం. ఈరోజు నేను మీకు ఎలా సహాయపడగలను?";
+      } else if (isHindi) {
+        reply = "नमस्ते! 👋 श्री लक्ष्मी अन्नपूर्णा टिफिन सेंटर में आपका स्वागत है। आज मैं आपकी क्या मदद कर सकता हूँ?";
+      }
+      return res.json({
+        success: true,
+        role,
+        mode_label: modeLabel,
+        message: reply,
+        suggested_questions: ["What's available now?", "Show breakfast under ₹100", "Where is my order?"]
+      });
+    }
 
     // 0. EXPLAIN MY PREVIOUS BILL ASSISTANT (Strict Authenticated Customer Scoping)
     if (lowerPrompt.includes('bill') || lowerPrompt.includes('invoice') || lowerPrompt.includes('explain my bill') || lowerPrompt.includes('previous bill') || lowerPrompt.includes('my bill') || lowerPrompt.includes('why is my total')) {
