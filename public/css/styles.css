@@ -1965,9 +1965,7 @@ textarea.form-control {
     max-height: 92dvh;
   }
   .auth-card-sidebar {
-    width: 100%;
-    padding: 1rem 1.25rem;
-    min-height: 100px;
+    display: none !important;
   }
 }
 

@@ -1275,6 +1275,14 @@ class TiffinApp {
     this.authMode = mode;
     this.setAuthMode(mode);
     this.toggleAuthModal(true);
+
+    setTimeout(() => {
+      if (mode === 'LOGIN') {
+        document.getElementById('loginIdentifier')?.focus();
+      } else if (mode === 'REGISTER') {
+        document.getElementById('regName')?.focus();
+      }
+    }, 150);
   }
 
   toggleAuthModal(open = true) {
