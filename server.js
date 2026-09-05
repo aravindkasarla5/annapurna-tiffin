@@ -90,8 +90,15 @@ function sanitizeHTMLInput(input) {
     .replace(/\//g, '&#x2F;');
 }
 
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 
 // Base64 Image Persistence & Upload Security Helper
 async function saveBase64Image(base64Data, subfolder = 'screenshots') {
