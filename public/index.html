@@ -3815,47 +3815,60 @@
     </div>
   </div>
 
-  <!-- 🤖 AI Order Assistant Modal -->
+  <!-- 🤖 AI Order Assistant Modal (ONE SINGLE UNIFIED AI AGENT) -->
   <div class="modal-backdrop" id="modalAiAssistant" onclick="app.toggleAiAssistantModal(false)">
-    <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 580px; width: 92%; max-height: 90vh; display: flex; flex-direction: column; padding: 0;">
-      <div class="modal-header" style="background: linear-gradient(135deg, rgba(33, 150, 243, 0.2), rgba(156, 39, 176, 0.15)); border-bottom: 1px solid rgba(33, 150, 243, 0.3); padding: 1rem 1.25rem;">
-        <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 8px;">
-          <span>🤖</span> AI Order Assistant
-          <span style="font-size: 0.7rem; font-weight: 800; background: #2196F3; color: #FFF; padding: 2px 8px; border-radius: 10px;">SMART MENU</span>
-        </h3>
-        <button type="button" class="icon-btn" onclick="app.toggleAiAssistantModal(false)"><i class="fa-solid fa-xmark"></i></button>
+    <div class="modal-card ai-assistant-modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header ai-modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="ai-avatar-icon">🤖</div>
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 8px;">
+              AI Order Assistant
+            </h3>
+            <span id="aiAssistantRoleBadge" class="ai-role-badge">🤖 CUSTOMER MODE</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <button type="button" class="icon-btn" id="btnAiTtsToggle" onclick="app.toggleAiTts()" title="Toggle Voice Responses" style="color: var(--accent-gold);">
+            <i class="fa-solid fa-volume-high" id="iconAiTts"></i>
+          </button>
+          <button type="button" class="icon-btn" onclick="app.toggleAiAssistantModal(false)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
       </div>
 
-      <div style="padding: 1rem 1.25rem; flex: 1; overflow-y: auto;">
-        <div style="background: rgba(33, 150, 243, 0.1); border: 1px solid rgba(33, 150, 243, 0.3); border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 1rem; font-size: 0.84rem; color: #FFF;">
-          👋 Tell me what you'd like! For example: <em>"Breakfast for 3 people under ₹200"</em> or <em>"Meal for 2 with Idly & Vada"</em>.
+      <div class="modal-body ai-modal-body">
+        <!-- Dynamic Role Prompt Chips -->
+        <div id="aiAssistantSuggestedChips" class="ai-chips-wrapper">
+          <!-- Populated dynamically based on CUSTOMER vs OWNER role -->
         </div>
 
-        <!-- Quick Prompt Pills -->
-        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1.15rem;">
-          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Breakfast for 3 people under ₹200')">🍽️ Breakfast for 3 (Under ₹200)</button>
-          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Meal for 2 under ₹100')">💰 Meal for 2 (Under ₹100)</button>
-          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Breakfast for 4 people with Idly and Vada')">👨‍👩‍👧 Meal for 4 (Idly & Vada)</button>
-          <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('Popular breakfast variety combo')">🔥 Popular Variety Combo</button>
-        </div>
-
-        <!-- Dynamic Results Container -->
-        <div id="aiAssistantResultsContainer">
+        <!-- Dynamic Results & Interactive Chat Stream -->
+        <div id="aiAssistantResultsContainer" class="ai-results-stream">
           <!-- Rendered dynamically by app.js -->
         </div>
       </div>
 
-      <!-- Input Bar -->
-      <div style="padding: 1rem 1.25rem; background: var(--bg-surface-elevated); border-top: 1px solid var(--border-color);">
-        <form onsubmit="app.sendAiAssistantPrompt(event)" style="display: flex; gap: 8px;">
-          <input type="text" id="txtAiAssistantPrompt" class="form-control" placeholder="Describe your order (e.g. Breakfast for 3 under ₹200)..." required style="flex: 1; font-size: 0.88rem;">
-          <button type="submit" class="btn-primary-block" id="btnSendAiPrompt" style="width: auto; padding: 0 16px; background: linear-gradient(135deg, #2196F3, #1565C0); border: none; color: #FFF; font-weight: 800;">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Suggest
+      <!-- Input Bar with Voice & Controls -->
+      <div class="modal-footer ai-modal-footer">
+        <form onsubmit="app.sendAiAssistantPrompt(event)" style="display: flex; gap: 8px; width: 100%; align-items: center;">
+          <button type="button" id="btnAiVoiceMic" class="ai-mic-btn" onclick="app.toggleVoiceRecognition()" title="Speak your order or query (English, Telugu, Hindi)">
+            <i class="fa-solid fa-microphone"></i>
+          </button>
+          <input type="text" id="txtAiAssistantPrompt" class="form-control ai-input-field" placeholder="Ask AI (e.g., Crispy breakfast under ₹100 or Today's report)..." required>
+          <button type="submit" class="btn-primary-block ai-send-btn" id="btnSendAiPrompt">
+            <i class="fa-solid fa-paper-plane"></i>
           </button>
         </form>
       </div>
     </div>
   </div>
+
+  <!-- 🤖 Floating AI Order Assistant Launcher Button -->
+  <button type="button" id="btnFloatingAiAssistant" class="floating-ai-btn" onclick="app.openAiAssistantModal()" title="Open AI Order Assistant">
+    <span class="ai-btn-pulse"></span>
+    <i class="fa-solid fa-robot"></i>
+    <span class="ai-btn-label">AI Assistant</span>
+  </button>
 
   <!-- Customer Order Checkout Modal -->
   <div class="modal-backdrop" id="checkoutModalBackdrop" onclick="app.toggleCheckoutModal(false)">

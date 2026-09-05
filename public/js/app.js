@@ -2817,6 +2817,15 @@ class TiffinApp {
             <i class="fa-solid fa-chevron-right drawer-chevron"></i>
           </a>
 
+          <a class="drawer-item" onclick="app.toggleMobileDrawer(false); app.openAiAssistantModal();">
+            <div class="drawer-icon-box blue" style="background: linear-gradient(135deg, #2196F3, #9C27B0); color: #FFF;"><i class="fa-solid fa-robot"></i></div>
+            <div class="drawer-text-group">
+              <strong class="drawer-item-title" style="color: #2196F3;">🤖 AI Order Assistant</strong>
+              <span class="drawer-item-sub">Owner AI Agent & Business Analytics</span>
+            </div>
+            <i class="fa-solid fa-chevron-right drawer-chevron"></i>
+          </a>
+
           <a class="drawer-item ${this.activeView === 'secOwnerDeliveryZones' ? 'active' : ''}" onclick="app.toggleMobileDrawer(false); app.switchView('secOwnerDeliveryZones');">
             <div class="drawer-icon-box" style="background: rgba(76,175,80,0.15); color: #4CAF50;"><i class="fa-solid fa-map-location-dot"></i></div>
             <div class="drawer-text-group">
@@ -16763,20 +16772,160 @@ class TiffinApp {
   }
 
   // =========================================================================
-  // 🤖 AI ORDER ASSISTANT CLIENT MODULE
+  // 🤖 UNIFIED SINGLE AI ORDER ASSISTANT CLIENT AGENT MODULE
   // =========================================================================
 
   currentAiOptions = [];
+  aiTtsEnabled = false;
+  recognitionInstance = null;
 
   openAiAssistantModal() {
+    this.renderAiRoleChips();
     this.toggleAiAssistantModal(true);
   }
 
   toggleAiAssistantModal(open = true) {
     const modal = document.getElementById('modalAiAssistant');
     if (modal) {
-      if (open) modal.classList.add('active');
-      else modal.classList.remove('active');
+      if (open) {
+        modal.classList.add('active');
+        this.renderAiRoleChips();
+      } else {
+        modal.classList.remove('active');
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+      }
+    }
+  }
+
+  renderAiRoleChips() {
+    const roleBadge = document.getElementById('aiAssistantRoleBadge');
+    const chipsContainer = document.getElementById('aiAssistantSuggestedChips');
+    const isOwner = this.currentRole === 'OWNER';
+
+    if (roleBadge) {
+      if (isOwner) {
+        roleBadge.innerText = '👑 OWNER MODE';
+        roleBadge.classList.add('owner-mode');
+      } else {
+        roleBadge.innerText = '🤖 CUSTOMER MODE';
+        roleBadge.classList.remove('owner-mode');
+      }
+    }
+
+    if (!chipsContainer) return;
+
+    let chips = [];
+    if (isOwner) {
+      chips = [
+        { label: "📊 Today's Sales", prompt: "Give me today's business report." },
+        { label: "🏆 Top Food", prompt: "Which food sold the most today?" },
+        { label: "⏳ Pending Orders", prompt: "Show today's pending orders." },
+        { label: "📈 Revenue Comparison", prompt: "Compare this week with last week." },
+        { label: "⏰ Busiest Hours", prompt: "What are the busiest hours?" },
+        { label: "📉 Slow-Moving Items", prompt: "Which food is slow-moving?" },
+        { label: "🚫 Cancellation Analysis", prompt: "Analyze cancellations." },
+        { label: "⭐ Review Sentiment", prompt: "Analyze customer reviews." },
+        { label: "🔮 Predict Demand", prompt: "Predict tomorrow's demand." }
+      ];
+    } else {
+      chips = [
+        { label: "🔥 Crispy under ₹100", prompt: "I want something crispy under ₹100" },
+        { label: "📦 Where is my order?", prompt: "Where is my order?" },
+        { label: "⏳ Queue Status", prompt: "How many orders are ahead of me?" },
+        { label: "🔄 Order My Usual", prompt: "Order my usual." },
+        { label: "🏆 Loyalty Points", prompt: "How many loyalty points do I have?" },
+        { label: "💳 Premium Card", prompt: "Is my premium card active?" },
+        { label: "🗳️ Today's Poll", prompt: "What can I vote for?" },
+        { label: "🥗 Nutritional Info", prompt: "Which item is lighter?" },
+        { label: "🎧 Helpline", prompt: "How do I contact customer support?" }
+      ];
+    }
+
+    chipsContainer.innerHTML = chips.map(c => `
+      <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('${c.prompt.replace(/'/g, "\\'")}')">
+        ${c.label}
+      </button>
+    `).join('');
+  }
+
+  toggleAiTts() {
+    this.aiTtsEnabled = !this.aiTtsEnabled;
+    const btn = document.getElementById('iconAiTts');
+    if (btn) {
+      btn.className = this.aiTtsEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+    }
+    this.showToast(this.aiTtsEnabled ? '🔊 AI Voice Responses Enabled' : '🔇 AI Voice Responses Muted', 'info');
+  }
+
+  speakText(text) {
+    if (!this.aiTtsEnabled || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+
+    // Clean markdown tags for clear speech
+    const cleanText = text.replace(/[*_#•]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText.substring(0, 300));
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+  }
+
+  toggleVoiceRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      this.showToast('⚠️ Voice recognition is not supported in this browser. Please type your query.', 'warning');
+      return;
+    }
+
+    const micBtn = document.getElementById('btnAiVoiceMic');
+
+    if (this.recognitionInstance) {
+      this.recognitionInstance.stop();
+      this.recognitionInstance = null;
+      if (micBtn) micBtn.classList.remove('listening');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-IN'; // Also handles spoken Telugu/Hindi keywords
+
+      recognition.onstart = () => {
+        this.recognitionInstance = recognition;
+        if (micBtn) micBtn.classList.add('listening');
+        this.showToast('🎙️ Listening... Speak your order or query now!', 'info');
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        if (micBtn) micBtn.classList.remove('listening');
+        this.recognitionInstance = null;
+
+        const input = document.getElementById('txtAiAssistantPrompt');
+        if (input) {
+          input.value = transcript;
+          this.sendAiAssistantPrompt();
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn('Speech recognition error:', event.error);
+        if (micBtn) micBtn.classList.remove('listening');
+        this.recognitionInstance = null;
+        this.showToast('⚠️ Could not capture audio. Please try speaking again or typing.', 'warning');
+      };
+
+      recognition.onend = () => {
+        if (micBtn) micBtn.classList.remove('listening');
+        this.recognitionInstance = null;
+      };
+
+      recognition.start();
+    } catch (e) {
+      console.error('Failed to start speech recognition:', e);
     }
   }
 
@@ -16786,6 +16935,17 @@ class TiffinApp {
       input.value = text;
       this.sendAiAssistantPrompt();
     }
+  }
+
+  formatAiMarkdown(text) {
+    if (!text) return '';
+    let html = text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/^• (.*$)/gim, '<div style="margin-left: 8px; margin-bottom: 3px;">• $1</div>')
+      .replace(/\n/g, '<br>');
+    return html;
   }
 
   async sendAiAssistantPrompt(event) {
@@ -16799,17 +16959,22 @@ class TiffinApp {
     if (!container) return;
 
     container.innerHTML = `
-      <div style="text-align: center; padding: 3rem 1rem; color: var(--text-muted);">
-        <i class="fa-solid fa-robot fa-spin" style="font-size: 2.5rem; color: #2196F3; margin-bottom: 1rem;"></i>
-        <h3 style="color: #FFF; font-size: 1.1rem; margin-bottom: 0.5rem;">Finding the best options...</h3>
-        <p style="font-size: 0.85rem;">Analyzing live menu items, prices, and quantities for your budget...</p>
+      <div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted);">
+        <i class="fa-solid fa-robot fa-spin" style="font-size: 2.2rem; color: #2196F3; margin-bottom: 1rem;"></i>
+        <h4 style="color: #FFF; font-size: 1.05rem; margin-bottom: 0.4rem;">AI Order Assistant is thinking...</h4>
+        <p style="font-size: 0.82rem;">Retrieving live authorized database records...</p>
       </div>
     `;
 
     try {
-      const res = await fetch(`${API_BASE}/customer/ai-order-assistant`, {
+      const headers = { 'Content-Type': 'application/json' };
+      if (this.authToken) {
+        headers['Authorization'] = `Bearer ${this.authToken}`;
+      }
+
+      const res = await fetch(`${API_BASE}/ai-order-assistant`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ prompt: promptText })
       });
 
@@ -16819,27 +16984,25 @@ class TiffinApp {
         this.currentAiOptions = json.options || [];
 
         let html = `
-          <div style="margin-bottom: 1rem; font-size: 0.92rem; font-weight: 800; color: #FFF;">
-            ${json.message}
+          <div style="background: rgba(33, 150, 243, 0.12); border: 1.5px solid rgba(33, 150, 243, 0.35); border-radius: 14px; padding: 1rem 1.15rem; color: #FFF; font-size: 0.92rem; line-height: 1.5;">
+            <div style="font-size: 0.72rem; font-weight: 800; color: #64B5F6; margin-bottom: 6px; letter-spacing: 0.5px;">
+              ${json.mode_label || '🤖 AI Order Assistant'}
+            </div>
+            ${this.formatAiMarkdown(json.message)}
           </div>
         `;
 
-        if (this.currentAiOptions.length === 0) {
-          html += `
-            <div style="text-align: center; padding: 2rem; color: var(--text-muted); background: var(--bg-surface); border-radius: 12px; border: 1.5px dashed var(--border-color);">
-              ${json.suggested_budget ? `💡 <strong>Budget Suggestion:</strong> Try increasing your budget to ₹${json.suggested_budget} for ${promptText}.` : 'No combinations match this request. Try adjusting your headcount or budget!'}
-            </div>
-          `;
-        } else {
+        if (this.currentAiOptions.length > 0) {
+          html += `<div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">`;
           html += this.currentAiOptions.map((opt, idx) => `
-            <div class="ai-option-card">
+            <div class="ai-option-card" style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 14px; padding: 1rem;">
               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                 <h4 style="margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--accent-gold);">${opt.title}</h4>
                 <span style="font-size: 1.15rem; font-weight: 900; color: #4CAF50; font-family: var(--font-number);">₹${opt.total}</span>
               </div>
               <p style="font-size: 0.84rem; color: var(--text-muted); margin: 0 0 10px 0;">${opt.explanation}</p>
               
-              <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 10px;">
+              <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 10px;">
                 ${opt.items.map(item => `
                   <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.86rem; color: #FFF;">
                     <span>• ${item.name} × ${item.quantity}</span>
@@ -16848,17 +17011,36 @@ class TiffinApp {
                 `).join('')}
               </div>
 
-              <button type="button" class="btn-primary-block" onclick="app.addAiOptionToCart(${idx})" style="background: linear-gradient(135deg, #2196F3, #1565C0); border: none; color: #FFF; font-weight: 800; padding: 8px 16px; font-size: 0.85rem;">
+              <button type="button" class="btn-primary-block" onclick="app.addAiOptionToCart(${idx})" style="background: linear-gradient(135deg, #2196F3, #1565C0); border: none; color: #FFF; font-weight: 800; padding: 10px 16px; font-size: 0.88rem; border-radius: 10px; cursor: pointer;">
                 <i class="fa-solid fa-cart-plus"></i> Add Option ${idx + 1} to Cart (₹${opt.total})
               </button>
             </div>
           `).join('');
+          html += `</div>`;
+        }
+
+        // Render dynamic follow-up chips
+        if (Array.isArray(json.suggested_questions) && json.suggested_questions.length > 0) {
+          html += `
+            <div style="margin-top: 12px; font-size: 0.78rem; color: var(--text-muted); font-weight: 700;">
+              💡 Suggested Follow-Up Questions:
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;">
+              ${json.suggested_questions.map(q => `
+                <button type="button" class="ai-quick-pill" onclick="app.setAiPrompt('${q.replace(/'/g, "\\'")}')">
+                  ${q}
+                </button>
+              `).join('')}
+            </div>
+          `;
         }
 
         container.innerHTML = html;
+        input.value = '';
+        this.speakText(json.message);
       } else {
         container.innerHTML = `
-          <div style="text-align: center; padding: 2rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
+          <div style="text-align: center; padding: 1.5rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
             ${json.message || 'AI Assistant is currently unavailable.'}
           </div>
         `;
@@ -16866,8 +17048,8 @@ class TiffinApp {
     } catch (err) {
       console.error('AI prompt error:', err);
       container.innerHTML = `
-        <div style="text-align: center; padding: 2rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
-          Server communication error. Please try again.
+        <div style="text-align: center; padding: 1.5rem; color: #F44336; background: rgba(244, 67, 54, 0.1); border-radius: 12px; border: 1px solid #F44336;">
+          Server connection error. Please try again.
         </div>
       `;
     }
@@ -16913,6 +17095,7 @@ class TiffinApp {
   }
 
   // =========================================================================
+
   // 🗳️ CUSTOMER MENU VOTING CLIENT MODULE
   // =========================================================================
 

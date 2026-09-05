@@ -8503,6 +8503,239 @@ body.guest-mode #btnMobileMenuToggle {
   display: inline-block;
 }
 
+/* =========================================================================
+   🤖 UNIFIED AI ORDER ASSISTANT STYLES
+   ========================================================================= */
+
+.ai-assistant-modal-card {
+  max-width: 620px !important;
+  width: 94% !important;
+  max-height: 90vh !important;
+  height: 680px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  background: var(--bg-surface, #181412) !important;
+  border: 1.5px solid rgba(33, 150, 243, 0.4) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85) !important;
+  overflow: hidden !important;
+}
+
+.ai-modal-header {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.25), rgba(156, 39, 176, 0.2), rgba(255, 179, 0, 0.15)) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  padding: 0.9rem 1.25rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.ai-avatar-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2196F3, #9C27B0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+}
+
+.ai-role-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  background: rgba(33, 150, 243, 0.25);
+  color: #64B5F6;
+  border: 1px solid rgba(33, 150, 243, 0.4);
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+
+.ai-role-badge.owner-mode {
+  background: rgba(255, 179, 0, 0.25);
+  color: var(--accent-gold, #FFB300);
+  border-color: rgba(255, 179, 0, 0.4);
+}
+
+.ai-modal-body {
+  padding: 1rem 1.25rem !important;
+  flex: 1 !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.ai-chips-wrapper {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.ai-quick-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #E0E0E0;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ai-quick-pill:hover, .ai-quick-pill:active {
+  background: rgba(33, 150, 243, 0.2);
+  border-color: #2196F3;
+  color: #FFF;
+  transform: translateY(-1px);
+}
+
+.ai-results-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.ai-modal-footer {
+  padding: 0.85rem 1.25rem !important;
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.ai-mic-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #FFF;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.ai-mic-btn:hover {
+  background: rgba(33, 150, 243, 0.25);
+  border-color: #2196F3;
+  color: #64B5F6;
+}
+
+.ai-mic-btn.listening {
+  background: #F44336 !important;
+  border-color: #FF5252 !important;
+  color: #FFF !important;
+  animation: micPulse 1.2s infinite alternate;
+}
+
+@keyframes micPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
+  100% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+}
+
+.ai-input-field {
+  flex: 1;
+  font-size: 0.88rem !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #FFF !important;
+  padding: 10px 14px !important;
+}
+
+.ai-input-field:focus {
+  border-color: #2196F3 !important;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.25) !important;
+}
+
+.ai-send-btn {
+  width: 44px !important;
+  height: 42px !important;
+  padding: 0 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #2196F3, #1565C0) !important;
+  border: none !important;
+  color: #FFF !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 1rem !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: transform 0.2s ease !important;
+}
+
+.ai-send-btn:hover {
+  transform: scale(1.04) !important;
+}
+
+/* 🤖 Floating AI Assistant Button (Bottom Right) */
+.floating-ai-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #2196F3, #1E88E5, #9C27B0);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 30px;
+  color: #FFF;
+  font-weight: 800;
+  font-size: 0.86rem;
+  box-shadow: 0 8px 24px rgba(33, 150, 243, 0.5), 0 2px 8px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.floating-ai-btn:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 12px 30px rgba(33, 150, 243, 0.65);
+}
+
+.ai-btn-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00E676;
+  box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.8);
+  animation: floatPulse 1.8s infinite;
+}
+
+@keyframes floatPulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(0, 230, 118, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
+}
+
+@media (max-width: 600px) {
+  .floating-ai-btn {
+    bottom: 18px;
+    right: 18px;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+  }
+  .ai-assistant-modal-card {
+    width: 98% !important;
+    height: 92vh !important;
+    border-radius: 16px !important;
+  }
+}
+
 
 
 
