@@ -6410,10 +6410,26 @@
       </div>
     </div>
 
+    <!-- CUSTOMER WALLET TRANSACTION DETAILS MODAL -->
+    <div id="modalWalletTxDetailsBackdrop" class="modal-backdrop hidden" onclick="app.toggleWalletTxDetailsModal(false)">
+      <div class="modal-card wallet-tx-details-modal" onclick="event.stopPropagation()" style="max-width: 580px;">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-receipt" style="color: var(--accent-gold);"></i> Transaction & Order Details</h3>
+          <button type="button" class="icon-btn" onclick="app.toggleWalletTxDetailsModal(false)">&times;</button>
+        </div>
+        <div class="modal-body" id="walletTxDetailsBody" style="padding: 1.25rem;">
+          <!-- Rendered dynamically -->
+        </div>
+        <div class="modal-footer" style="justify-content: flex-end;">
+          <button type="button" class="btn-secondary-sm" onclick="app.toggleWalletTxDetailsModal(false)">Close</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=46"></script>
+    <script src="/js/app.js?v=47"></script>
 </body>
 
 </html>

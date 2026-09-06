@@ -9644,6 +9644,31 @@ body.guest-mode #btnMobileMenuToggle {
   }
 }
 
+/* Customer Wallet Transaction Action Button */
+.btn-wallet-action-sm {
+  background: rgba(255, 152, 0, 0.12) !important;
+  color: var(--accent-gold, #FFC107) !important;
+  border: 1px solid rgba(255, 152, 0, 0.4) !important;
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  white-space: nowrap !important;
+}
+
+.btn-wallet-action-sm:hover {
+  background: rgba(255, 152, 0, 0.28) !important;
+  border-color: var(--primary) !important;
+  color: #FFFFFF !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3) !important;
+}
+
 
 
 

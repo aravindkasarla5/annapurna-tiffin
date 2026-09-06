@@ -20603,24 +20603,55 @@ class TiffinApp {
               <th style="padding: 10px;">Description</th>
               <th style="padding: 10px;">Amount</th>
               <th style="padding: 10px;">Balance After</th>
+              <th style="padding: 10px; text-align: center;">Action</th>
             </tr>
           </thead>
           <tbody>
             ${transactions.map(tx => {
-              const isCredit = (tx.type || '').toUpperCase() === 'CREDIT';
+              const rawType = (tx.type || '').toUpperCase();
+              let typeBadge = '';
+              let isCredit = false;
+              let isRejected = false;
+
+              if (rawType === 'APPROVED' || rawType === 'TOPUP_APPROVED') {
+                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(76,175,80,0.2); color: #4CAF50;">🟢 APPROVED</span>`;
+                isCredit = true;
+              } else if (rawType === 'REJECTED') {
+                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(244,67,54,0.2); color: #FF5252;">🔴 REJECTED</span>`;
+                isRejected = true;
+              } else if (rawType === 'RE-APPROVED' || rawType === 'TOPUP_REAPPROVED') {
+                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(33,150,243,0.2); color: #2196F3;">🔵 RE-APPROVED</span>`;
+                isCredit = true;
+              } else if (rawType === 'USED' || (rawType === 'DEBIT' && tx.order_id)) {
+                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(255,152,0,0.2); color: #FF9800;">🟠 USED</span>`;
+              } else if (rawType === 'CREDIT') {
+                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(76,175,80,0.2); color: #4CAF50;">🟢 CREDIT</span>`;
+                isCredit = true;
+              } else {
+                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(255,255,255,0.1); color: #DDD;">${rawType}</span>`;
+              }
+
+              let amtDisplay = '';
+              if (isCredit) {
+                amtDisplay = `<span style="font-weight: 800; color: #4CAF50;">+₹${Number(tx.amount || 0).toFixed(2)}</span>`;
+              } else if (isRejected) {
+                amtDisplay = `<span style="font-weight: 700; color: var(--text-muted); text-decoration: line-through;">₹${Number(tx.amount || 0).toFixed(2)}</span>`;
+              } else {
+                amtDisplay = `<span style="font-weight: 800; color: #FF9800;">-₹${Number(tx.amount || 0).toFixed(2)}</span>`;
+              }
+
               return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                  <td style="padding: 10px; color: var(--text-muted);">${tx.date_time || new Date(tx.created_at).toLocaleString('en-IN')}</td>
-                  <td style="padding: 10px;">
-                    <span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: ${isCredit ? 'rgba(76,175,80,0.2)' : 'rgba(244,67,54,0.2)'}; color: ${isCredit ? '#4CAF50' : '#FF5252'};">
-                      ${isCredit ? '🟢 CREDIT' : '🔴 DEBIT'}
-                    </span>
-                  </td>
+                  <td style="padding: 10px; color: var(--text-muted); white-space: nowrap;">${tx.date_time || new Date(tx.created_at).toLocaleString('en-IN')}</td>
+                  <td style="padding: 10px;">${typeBadge}</td>
                   <td style="padding: 10px; color: #DDD;">${tx.description || 'Wallet Transaction'}</td>
-                  <td style="padding: 10px; font-weight: 800; color: ${isCredit ? '#4CAF50' : '#FF5252'};">
-                    ${isCredit ? '+' : '-'}₹${Number(tx.amount || 0).toFixed(2)}
-                  </td>
+                  <td style="padding: 10px;">${amtDisplay}</td>
                   <td style="padding: 10px; font-weight: 700; color: var(--primary);">₹${Number(tx.balance_after || 0).toFixed(2)}</td>
+                  <td style="padding: 10px; text-align: center;">
+                    <button type="button" class="btn-wallet-action-sm" onclick="app.viewWalletTransactionDetails('${tx.id}')">
+                      <i class="fa-solid fa-circle-info"></i> View Details
+                    </button>
+                  </td>
                 </tr>
               `;
             }).join('')}
@@ -20628,6 +20659,212 @@ class TiffinApp {
         </table>
       </div>
     `;
+  }
+
+  async viewWalletTransactionDetails(txId) {
+    if (!txId) return;
+
+    try {
+      const modal = document.getElementById('modalWalletTxDetailsBackdrop');
+      const bodyEl = document.getElementById('walletTxDetailsBody');
+      if (modal) modal.classList.remove('hidden');
+      if (bodyEl) {
+        bodyEl.innerHTML = `
+          <div style="text-align: center; padding: 2.5rem 1rem;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--primary); margin-bottom: 12px;"></i>
+            <p style="margin: 0; color: var(--text-muted);">Fetching authoritative transaction details...</p>
+          </div>
+        `;
+      }
+
+      const res = await this.fetchWithAuth(`${API_BASE}/wallet/transactions/${txId}/details`);
+      const data = await res.json();
+
+      if (!data.success || !data.data) {
+        this.showToast(data.message || 'Unable to load transaction details.', 'error');
+        if (modal) modal.classList.add('hidden');
+        return;
+      }
+
+      const d = data.data;
+      let html = '';
+
+      if (d.category === 'ORDER') {
+        const typeBadge = `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; background: rgba(255,152,0,0.2); color: #FF9800;">🟠 USED</span>`;
+        
+        const itemsHtml = (d.items && d.items.length > 0) ? d.items.map(item => `
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <td style="padding: 8px 10px; font-weight: 600; color: #FFF;">${item.name}</td>
+            <td style="padding: 8px 10px; text-align: center; color: var(--text-muted);">× ${item.quantity}</td>
+            <td style="padding: 8px 10px; text-align: right; color: var(--text-muted);">₹${Number(item.price).toFixed(2)}</td>
+            <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #FFF;">₹${Number(item.item_total).toFixed(2)}</td>
+          </tr>
+        `).join('') : `<tr><td colspan="4" style="padding: 10px; text-align: center; color: var(--text-muted);">No item details available</td></tr>`;
+
+        const remAmount = Math.max(0, d.total_amount - d.wallet_amount_used);
+
+        html = `
+          <div class="wallet-tx-details-header" style="background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.25); padding: 14px; border-radius: 10px; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Wallet Usage Order Record</div>
+                <div style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin-top: 2px;">Order #${d.order_id}</div>
+              </div>
+              <div>${typeBadge}</div>
+            </div>
+            <div style="margin-top: 10px; font-size: 0.82rem; color: var(--text-muted); display: flex; gap: 16px; flex-wrap: wrap;">
+              <span><i class="fa-regular fa-calendar"></i> Date: <strong style="color: #DDD;">${new Date(d.order_date).toLocaleString('en-IN')}</strong></span>
+              <span><i class="fa-solid fa-signal"></i> Status: <strong style="color: var(--primary);">${d.order_status || 'Received'}</strong></span>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-utensils"></i> Ordered Food Items
+            </h4>
+            <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem;">
+                <thead>
+                  <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); text-align: left;">
+                    <th style="padding: 8px 10px;">Item Name</th>
+                    <th style="padding: 8px 10px; text-align: center;">Qty</th>
+                    <th style="padding: 8px 10px; text-align: right;">Price</th>
+                    <th style="padding: 8px 10px; text-align: right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); padding: 14px; font-size: 0.86rem;">
+            <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: var(--primary); display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-wallet"></i> Wallet Financial Breakdown
+            </h4>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--text-muted);">
+              <span>Order Total Amount:</span>
+              <strong style="color: #FFF;">₹${Number(d.total_amount).toFixed(2)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #FF9800; font-weight: 700;">
+              <span>Normal Wallet Amount Used:</span>
+              <span>-₹${Number(d.wallet_amount_used).toFixed(2)}</span>
+            </div>
+            ${remAmount > 0 ? `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--text-muted);">
+                <span>Remaining Amount Paid (${d.payment_method}):</span>
+                <strong style="color: #FFF;">₹${remAmount.toFixed(2)}</strong>
+              </div>
+            ` : `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #4CAF50;">
+                <span>Payment Status:</span>
+                <strong>100% Paid via Normal Wallet</strong>
+              </div>
+            `}
+            <hr style="border: 0; border-top: 1px dashed rgba(255,255,255,0.1); margin: 8px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+              <span>Wallet Balance Before: ₹${Number(d.balance_before).toFixed(2)}</span>
+              <span>Wallet Balance After: <strong style="color: var(--primary);">₹${Number(d.balance_after).toFixed(2)}</strong></span>
+            </div>
+            <div style="margin-top: 8px; font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">
+              Tx Ref ID: ${d.transaction_id}
+            </div>
+          </div>
+        `;
+      } else if (d.category === 'TOPUP') {
+        const statusUpper = (d.transaction_type || '').toUpperCase();
+        let badgeClass = 'rgba(76,175,80,0.2)';
+        let badgeColor = '#4CAF50';
+        let badgeLabel = '🟢 APPROVED';
+
+        if (statusUpper === 'REJECTED') {
+          badgeClass = 'rgba(244,67,54,0.2)';
+          badgeColor = '#FF5252';
+          badgeLabel = '🔴 REJECTED';
+        } else if (statusUpper === 'RE-APPROVED' || statusUpper === 'TOPUP_REAPPROVED') {
+          badgeClass = 'rgba(33,150,243,0.2)';
+          badgeColor = '#2196F3';
+          badgeLabel = '🔵 RE-APPROVED';
+        }
+
+        html = `
+          <div style="background: ${badgeClass}; border: 1px solid ${badgeColor}; padding: 14px; border-radius: 10px; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Top-Up Request</div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: #FFF;">Request #${d.request_id || d.transaction_id}</div>
+              </div>
+              <span style="padding: 4px 12px; border-radius: 6px; font-weight: 800; font-size: 0.8rem; background: ${badgeClass}; color: ${badgeColor}; border: 1px solid ${badgeColor};">
+                ${badgeLabel}
+              </span>
+            </div>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); padding: 14px; font-size: 0.86rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span style="color: var(--text-muted);">Top-Up Amount:</span>
+              <strong style="font-size: 1.05rem; color: ${badgeColor};">₹${Number(d.amount).toFixed(2)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--text-muted);">
+              <span>Payment Method:</span>
+              <strong style="color: #FFF;">${d.payment_method || 'UPI'}</strong>
+            </div>
+            ${d.utr_number ? `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--text-muted);">
+                <span>UTR / Ref Number:</span>
+                <strong style="color: var(--accent-gold); font-family: monospace;">${d.utr_number}</strong>
+              </div>
+            ` : ''}
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; color: var(--text-muted);">
+              <span>Date & Time:</span>
+              <strong style="color: #DDD;">${d.transaction_date}</strong>
+            </div>
+            ${d.rejection_reason ? `
+              <div style="margin-top: 10px; padding: 10px; background: rgba(244,67,54,0.1); border-radius: 6px; border-left: 3px solid #FF5252; color: #FF5252;">
+                <strong>Rejection Reason:</strong> ${d.rejection_reason}
+              </div>
+            ` : ''}
+            <hr style="border: 0; border-top: 1px dashed rgba(255,255,255,0.1); margin: 10px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+              <span>Balance Before: ₹${Number(d.balance_before).toFixed(2)}</span>
+              <span>Balance After: <strong style="color: var(--primary);">₹${Number(d.balance_after).toFixed(2)}</strong></span>
+            </div>
+          </div>
+        `;
+      } else {
+        html = `
+          <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 14px; font-size: 0.86rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span style="color: var(--text-muted);">Transaction Type:</span>
+              <strong style="color: #FFF;">${d.transaction_type}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span style="color: var(--text-muted);">Amount:</span>
+              <strong style="color: var(--primary);">₹${Number(d.amount).toFixed(2)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+              <span style="color: var(--text-muted);">Description:</span>
+              <span style="color: #DDD;">${d.description}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-muted);">Date & Time:</span>
+              <span style="color: #DDD;">${d.transaction_date}</span>
+            </div>
+          </div>
+        `;
+      }
+
+      if (bodyEl) bodyEl.innerHTML = html;
+    } catch (err) {
+      console.error('Error fetching transaction details:', err);
+      this.showToast('Failed to load transaction details.', 'error');
+    }
+  }
+
+  toggleWalletTxDetailsModal(show) {
+    const modal = document.getElementById('modalWalletTxDetailsBackdrop');
+    if (modal) modal.classList.toggle('hidden', !show);
   }
 
   selectWalletPreset(amount) {

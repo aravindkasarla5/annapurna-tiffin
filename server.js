@@ -3325,9 +3325,9 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
                 'cwtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                 req.user.id,
                 custWalletDeducted,
-                'DEBIT',
+                'USED',
                 `Redeemed on Order #${orderNum}`,
-                new Date().toLocaleString('en-IN'),
+                new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
                 orderNum,
                 currentCustWallet,
                 remCustBal,
@@ -4284,7 +4284,7 @@ app.post('/api/owner/wallet/requests/:id/approve', authenticateToken, requireRol
       await tx.query(
         `INSERT INTO customer_wallet_transactions (
           id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
-        ) VALUES ($1, $2, $3, $4, 'TOPUP_APPROVED', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
+        ) VALUES ($1, $2, $3, $4, 'APPROVED', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
         [
           txId,
           customerUser.id,
@@ -4403,25 +4403,46 @@ app.post('/api/owner/wallet/requests/:id/reapprove', authenticateToken, requireR
       );
       newBalance = Number(creditRes.rows[0]?.customer_wallet_balance || (previousBalance + approvedAmount));
 
-      // 5. Create Financial Source-of-Truth Ledger Entry in `customer_wallet_transactions`
-      const txId = 'cwtx_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
-      const dateTimeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-
-      await tx.query(
-        `INSERT INTO customer_wallet_transactions (
-          id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
-        ) VALUES ($1, $2, $3, $4, 'TOPUP_REAPPROVED', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
-        [
-          txId,
-          customerUser.id,
-          requestObj.id,
-          approvedAmount,
-          `Wallet Top-Up Verified & Re-Approved by Owner (Req #${requestObj.request_id})`,
-          dateTimeStr,
-          previousBalance,
-          newBalance
-        ]
+      // Check if transaction entry already exists for this request (e.g. from rejection)
+      const existingTxRes = await tx.query(
+        `SELECT id FROM customer_wallet_transactions WHERE request_id = $1 AND user_id = $2;`,
+        [requestObj.id, customerUser.id]
       );
+
+      if (existingTxRes.rows && existingTxRes.rows.length > 0) {
+        // Update original transaction record in-place to RE-APPROVED
+        await tx.query(
+          `UPDATE customer_wallet_transactions
+           SET type = 'RE-APPROVED', amount = $1, balance_before = $2, balance_after = $3, description = $4, date_time = $5, status = 'SUCCESS', created_at = CURRENT_TIMESTAMP
+           WHERE id = $6;`,
+          [
+            approvedAmount,
+            previousBalance,
+            newBalance,
+            `Wallet Top-Up Verified & Re-Approved by Owner (Req #${requestObj.request_id})`,
+            dateTimeStr,
+            existingTxRes.rows[0].id
+          ]
+        );
+      } else {
+        // Create single financial ledger entry if legacy or missing
+        const txId = 'cwtx_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+        await tx.query(
+          `INSERT INTO customer_wallet_transactions (
+            id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
+          ) VALUES ($1, $2, $3, $4, 'RE-APPROVED', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
+          [
+            txId,
+            customerUser.id,
+            requestObj.id,
+            approvedAmount,
+            `Wallet Top-Up Verified & Re-Approved by Owner (Req #${requestObj.request_id})`,
+            dateTimeStr,
+            previousBalance,
+            newBalance
+          ]
+        );
+      }
     });
 
     // 6. Send Customer Real-Time Notification
@@ -4505,6 +4526,48 @@ app.post('/api/owner/wallet/requests/:id/reject', authenticateToken, requireRole
         err.statusCode = 409;
         throw err;
       }
+
+      // Record Rejection Ledger Entry in `customer_wallet_transactions`
+      const userRes = await tx.query('SELECT customer_wallet_balance FROM users WHERE id = $1;', [requestObj.customer_id]);
+      const currentCustBal = Number(userRes.rows[0]?.customer_wallet_balance || 0);
+      const dateTimeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+      const rejTxId = 'cwtx_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+
+      // Check if existing transaction entry exists for request
+      const existingTxRes = await tx.query(
+        `SELECT id FROM customer_wallet_transactions WHERE request_id = $1 AND user_id = $2;`,
+        [requestObj.id, requestObj.customer_id]
+      );
+
+      if (existingTxRes.rows && existingTxRes.rows.length > 0) {
+        await tx.query(
+          `UPDATE customer_wallet_transactions
+           SET type = 'REJECTED', amount = $1, balance_before = $2, balance_after = $2, description = $3, date_time = $4, status = 'REJECTED', created_at = CURRENT_TIMESTAMP
+           WHERE id = $5;`,
+          [
+            Number(requestObj.amount || 0),
+            currentCustBal,
+            `Wallet Top-Up Request Rejected (Reason: ${rejectionReason})`,
+            dateTimeStr,
+            existingTxRes.rows[0].id
+          ]
+        );
+      } else {
+        await tx.query(
+          `INSERT INTO customer_wallet_transactions (
+            id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
+          ) VALUES ($1, $2, $3, $4, 'REJECTED', $5, $6, $7, $7, 'REJECTED', CURRENT_TIMESTAMP);`,
+          [
+            rejTxId,
+            requestObj.customer_id,
+            requestObj.id,
+            Number(requestObj.amount || 0),
+            `Wallet Top-Up Request Rejected (Reason: ${rejectionReason})`,
+            dateTimeStr,
+            currentCustBal
+          ]
+        );
+      }
     });
 
     // 3. Send Real-Time Notification to Customer
@@ -4556,6 +4619,125 @@ app.get('/api/wallet/transactions', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Fetch Wallet Transactions Error:', err);
     res.status(500).json({ success: false, message: "Failed to fetch wallet transaction history." });
+  }
+});
+
+// Dedicated Secure Wallet Transaction & Order Details Endpoint (IDOR Protected)
+app.get('/api/wallet/transactions/:id/details', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Transaction ID parameter is required." });
+    }
+
+    // 1. Authoritative Backend Check: Query transaction belonging to authenticated customer
+    const txRes = await db.query(
+      `SELECT * FROM customer_wallet_transactions WHERE (id = $1 OR request_id = $1 OR order_id = $1) AND user_id = $2;`,
+      [id, userId]
+    );
+
+    if (!txRes.rows || txRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Wallet transaction record not found or access denied." });
+    }
+
+    const tx = txRes.rows[0];
+
+    // 2. If Order-Linked ("USED" / Order payment)
+    if (tx.order_id) {
+      const orderRes = await db.query(
+        `SELECT * FROM orders WHERE (id = $1 OR order_number = $1) AND customer_id = $2;`,
+        [tx.order_id, userId]
+      );
+
+      if (!orderRes.rows || orderRes.rows.length === 0) {
+        return res.status(404).json({ success: false, message: "Associated order record not found or access denied." });
+      }
+
+      const order = orderRes.rows[0];
+      let parsedItems = [];
+      if (typeof order.items === 'string') {
+        try { parsedItems = JSON.parse(order.items); } catch (e) { parsedItems = []; }
+      } else if (Array.isArray(order.items)) {
+        parsedItems = order.items;
+      }
+
+      const walletUsedAmount = Number(tx.amount || order.used_customer_wallet_amount || order.used_wallet_amount || 0);
+
+      return res.json({
+        success: true,
+        data: {
+          category: 'ORDER',
+          transaction_id: tx.id,
+          transaction_type: (tx.type || '').toUpperCase() === 'DEBIT' ? 'USED' : tx.type,
+          transaction_date: tx.date_time || new Date(tx.created_at).toLocaleString('en-IN'),
+          balance_before: Number(tx.balance_before || 0),
+          balance_after: Number(tx.balance_after || 0),
+          order_id: order.order_number || order.id,
+          order_status: order.order_status,
+          order_date: order.created_at,
+          payment_method: order.payment_method || 'Wallet',
+          total_amount: Number(order.total_amount || 0),
+          wallet_amount_used: walletUsedAmount,
+          net_amount: Number(order.net_amount || 0),
+          delivery_address: order.delivery_address || null,
+          items: parsedItems.map(item => ({
+            name: item.name || 'Food Item',
+            quantity: Number(item.quantity || 1),
+            price: Number(item.price || 0),
+            item_total: Number(item.price || 0) * Number(item.quantity || 1)
+          }))
+        }
+      });
+    }
+
+    // 3. If Top-Up Request Linked (APPROVED / REJECTED / RE-APPROVED)
+    if (tx.request_id) {
+      const reqRes = await db.query(
+        `SELECT * FROM wallet_topup_requests WHERE (id = $1 OR request_id = $1) AND customer_id = $2;`,
+        [tx.request_id, userId]
+      );
+
+      const topupReq = (reqRes.rows && reqRes.rows.length > 0) ? reqRes.rows[0] : null;
+
+      return res.json({
+        success: true,
+        data: {
+          category: 'TOPUP',
+          transaction_id: tx.id,
+          request_id: topupReq ? topupReq.request_id : tx.request_id,
+          transaction_type: tx.type,
+          transaction_date: tx.date_time || new Date(tx.created_at).toLocaleString('en-IN'),
+          amount: Number(tx.amount || 0),
+          balance_before: Number(tx.balance_before || 0),
+          balance_after: Number(tx.balance_after || 0),
+          payment_method: topupReq ? topupReq.payment_method : 'UPI',
+          utr_number: topupReq ? topupReq.utr_number : null,
+          status: tx.type,
+          rejection_reason: topupReq ? topupReq.rejection_reason : null,
+          screenshot_url: topupReq ? topupReq.screenshot_url : null
+        }
+      });
+    }
+
+    // Generic fallback
+    return res.json({
+      success: true,
+      data: {
+        category: 'GENERIC',
+        transaction_id: tx.id,
+        transaction_type: tx.type,
+        transaction_date: tx.date_time || new Date(tx.created_at).toLocaleString('en-IN'),
+        amount: Number(tx.amount || 0),
+        balance_before: Number(tx.balance_before || 0),
+        balance_after: Number(tx.balance_after || 0),
+        description: tx.description || 'Wallet Transaction'
+      }
+    });
+  } catch (err) {
+    console.error('Fetch Wallet Transaction Details Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch wallet transaction details." });
   }
 });
 
