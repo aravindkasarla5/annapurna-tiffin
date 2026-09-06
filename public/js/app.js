@@ -20460,12 +20460,7 @@ class TiffinApp {
 
     try {
       // 1. Fetch Summary Balances
-      const resSummary = await fetch('/api/wallet/summary', {
-        headers: {
-          'Authorization': `Bearer ${this.authToken || ''}`,
-          'X-Auth-Token': this.authToken || ''
-        }
-      });
+      const resSummary = await this.fetchWithAuth(`${API_BASE}/wallet/summary`);
       const dataSummary = await resSummary.json();
 
       if (dataSummary.success && dataSummary.data) {
@@ -20488,12 +20483,7 @@ class TiffinApp {
       }
 
       // 2. Fetch Requests History (Pending + History)
-      const resReq = await fetch('/api/wallet/requests', {
-        headers: {
-          'Authorization': `Bearer ${this.authToken || ''}`,
-          'X-Auth-Token': this.authToken || ''
-        }
-      });
+      const resReq = await this.fetchWithAuth(`${API_BASE}/wallet/requests`);
       const dataReq = await resReq.json();
       const requests = (dataReq.success && Array.isArray(dataReq.data)) ? dataReq.data : [];
 
@@ -20508,12 +20498,7 @@ class TiffinApp {
       }
 
       // 3. Fetch Wallet Ledger Transactions
-      const resTx = await fetch('/api/wallet/transactions', {
-        headers: {
-          'Authorization': `Bearer ${this.authToken || ''}`,
-          'X-Auth-Token': this.authToken || ''
-        }
-      });
+      const resTx = await this.fetchWithAuth(`${API_BASE}/wallet/transactions`);
       const dataTx = await resTx.json();
       const txs = (dataTx.success && dataTx.data && Array.isArray(dataTx.data.transactions)) ? dataTx.data.transactions : [];
 
@@ -20687,7 +20672,11 @@ class TiffinApp {
   }
 
   async handleWalletTopupSubmit(e) {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
+    if (this.isSubmittingWalletTopup) return;
+
     if (!this.currentUser) {
       this.showToast('Please login to add money to wallet.', 'error');
       this.openAuthModal('CUSTOMER', 'LOGIN');
@@ -20716,6 +20705,7 @@ class TiffinApp {
       return;
     }
 
+    this.isSubmittingWalletTopup = true;
     const btnSubmit = document.getElementById('btnSubmitWalletTopup');
     if (btnSubmit) {
       btnSubmit.disabled = true;
@@ -20730,24 +20720,22 @@ class TiffinApp {
         payment_screenshot: this.tempWalletScreenshotBase64 || null
       };
 
-      const res = await fetch('/api/wallet/topup', {
+      const res = await this.fetchWithAuth(`${API_BASE}/wallet/topup`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.authToken || ''}`,
-          'X-Auth-Token': this.authToken || ''
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         this.showToast(data.message || 'Top-up request submitted! Waiting for Owner verification.', 'success');
         if (inpUtr) inpUtr.value = '';
+        const fileInput = document.getElementById('inpWalletScreenshot');
+        if (fileInput) fileInput.value = '';
         this.tempWalletScreenshotBase64 = null;
         const prevBox = document.getElementById('walletScreenshotPreview');
         if (prevBox) { prevBox.innerHTML = ''; prevBox.classList.add('hidden'); }
-        this.loadCustomerWalletData();
+        await this.loadCustomerWalletData();
       } else {
         this.showToast(data.message || 'Failed to submit wallet top-up request.', 'error');
       }
@@ -20755,6 +20743,7 @@ class TiffinApp {
       console.error('Error submitting topup:', err);
       this.showToast('Network connection error submitting top-up request.', 'error');
     } finally {
+      this.isSubmittingWalletTopup = false;
       if (btnSubmit) {
         btnSubmit.disabled = false;
         btnSubmit.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Submit Payment for Verification`;

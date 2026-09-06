@@ -621,12 +621,12 @@
           </div>
 
           <!-- Custom Amount Input Form -->
-          <form id="formAddWalletMoney" onsubmit="app.handleWalletTopupSubmit(event)" style="margin-top: 1rem;">
+          <form id="formAddWalletMoney" onsubmit="app.handleWalletTopupSubmit(event)" novalidate style="margin-top: 1rem;">
             <div class="form-group">
               <label for="inpWalletAmount" class="input-label">Enter Custom Amount (₹):</label>
               <div class="custom-amount-input-wrapper">
                 <span class="currency-symbol">₹</span>
-                <input type="number" id="inpWalletAmount" class="form-control wallet-amount-input" min="1" max="50000" step="1" value="500" required placeholder="Enter amount (e.g. 500)" oninput="app.updateWalletPaymentSummary()">
+                <input type="number" id="inpWalletAmount" class="form-control wallet-amount-input" min="1" max="50000" step="1" value="500" placeholder="Enter amount (e.g. 500)" oninput="app.updateWalletPaymentSummary()">
               </div>
             </div>
 
@@ -654,7 +654,7 @@
               <div class="qr-info-header">
                 <div>
                   <div class="qr-vpa-title">Scan & Pay via UPI / GPay / PhonePe / Paytm:</div>
-                  <div class="qr-vpa-id" id="walletUpiIdDisplay">9392974900@ybl</div>
+                  <div class="qr-vpa-id" id="walletUpiIdDisplay">9392874900@ybl</div>
                 </div>
                 <button type="button" class="btn-copy-upi" onclick="app.copyWalletUpiId()"><i class="fa-regular fa-copy"></i> Copy UPI ID</button>
               </div>
@@ -668,7 +668,7 @@
             <div id="walletProofFieldsBox">
               <div class="form-group">
                 <label for="inpWalletUtr" class="input-label">UTR / Reference / Transaction Number <span style="color: var(--primary);">*</span></label>
-                <input type="text" id="inpWalletUtr" class="form-control" placeholder="12-digit UTR or Txn Reference ID (e.g. 4239XXXXXXXX)" required>
+                <input type="text" id="inpWalletUtr" class="form-control" placeholder="12-digit UTR or Txn Reference ID (e.g. 4239XXXXXXXX)">
               </div>
 
               <div class="form-group">
@@ -678,7 +678,7 @@
               </div>
             </div>
 
-            <button type="submit" id="btnSubmitWalletTopup" class="btn-primary-block" style="margin-top: 1.25rem; font-size: 1.05rem; padding: 14px;">
+            <button type="submit" id="btnSubmitWalletTopup" class="btn-primary-block" onclick="app.handleWalletTopupSubmit(event)" style="margin-top: 1.25rem; font-size: 1.05rem; padding: 14px;">
               <i class="fa-solid fa-paper-plane"></i> Submit Payment for Verification
             </button>
           </form>
