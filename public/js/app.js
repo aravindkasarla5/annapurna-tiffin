@@ -675,36 +675,7 @@ class TiffinApp {
   bindGlobalQuickActionListeners() {
     if (this._quickActionListenersBound) return;
     this._quickActionListenersBound = true;
-
-    const handleAction = (e) => {
-      const btn = e.target.closest('[data-action], .co-row-btn, .btn-sm-status');
-      if (!btn) return;
-
-      const onclickAttr = btn.getAttribute('onclick') || '';
-      const action = btn.getAttribute('data-action');
-      const orderNum = btn.getAttribute('data-order-num') || btn.getAttribute('data-order-number');
-      const orderId = btn.getAttribute('data-order-id');
-
-      if (action === 'open-review' || onclickAttr.includes('openOrderReviewModal')) {
-        e.preventDefault();
-        e.stopPropagation();
-        const num = orderNum || (onclickAttr.match(/openOrderReviewModal\('([^']+)'\)/) || [])[1];
-        if (num) this.openOrderReviewModal(num);
-      } else if (action === 'open-cancel' || onclickAttr.includes('openCancelOrderModal')) {
-        e.preventDefault();
-        e.stopPropagation();
-        const id = orderId || (onclickAttr.match(/openCancelOrderModal\('([^']+)'\)/) || [])[1];
-        if (id) this.openCancelOrderModal(id);
-      } else if (action === 'open-edit' || onclickAttr.includes('openEditOrderModal')) {
-        e.preventDefault();
-        e.stopPropagation();
-        const id = orderId || (onclickAttr.match(/openEditOrderModal\('([^']+)'\)/) || [])[1];
-        if (id) this.openEditOrderModal(id);
-      }
-    };
-
-    document.addEventListener('click', handleAction, true);
-    document.addEventListener('touchstart', handleAction, { passive: false });
+    // Native inline onclick handlers on quick action buttons execute directly
   }
 
   async loadUserData() {
@@ -7490,7 +7461,7 @@ class TiffinApp {
   }
 
   showOrderDetail(orderNum) {
-    const order = this.orders.find(o => o.order_number === orderNum);
+    const order = (this.orders || []).find(o => o.order_number === orderNum || o.id === orderNum || String(o.order_number) === String(orderNum) || String(o.id) === String(orderNum));
     if (!order) { this.showToast('Order not found.', 'error'); return; }
 
     const dateFormatted = new Date(order.created_at).toLocaleString('en-IN', {
@@ -11257,7 +11228,7 @@ class TiffinApp {
     this.selectedRating = 0;
     this.selectedIssues = [];
 
-    const order = (this.orders || []).find(o => o.order_number === orderNum || o.id === orderNum);
+    const order = (this.orders || []).find(o => o.order_number === orderNum || o.id === orderNum || String(o.order_number) === String(orderNum) || String(o.id) === String(orderNum));
     const existingReview = order?.review;
 
     const elOrderNum = document.getElementById('reviewOrderNumDisplay');
@@ -12623,7 +12594,8 @@ class TiffinApp {
 
     // Check cutoff
     const createdAtMs = new Date(order.created_at || Date.now()).getTime();
-    if (Date.now() - createdAtMs >= 180000 || !['Received', 'Pending'].includes(order.order_status)) {
+    const statusUpper = (order.order_status || '').toUpperCase();
+    if (Date.now() - createdAtMs >= 180000 || !['RECEIVED', 'PENDING'].includes(statusUpper)) {
       this.showToast('Modification window has expired for this order.', 'warning');
       return;
     }
