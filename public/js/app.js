@@ -16,6 +16,9 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 window.escapeHtml = escapeHtml;
+if (typeof TiffinApp !== 'undefined') {
+  TiffinApp.prototype.escapeHtml = escapeHtml;
+}
 
 // =========================================================================
 // GLOBAL EARLY PWA EVENT LISTENER & SERVICE WORKER REGISTRATION
@@ -216,6 +219,7 @@ class TiffinApp {
   }
 
   async init() {
+    this.escapeHtml = escapeHtml;
     console.log('Initializing Annapurna Tiffin Center App...');
 
     // Move modal backdrops directly under document.body for top-level fixed z-index rendering
@@ -20894,12 +20898,17 @@ class TiffinApp {
       if (isApproved) { statusClass = 'approved'; statusLabel = '✅ APPROVED'; }
       if (isRejected) { statusClass = 'rejected'; statusLabel = '❌ REJECTED'; }
 
+      const safeName = typeof escapeHtml === 'function' ? escapeHtml(r.customer_name || 'Customer') : (r.customer_name || 'Customer');
+      const safeMobile = typeof escapeHtml === 'function' ? escapeHtml(r.customer_mobile || '') : (r.customer_mobile || '');
+      const safeUtr = typeof escapeHtml === 'function' ? escapeHtml(r.utr_number || '') : (r.utr_number || '');
+      const safeReason = typeof escapeHtml === 'function' ? escapeHtml(r.rejection_reason || '') : (r.rejection_reason || '');
+
       return `
         <div class="owner-request-card" style="border-left: 4px solid ${isPending ? '#FF9800' : (isApproved ? '#4CAF50' : '#F44336')};">
           <div class="owner-card-header">
             <div>
-              <div class="cust-name">${app.escapeHtml(r.customer_name || 'Customer')}</div>
-              <div class="cust-mobile">📱 ${app.escapeHtml(r.customer_mobile || '')} | Req ID: <strong style="color: var(--primary);">#${r.request_id}</strong></div>
+              <div class="cust-name">${safeName}</div>
+              <div class="cust-mobile">📱 ${safeMobile} | Req ID: <strong style="color: var(--primary);">#${r.request_id}</strong></div>
             </div>
             <div>
               <span class="req-status-pill ${statusClass}">${statusLabel}</span>
@@ -20915,7 +20924,7 @@ class TiffinApp {
             <div>
               <div style="font-size: 0.75rem; color: var(--text-muted);">Payment Method & Ref</div>
               <div style="font-size: 0.9rem; font-weight: 700; color: #DDD;">${r.payment_method || 'UPI'}</div>
-              <div style="font-size: 0.8rem; font-family: monospace; color: var(--text-muted);">${r.utr_number ? `UTR: ${app.escapeHtml(r.utr_number)}` : 'No UTR provided'}</div>
+              <div style="font-size: 0.8rem; font-family: monospace; color: var(--text-muted);">${r.utr_number ? `UTR: ${safeUtr}` : 'No UTR provided'}</div>
             </div>
 
             <div>
@@ -20934,13 +20943,13 @@ class TiffinApp {
 
           ${isRejected && r.rejection_reason ? `
             <div style="background: rgba(244, 67, 54, 0.1); border: 1px solid rgba(244, 67, 54, 0.3); color: #FF8A80; padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; margin-bottom: 12px;">
-              <strong>Rejection Reason:</strong> ${app.escapeHtml(r.rejection_reason)}
+              <strong>Rejection Reason:</strong> ${safeReason}
             </div>
           ` : ''}
 
           ${isPending ? `
             <div class="owner-card-actions">
-              <button type="button" class="btn-reject-wallet" onclick="app.openOwnerWalletRejectModal('${r.id}', '${r.request_id}', '${app.escapeHtml(r.customer_name)}', ${r.amount})">
+              <button type="button" class="btn-reject-wallet" onclick="app.openOwnerWalletRejectModal('${r.id}', '${r.request_id}', '${safeName.replace(/'/g, "\\'")}', ${r.amount})">
                 <i class="fa-solid fa-xmark"></i> Reject
               </button>
               <button type="button" class="btn-approve-wallet" onclick="app.approveOwnerWalletRequest('${r.id}')">

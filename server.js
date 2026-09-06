@@ -4131,13 +4131,17 @@ app.get('/api/owner/wallet/requests', authenticateToken, requireRole('OWNER'), a
     }
 
     // Filter by Date Range
-    if (date_range) {
+    if (date_range && date_range.toLowerCase() !== 'all') {
       const dr = date_range.toLowerCase();
       const now = new Date();
       if (dr === 'today') {
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
         params.push(startOfDay);
-        sql += ` AND created_at >= $${params.length}`;
+        const p1 = params.length;
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        params.push(dateStr);
+        const p2 = params.length;
+        sql += ` AND (created_at >= $${p1} OR created_at >= $${p2})`;
       } else if (dr === 'yesterday') {
         const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString();
         const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
