@@ -20594,16 +20594,16 @@ class TiffinApp {
     }
 
     container.innerHTML = `
-      <div style="overflow-x: auto;">
-        <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.88rem;">
+      <div style="overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch;">
+        <table class="data-table" style="width: 100%; min-width: 680px; border-collapse: collapse; font-size: 0.88rem;">
           <thead>
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: var(--text-muted);">
-              <th style="padding: 10px;">Date & Time</th>
-              <th style="padding: 10px;">Type</th>
-              <th style="padding: 10px;">Description</th>
-              <th style="padding: 10px;">Amount</th>
-              <th style="padding: 10px;">Balance After</th>
-              <th style="padding: 10px; text-align: center;">Action</th>
+              <th style="padding: 10px; min-width: 150px; white-space: nowrap;">Date & Time</th>
+              <th style="padding: 10px; min-width: 130px; white-space: nowrap;">Type</th>
+              <th style="padding: 10px; min-width: 220px;">Description</th>
+              <th style="padding: 10px; min-width: 110px; white-space: nowrap;">Amount</th>
+              <th style="padding: 10px; min-width: 110px; white-space: nowrap;">Balance After</th>
+              <th style="padding: 10px; min-width: 120px; text-align: center; white-space: nowrap;">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -20612,45 +20612,51 @@ class TiffinApp {
               let typeBadge = '';
               let isCredit = false;
               let isRejected = false;
+              let isUsed = false;
 
               if (rawType === 'APPROVED' || rawType === 'TOPUP_APPROVED') {
-                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(76,175,80,0.2); color: #4CAF50;">🟢 APPROVED</span>`;
+                typeBadge = `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(76,175,80,0.2); color: #4CAF50; white-space: nowrap; display: inline-block;">🟢 APPROVED</span>`;
                 isCredit = true;
               } else if (rawType === 'REJECTED') {
-                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(244,67,54,0.2); color: #FF5252;">🔴 REJECTED</span>`;
+                typeBadge = `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(244,67,54,0.2); color: #FF5252; white-space: nowrap; display: inline-block;">🔴 REJECTED</span>`;
                 isRejected = true;
               } else if (rawType === 'RE-APPROVED' || rawType === 'TOPUP_REAPPROVED') {
-                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(33,150,243,0.2); color: #2196F3;">🔵 RE-APPROVED</span>`;
+                typeBadge = `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(33,150,243,0.2); color: #2196F3; white-space: nowrap; display: inline-block;">🔵 RE-APPROVED</span>`;
                 isCredit = true;
               } else if (rawType === 'USED' || (rawType === 'DEBIT' && tx.order_id)) {
-                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(255,152,0,0.2); color: #FF9800;">🟠 USED</span>`;
+                typeBadge = `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(255,152,0,0.2); color: #FF9800; white-space: nowrap; display: inline-block;">🟠 USED</span>`;
+                isUsed = true;
               } else if (rawType === 'CREDIT') {
-                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(76,175,80,0.2); color: #4CAF50;">🟢 CREDIT</span>`;
+                typeBadge = `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(76,175,80,0.2); color: #4CAF50; white-space: nowrap; display: inline-block;">🟢 CREDIT</span>`;
                 isCredit = true;
               } else {
-                typeBadge = `<span style="padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(255,255,255,0.1); color: #DDD;">${rawType}</span>`;
+                typeBadge = `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(255,255,255,0.1); color: #DDD; white-space: nowrap; display: inline-block;">${rawType}</span>`;
               }
 
               let amtDisplay = '';
               if (isCredit) {
-                amtDisplay = `<span style="font-weight: 800; color: #4CAF50;">+₹${Number(tx.amount || 0).toFixed(2)}</span>`;
+                amtDisplay = `<span style="font-weight: 800; color: #4CAF50; white-space: nowrap;">+₹${Number(tx.amount || 0).toFixed(2)}</span>`;
               } else if (isRejected) {
-                amtDisplay = `<span style="font-weight: 700; color: var(--text-muted); text-decoration: line-through;">₹${Number(tx.amount || 0).toFixed(2)}</span>`;
+                amtDisplay = `<span style="font-weight: 700; color: var(--text-muted); text-decoration: line-through; white-space: nowrap;">₹${Number(tx.amount || 0).toFixed(2)}</span>`;
               } else {
-                amtDisplay = `<span style="font-weight: 800; color: #FF9800;">-₹${Number(tx.amount || 0).toFixed(2)}</span>`;
+                amtDisplay = `<span style="font-weight: 800; color: #FF9800; white-space: nowrap;">-₹${Number(tx.amount || 0).toFixed(2)}</span>`;
               }
+
+              const actionHtml = isUsed ? `
+                <button type="button" class="btn-wallet-action-sm" onclick="app.viewWalletTransactionDetails('${tx.id}')">
+                  <i class="fa-solid fa-circle-info"></i> View Details
+                </button>
+              ` : `<span style="color: var(--text-muted); font-size: 0.85rem;">—</span>`;
 
               return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                   <td style="padding: 10px; color: var(--text-muted); white-space: nowrap;">${tx.date_time || new Date(tx.created_at).toLocaleString('en-IN')}</td>
-                  <td style="padding: 10px;">${typeBadge}</td>
-                  <td style="padding: 10px; color: #DDD;">${tx.description || 'Wallet Transaction'}</td>
-                  <td style="padding: 10px;">${amtDisplay}</td>
-                  <td style="padding: 10px; font-weight: 700; color: var(--primary);">₹${Number(tx.balance_after || 0).toFixed(2)}</td>
-                  <td style="padding: 10px; text-align: center;">
-                    <button type="button" class="btn-wallet-action-sm" onclick="app.viewWalletTransactionDetails('${tx.id}')">
-                      <i class="fa-solid fa-circle-info"></i> View Details
-                    </button>
+                  <td style="padding: 10px; white-space: nowrap;">${typeBadge}</td>
+                  <td style="padding: 10px; color: #DDD; word-break: break-word;">${tx.description || 'Wallet Transaction'}</td>
+                  <td style="padding: 10px; white-space: nowrap;">${amtDisplay}</td>
+                  <td style="padding: 10px; font-weight: 700; color: var(--primary); white-space: nowrap;">₹${Number(tx.balance_after || 0).toFixed(2)}</td>
+                  <td style="padding: 10px; text-align: center; white-space: nowrap;">
+                    ${actionHtml}
                   </td>
                 </tr>
               `;
