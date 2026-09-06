@@ -9511,7 +9511,8 @@ body.guest-mode #btnMobileMenuToggle {
 #cancelOrderModalBackdrop,
 #orderReviewModalBackdrop,
 #raiseTicketModalBackdrop,
-#reorderReviewModalBackdrop {
+#reorderReviewModalBackdrop,
+#lightboxModalBackdrop {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -9545,7 +9546,10 @@ body.guest-mode #btnMobileMenuToggle {
 #raiseTicketModalBackdrop.active,
 #reorderReviewModalBackdrop.open,
 #reorderReviewModalBackdrop.visible,
-#reorderReviewModalBackdrop.active {
+#reorderReviewModalBackdrop.active,
+#lightboxModalBackdrop.open,
+#lightboxModalBackdrop.visible,
+#lightboxModalBackdrop.active {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -9560,7 +9564,8 @@ body.guest-mode #btnMobileMenuToggle {
 #cancelOrderModalBackdrop.hidden,
 #orderReviewModalBackdrop.hidden,
 #raiseTicketModalBackdrop.hidden,
-#reorderReviewModalBackdrop.hidden {
+#reorderReviewModalBackdrop.hidden,
+#lightboxModalBackdrop.hidden {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;

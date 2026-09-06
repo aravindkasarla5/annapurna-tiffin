@@ -255,6 +255,10 @@ class TiffinApp {
     if (reorderReviewBackdrop && reorderReviewBackdrop.parentElement !== document.body) {
       document.body.appendChild(reorderReviewBackdrop);
     }
+    const lightboxBackdrop = document.getElementById('lightboxModalBackdrop');
+    if (lightboxBackdrop && lightboxBackdrop.parentElement !== document.body) {
+      document.body.appendChild(lightboxBackdrop);
+    }
     const floatingSupport = document.querySelector('.floating-support-container');
     if (floatingSupport && floatingSupport.parentElement !== document.body) {
       document.body.appendChild(floatingSupport);
@@ -5460,9 +5464,21 @@ class TiffinApp {
     if (img) {
       img.style.display = 'none';
       img.src = src;
+      // Check if cached image or data URL loaded synchronously
+      if (img.complete && img.naturalWidth > 0) {
+        this.onLightboxImgLoad();
+      }
     }
 
-    if (backdrop) backdrop.classList.add('open');
+    if (backdrop) {
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('open', 'visible', 'active');
+      backdrop.style.setProperty('display', 'flex', 'important');
+      backdrop.style.setProperty('opacity', '1', 'important');
+      backdrop.style.setProperty('visibility', 'visible', 'important');
+      backdrop.style.setProperty('pointer-events', 'auto', 'important');
+      backdrop.style.setProperty('z-index', '99999999', 'important');
+    }
   }
 
   onLightboxImgLoad() {
@@ -5488,7 +5504,14 @@ class TiffinApp {
     const img = document.getElementById('lightboxImg');
     const loader = document.getElementById('lightboxLoader');
     const errorBox = document.getElementById('lightboxError');
-    if (backdrop) backdrop.classList.remove('open');
+    if (backdrop) {
+      backdrop.classList.remove('open', 'visible', 'active');
+      backdrop.classList.add('hidden');
+      backdrop.style.setProperty('display', 'none', 'important');
+      backdrop.style.setProperty('opacity', '0', 'important');
+      backdrop.style.setProperty('visibility', 'hidden', 'important');
+      backdrop.style.setProperty('pointer-events', 'none', 'important');
+    }
     if (loader) loader.classList.add('hidden');
     if (errorBox) errorBox.classList.add('hidden');
     if (img) {
@@ -8933,8 +8956,8 @@ class TiffinApp {
         <td style="padding: 14px 16px; vertical-align: middle;">
           ${p.payment_screenshot ? `
             <div style="display: flex; align-items: center; gap: 10px;">
-              <img src="${p.payment_screenshot}" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" class="payment-screenshot-thumb" style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer; transition: transform 0.2s ease;" title="Click to view full screenshot">
-              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+              <img src="${escapeHtml(p.payment_screenshot)}" onclick="app.viewFullScreenshot('${escapeHtml(p.payment_screenshot)}', 'Payment Proof - Order #${p.order_number}')" class="payment-screenshot-thumb" style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer; transition: transform 0.2s ease;" title="Click to view full screenshot">
+              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${escapeHtml(p.payment_screenshot)}', 'Payment Proof - Order #${p.order_number}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
                 <i class="fa-solid fa-camera"></i> View
               </button>
             </div>
@@ -9850,8 +9873,8 @@ class TiffinApp {
         <td style="padding: 14px 16px; vertical-align: middle;">
           ${p.payment_screenshot ? `
             <div style="display: flex; align-items: center; gap: 10px;">
-              <img src="${p.payment_screenshot}" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" class="payment-screenshot-thumb" style="width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer;" title="Click to view full screenshot">
-              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${p.payment_screenshot}', 'Payment Proof - Order #${p.order_number}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
+              <img src="${escapeHtml(p.payment_screenshot)}" onclick="app.viewFullScreenshot('${escapeHtml(p.payment_screenshot)}', 'Payment Proof - Order #${p.order_number}')" class="payment-screenshot-thumb" style="width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--accent-gold); cursor: pointer;" title="Click to view full screenshot">
+              <button type="button" class="btn-sm-status" onclick="app.viewFullScreenshot('${escapeHtml(p.payment_screenshot)}', 'Payment Proof - Order #${p.order_number}')" style="background: rgba(234, 162, 33, 0.15); color: var(--accent-gold); border: 1px solid rgba(234, 162, 33, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
                 <i class="fa-solid fa-camera"></i> View
               </button>
             </div>
