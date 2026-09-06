@@ -3243,6 +3243,8 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
       const currentWallet = Number(userRes.rows[0]?.wallet_balance || 0);
 
       let walletDeducted = 0;
+      let custWalletDeducted = 0;
+      let layoutDeducted = 0;
       let finalPayMethod = payment_method || 'Cash';
       let finalPayStatus = 'Pending';
       let netAmount = grand_total;
@@ -3261,7 +3263,7 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
         const remainingBal = currentWallet - grand_total;
         finalPayMethod = 'REFERRAL';
         finalPayStatus = 'REFERRAL';
-        netAmount = grand_total; // Record total amount paid by wallet
+        netAmount = 0; // 100% paid by referral wallet
 
         // Deduct exact order amount atomically from user's wallet
         await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
@@ -3283,38 +3285,13 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
             'SUCCESS'
           ]
         );
-        // Partial wallet discount handling for Cash / UPI payment methods
-        if (used_wallet_amount && Number(used_wallet_amount) > 0) {
-          walletDeducted = Math.min(currentWallet, Number(used_wallet_amount), grand_total);
-          if (walletDeducted > 0) {
-            const remainingBal = currentWallet - walletDeducted;
-            await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
-            await tx.query(
-              `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
-              [
-                'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-                req.user.id,
-                walletDeducted,
-                'DEBIT',
-                `Redeemed on Order #${orderNum}`,
-                new Date().toLocaleString('en-IN'),
-                orderNum,
-                currentWallet,
-                remainingBal,
-                'SUCCESS'
-              ]
-            );
-          }
-        }
-
-        // Deduct Normal Customer Wallet Balance if selected
+      } else {
+        // Normal Order Flow: Check if Normal Customer Wallet Balance is selected & deducted
         const reqCustWallet = Number(req.body.used_customer_wallet_amount || 0);
-        let custWalletDeducted = 0;
         if (reqCustWallet > 0) {
           const custUserRes = await tx.query('SELECT customer_wallet_balance FROM users WHERE id = $1;', [req.user.id]);
           const currentCustWallet = Number(custUserRes.rows[0]?.customer_wallet_balance || 0);
-          custWalletDeducted = Math.min(currentCustWallet, reqCustWallet, Math.max(0, grand_total - walletDeducted));
+          custWalletDeducted = Math.min(currentCustWallet, reqCustWallet, grand_total);
           if (custWalletDeducted > 0) {
             const remCustBal = currentCustWallet - custWalletDeducted;
             await tx.query('UPDATE users SET customer_wallet_balance = $1 WHERE id = $2;', [remCustBal, req.user.id]);
@@ -3334,12 +3311,43 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
                 'SUCCESS'
               ]
             );
+
+            // ONLY if Normal Customer Wallet covers the entire order amount, set payment method to 'Wallet'
+            if (custWalletDeducted >= grand_total) {
+              finalPayMethod = 'Wallet';
+              finalPayStatus = 'Paid (Wallet)';
+            }
+          }
+        }
+
+        // Deduct Referral Wallet Partial Discount if explicitly passed and applicable
+        if (used_wallet_amount && Number(used_wallet_amount) > 0) {
+          const refDeduct = Math.min(currentWallet, Number(used_wallet_amount), Math.max(0, grand_total - custWalletDeducted));
+          if (refDeduct > 0) {
+            walletDeducted = refDeduct;
+            const remainingBal = currentWallet - refDeduct;
+            await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
+            await tx.query(
+              `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+              [
+                'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                req.user.id,
+                refDeduct,
+                'DEBIT',
+                `Redeemed on Order #${orderNum}`,
+                new Date().toLocaleString('en-IN'),
+                orderNum,
+                currentWallet,
+                remainingBal,
+                'SUCCESS'
+              ]
+            );
           }
         }
 
         // Deduct Layout Balance if selected
         const reqLayoutBal = Number(req.body.used_layout_amount || 0);
-        let layoutDeducted = 0;
         if (reqLayoutBal > 0) {
           const layoutUserRes = await tx.query('SELECT layout_balance FROM users WHERE id = $1;', [req.user.id]);
           const currentLayout = Number(layoutUserRes.rows[0]?.layout_balance || 0);
@@ -3351,7 +3359,9 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
         }
 
         netAmount = Math.max(0, grand_total - walletDeducted - custWalletDeducted - layoutDeducted);
-        finalPayStatus = 'Pending';
+        if (custWalletDeducted < grand_total) {
+          finalPayStatus = 'Pending';
+        }
       }
 
       // Check Active Premium Food Member Card Benefits (₹5 Discount & Express Delivery)

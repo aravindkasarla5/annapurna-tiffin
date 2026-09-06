@@ -5866,6 +5866,8 @@ class TiffinApp {
 
     if (chkWalletUsed && finalUsedWalletAmount >= grandTotal) {
       payMethodName = 'REFERRAL';
+    } else if (chkCustWalletUsed && finalUsedCustomerWalletAmount >= grandTotal) {
+      payMethodName = 'Wallet';
     }
 
     const payload = {
