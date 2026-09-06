@@ -235,6 +235,26 @@ class TiffinApp {
     if (orderDetailBackdrop && orderDetailBackdrop.parentElement !== document.body) {
       document.body.appendChild(orderDetailBackdrop);
     }
+    const editOrderBackdrop = document.getElementById('editOrderModalBackdrop');
+    if (editOrderBackdrop && editOrderBackdrop.parentElement !== document.body) {
+      document.body.appendChild(editOrderBackdrop);
+    }
+    const cancelOrderBackdrop = document.getElementById('cancelOrderModalBackdrop');
+    if (cancelOrderBackdrop && cancelOrderBackdrop.parentElement !== document.body) {
+      document.body.appendChild(cancelOrderBackdrop);
+    }
+    const orderReviewBackdrop = document.getElementById('orderReviewModalBackdrop');
+    if (orderReviewBackdrop && orderReviewBackdrop.parentElement !== document.body) {
+      document.body.appendChild(orderReviewBackdrop);
+    }
+    const raiseTicketBackdrop = document.getElementById('raiseTicketModalBackdrop');
+    if (raiseTicketBackdrop && raiseTicketBackdrop.parentElement !== document.body) {
+      document.body.appendChild(raiseTicketBackdrop);
+    }
+    const reorderReviewBackdrop = document.getElementById('reorderReviewModalBackdrop');
+    if (reorderReviewBackdrop && reorderReviewBackdrop.parentElement !== document.body) {
+      document.body.appendChild(reorderReviewBackdrop);
+    }
     const floatingSupport = document.querySelector('.floating-support-container');
     if (floatingSupport && floatingSupport.parentElement !== document.body) {
       document.body.appendChild(floatingSupport);
@@ -10447,7 +10467,24 @@ class TiffinApp {
 
   toggleRaiseTicketModal(open = true) {
     const backdrop = document.getElementById('raiseTicketModalBackdrop');
-    if (backdrop) backdrop.classList.toggle('open', open);
+    if (backdrop) {
+      if (open) {
+        backdrop.classList.remove('hidden');
+        backdrop.classList.add('open', 'visible', 'active');
+        backdrop.style.setProperty('display', 'flex', 'important');
+        backdrop.style.setProperty('opacity', '1', 'important');
+        backdrop.style.setProperty('visibility', 'visible', 'important');
+        backdrop.style.setProperty('pointer-events', 'auto', 'important');
+        backdrop.style.setProperty('z-index', '99999999', 'important');
+      } else {
+        backdrop.classList.remove('open', 'visible', 'active');
+        backdrop.classList.add('hidden');
+        backdrop.style.setProperty('display', 'none', 'important');
+        backdrop.style.setProperty('opacity', '0', 'important');
+        backdrop.style.setProperty('visibility', 'hidden', 'important');
+        backdrop.style.setProperty('pointer-events', 'none', 'important');
+      }
+    }
   }
 
   async handleRaiseTicketSubmit(e) {
@@ -11249,16 +11286,25 @@ class TiffinApp {
 
     const backdrop = document.getElementById('orderReviewModalBackdrop');
     if (backdrop) {
-      backdrop.style.display = 'flex';
-      backdrop.classList.add('open');
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('open', 'visible', 'active');
+      backdrop.style.setProperty('display', 'flex', 'important');
+      backdrop.style.setProperty('opacity', '1', 'important');
+      backdrop.style.setProperty('visibility', 'visible', 'important');
+      backdrop.style.setProperty('pointer-events', 'auto', 'important');
+      backdrop.style.setProperty('z-index', '99999999', 'important');
     }
   }
 
   closeOrderReviewModal() {
     const backdrop = document.getElementById('orderReviewModalBackdrop');
     if (backdrop) {
-      backdrop.classList.remove('open');
-      backdrop.style.display = '';
+      backdrop.classList.remove('open', 'visible', 'active');
+      backdrop.classList.add('hidden');
+      backdrop.style.setProperty('display', 'none', 'important');
+      backdrop.style.setProperty('opacity', '0', 'important');
+      backdrop.style.setProperty('visibility', 'hidden', 'important');
+      backdrop.style.setProperty('pointer-events', 'none', 'important');
     }
   }
 
@@ -12594,8 +12640,13 @@ class TiffinApp {
 
     const backdrop = document.getElementById('editOrderModalBackdrop');
     if (backdrop) {
-      backdrop.style.display = 'flex';
-      backdrop.classList.add('open');
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('open', 'visible', 'active');
+      backdrop.style.setProperty('display', 'flex', 'important');
+      backdrop.style.setProperty('opacity', '1', 'important');
+      backdrop.style.setProperty('visibility', 'visible', 'important');
+      backdrop.style.setProperty('pointer-events', 'auto', 'important');
+      backdrop.style.setProperty('z-index', '99999999', 'important');
     }
   }
 
@@ -12651,8 +12702,12 @@ class TiffinApp {
   closeEditOrderModal() {
     const backdrop = document.getElementById('editOrderModalBackdrop');
     if (backdrop) {
-      backdrop.classList.remove('open');
-      backdrop.style.display = '';
+      backdrop.classList.remove('open', 'visible', 'active');
+      backdrop.classList.add('hidden');
+      backdrop.style.setProperty('display', 'none', 'important');
+      backdrop.style.setProperty('opacity', '0', 'important');
+      backdrop.style.setProperty('visibility', 'hidden', 'important');
+      backdrop.style.setProperty('pointer-events', 'none', 'important');
     }
     this.editingOrder = null;
     this.editingOrderItems = null;
@@ -12743,8 +12798,13 @@ class TiffinApp {
 
     const backdrop = document.getElementById('cancelOrderModalBackdrop');
     if (backdrop) {
-      backdrop.style.display = 'flex';
-      backdrop.classList.add('open');
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('open', 'visible', 'active');
+      backdrop.style.setProperty('display', 'flex', 'important');
+      backdrop.style.setProperty('opacity', '1', 'important');
+      backdrop.style.setProperty('visibility', 'visible', 'important');
+      backdrop.style.setProperty('pointer-events', 'auto', 'important');
+      backdrop.style.setProperty('z-index', '99999999', 'important');
     }
   }
 
@@ -12758,8 +12818,12 @@ class TiffinApp {
   closeCancelOrderModal() {
     const backdrop = document.getElementById('cancelOrderModalBackdrop');
     if (backdrop) {
-      backdrop.classList.remove('open');
-      backdrop.style.display = '';
+      backdrop.classList.remove('open', 'visible', 'active');
+      backdrop.classList.add('hidden');
+      backdrop.style.setProperty('display', 'none', 'important');
+      backdrop.style.setProperty('opacity', '0', 'important');
+      backdrop.style.setProperty('visibility', 'hidden', 'important');
+      backdrop.style.setProperty('pointer-events', 'none', 'important');
     }
   }
 

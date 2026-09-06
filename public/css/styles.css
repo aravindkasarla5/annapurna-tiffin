@@ -9504,9 +9504,14 @@ body.guest-mode #btnMobileMenuToggle {
   pointer-events: none !important;
 }
 
-/* Explicit High-Priority Stacking & Display Rules for Owner Verification PIN Modal & Order Details Modal */
+/* Explicit High-Priority Stacking & Display Rules for Owner & Customer Modals */
 #verifyPinModalBackdrop,
-#orderDetailBackdrop {
+#orderDetailBackdrop,
+#editOrderModalBackdrop,
+#cancelOrderModalBackdrop,
+#orderReviewModalBackdrop,
+#raiseTicketModalBackdrop,
+#reorderReviewModalBackdrop {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
@@ -9525,7 +9530,22 @@ body.guest-mode #btnMobileMenuToggle {
 #verifyPinModalBackdrop.active,
 #orderDetailBackdrop.open,
 #orderDetailBackdrop.visible,
-#orderDetailBackdrop.active {
+#orderDetailBackdrop.active,
+#editOrderModalBackdrop.open,
+#editOrderModalBackdrop.visible,
+#editOrderModalBackdrop.active,
+#cancelOrderModalBackdrop.open,
+#cancelOrderModalBackdrop.visible,
+#cancelOrderModalBackdrop.active,
+#orderReviewModalBackdrop.open,
+#orderReviewModalBackdrop.visible,
+#orderReviewModalBackdrop.active,
+#raiseTicketModalBackdrop.open,
+#raiseTicketModalBackdrop.visible,
+#raiseTicketModalBackdrop.active,
+#reorderReviewModalBackdrop.open,
+#reorderReviewModalBackdrop.visible,
+#reorderReviewModalBackdrop.active {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -9535,7 +9555,12 @@ body.guest-mode #btnMobileMenuToggle {
 }
 
 #verifyPinModalBackdrop.hidden,
-#orderDetailBackdrop.hidden {
+#orderDetailBackdrop.hidden,
+#editOrderModalBackdrop.hidden,
+#cancelOrderModalBackdrop.hidden,
+#orderReviewModalBackdrop.hidden,
+#raiseTicketModalBackdrop.hidden,
+#reorderReviewModalBackdrop.hidden {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
