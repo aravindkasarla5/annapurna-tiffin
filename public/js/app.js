@@ -4840,9 +4840,9 @@ class TiffinApp {
       if (btnSpan) {
         const amt = this.lastCalculatedFinalTotal !== undefined ? this.lastCalculatedFinalTotal : 0;
         if (method === 'Cash') {
-          btnSpan.innerHTML = `Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹${amt}</span>)`;
+          btnSpan.innerHTML = `Confirm & Place Order <span class="chk-price-pill" id="checkoutGrandTotalDisplay">₹${amt}</span>`;
         } else {
-          btnSpan.innerHTML = `Confirm & Pay (<span id="checkoutGrandTotalDisplay">₹${amt}</span>)`;
+          btnSpan.innerHTML = `Confirm & Pay <span class="chk-price-pill" id="checkoutGrandTotalDisplay">₹${amt}</span>`;
         }
       }
     }
@@ -5891,7 +5891,7 @@ class TiffinApp {
       this.isSubmittingOrder = false;
       if (btnSubmit) {
         btnSubmit.disabled = false;
-        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span id="checkoutGrandTotalDisplay">₹0</span>)</span>`;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order <span class="chk-price-pill" id="checkoutGrandTotalDisplay">₹0</span></span>`;
         this.updateCartUI();
       }
     }
