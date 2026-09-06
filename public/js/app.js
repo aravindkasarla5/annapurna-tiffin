@@ -20835,15 +20835,10 @@ class TiffinApp {
         sort
       });
 
-      const res = await fetch(`/api/owner/wallet/requests?${queryParams.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${this.authToken || ''}`,
-          'X-Auth-Token': this.authToken || ''
-        }
-      });
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/wallet/requests?${queryParams.toString()}`);
 
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         const requests = data.data || [];
         const metrics = data.metrics || {};
 
@@ -20973,17 +20968,13 @@ class TiffinApp {
     }
 
     try {
-      const res = await fetch(`/api/owner/wallet/requests/${reqId}/approve`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/wallet/requests/${reqId}/approve`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.authToken || ''}`,
-          'X-Auth-Token': this.authToken || ''
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
 
-      if (data.success) {
+      if (res.ok && data.success) {
         this.showToast(data.message || 'Wallet top-up approved successfully!', 'success');
         this.loadOwnerWalletData();
       } else {
@@ -21043,18 +21034,14 @@ class TiffinApp {
     if (!reqId) return;
 
     try {
-      const res = await fetch(`/api/owner/wallet/requests/${reqId}/reject`, {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/wallet/requests/${reqId}/reject`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.authToken || ''}`,
-          'X-Auth-Token': this.authToken || ''
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: finalReason })
       });
       const data = await res.json();
 
-      if (data.success) {
+      if (res.ok && data.success) {
         this.showToast(data.message || 'Wallet top-up request rejected.', 'info');
         this.closeOwnerWalletRejectModal();
         this.loadOwnerWalletData();
