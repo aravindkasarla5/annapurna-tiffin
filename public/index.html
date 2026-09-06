@@ -4316,16 +4316,9 @@
             </div>
           </div>
 
-          <!-- Single Final Confirm Action Button (Placed IMMEDIATELY below Payment Options in the green circled area) -->
-          <button type="submit" class="btn-primary-block btn-checkout-submit" id="btnCheckoutSubmit"
-            style="margin-top: 0.85rem; margin-bottom: 1rem; width: 100%;">
-            <i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span
-                id="checkoutGrandTotalDisplay">₹0</span>)</span>
-          </button>
-
           <!-- Dynamic UPI QR & Screenshot / UTR Payment Gateway Box -->
           <div id="upiQrBox" class="hidden"
-            style="background: rgba(10, 10, 14, 0.6); padding: 1.2rem; border-radius: var(--radius-lg); border: 1px solid var(--accent-gold); margin-top: 1rem;">
+            style="background: rgba(10, 10, 14, 0.6); padding: 1.2rem; border-radius: var(--radius-lg); border: 1px solid var(--accent-gold); margin-top: 1rem; margin-bottom: 1rem;">
 
             <!-- Notice when BOTH QR Pay and PhonePe are turned OFF by Owner -->
             <div id="onlinePaymentDisabledMsg" class="hidden"
@@ -4488,7 +4481,15 @@
                 <span style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-top: 4px;">Copy the
                   12-digit UTR/Ref number from GPay/PhonePe/Paytm transaction details.</span>
               </div>
+            </div>
           </div>
+
+          <!-- Single Final Confirm Action Button (Placed at the bottom of Payment Methods section, OUTSIDE & BELOW Online Payment box) -->
+          <button type="submit" class="btn-primary-block btn-checkout-submit" id="btnCheckoutSubmit"
+            style="margin-top: 1rem; margin-bottom: 0.5rem; width: 100%;">
+            <i class="fa-solid fa-circle-check"></i> <span>Confirm & Place Order (<span
+                id="checkoutGrandTotalDisplay">₹0</span>)</span>
+          </button>
         </form>
       </div>
     </div>
