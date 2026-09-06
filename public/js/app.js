@@ -280,18 +280,14 @@ class TiffinApp {
     const btnLoginHeader = document.getElementById('btnLoginHeader');
     if (btnLoginHeader) {
       btnLoginHeader.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.openAuthModal('CUSTOMER', 'LOGIN');
+        this.openAuthModal('LOGIN');
       });
     }
 
     const btnRegisterHeader = document.getElementById('btnRegisterHeader');
     if (btnRegisterHeader) {
       btnRegisterHeader.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.openAuthModal('CUSTOMER', 'REGISTER');
+        this.openAuthModal('REGISTER');
       });
     }
 
