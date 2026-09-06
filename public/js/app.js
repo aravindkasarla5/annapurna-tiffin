@@ -218,10 +218,14 @@ class TiffinApp {
   async init() {
     console.log('Initializing Annapurna Tiffin Center App...');
 
-    // Move authModalBackdrop directly under document.body for top-level fixed z-index rendering
+    // Move modal backdrops directly under document.body for top-level fixed z-index rendering
     const authBackdrop = document.getElementById('authModalBackdrop');
     if (authBackdrop && authBackdrop.parentElement !== document.body) {
       document.body.appendChild(authBackdrop);
+    }
+    const confirmBackdrop = document.getElementById('confirmationModalBackdrop');
+    if (confirmBackdrop && confirmBackdrop.parentElement !== document.body) {
+      document.body.appendChild(confirmBackdrop);
     }
 
     // Attach direct click event handlers to Login and Register header buttons
@@ -5178,7 +5182,15 @@ class TiffinApp {
         const confirmDisplay = document.getElementById('confirmedOrderNumDisplay');
         const confirmBackdrop = document.getElementById('confirmationModalBackdrop');
         if (confirmDisplay) confirmDisplay.innerText = `#${json.data.order_number}`;
-        if (confirmBackdrop) confirmBackdrop.classList.add('open');
+        if (confirmBackdrop) {
+          confirmBackdrop.classList.remove('hidden');
+          confirmBackdrop.classList.add('open', 'visible', 'active');
+          confirmBackdrop.style.setProperty('display', 'flex', 'important');
+          confirmBackdrop.style.setProperty('opacity', '1', 'important');
+          confirmBackdrop.style.setProperty('visibility', 'visible', 'important');
+          confirmBackdrop.style.setProperty('pointer-events', 'auto', 'important');
+          confirmBackdrop.style.setProperty('z-index', '99999999', 'important');
+        }
 
         await this.fetchOrders();
         await this.fetchNotifications();
@@ -5810,7 +5822,16 @@ class TiffinApp {
         if (pinDisp && json.data.pickup_pin) {
           pinDisp.innerText = json.data.pickup_pin;
         }
-        document.getElementById('confirmationModalBackdrop').classList.add('open');
+        const confirmBackdrop = document.getElementById('confirmationModalBackdrop');
+        if (confirmBackdrop) {
+          confirmBackdrop.classList.remove('hidden');
+          confirmBackdrop.classList.add('open', 'visible', 'active');
+          confirmBackdrop.style.setProperty('display', 'flex', 'important');
+          confirmBackdrop.style.setProperty('opacity', '1', 'important');
+          confirmBackdrop.style.setProperty('visibility', 'visible', 'important');
+          confirmBackdrop.style.setProperty('pointer-events', 'auto', 'important');
+          confirmBackdrop.style.setProperty('z-index', '99999999', 'important');
+        }
 
         await this.fetchOrders();
         await this.fetchNotifications();
@@ -5876,7 +5897,15 @@ class TiffinApp {
   }
 
   closeConfirmationAndTrack() {
-    document.getElementById('confirmationModalBackdrop').classList.remove('open');
+    const confirmBackdrop = document.getElementById('confirmationModalBackdrop');
+    if (confirmBackdrop) {
+      confirmBackdrop.classList.remove('open', 'visible', 'active');
+      confirmBackdrop.classList.add('hidden');
+      confirmBackdrop.style.setProperty('display', 'none', 'important');
+      confirmBackdrop.style.setProperty('opacity', '0', 'important');
+      confirmBackdrop.style.setProperty('visibility', 'hidden', 'important');
+      confirmBackdrop.style.setProperty('pointer-events', 'none', 'important');
+    }
     this.switchView('secCustomerOrders');
   }
 
