@@ -1704,7 +1704,7 @@ textarea.form-control {
   position: fixed;
   bottom: 80px;
   right: 20px;
-  z-index: 1000000 !important;
+  z-index: 2000000000 !important;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -6862,7 +6862,7 @@ body.guest-mode #btnMobileMenuToggle {
   position: fixed;
   top: 20px;
   right: 20px;
-  z-index: 1000000 !important;
+  z-index: 2000000000 !important;
   display: flex;
   flex-direction: column;
   gap: 10px;

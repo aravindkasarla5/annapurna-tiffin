@@ -263,6 +263,14 @@ class TiffinApp {
     if (floatingSupport && floatingSupport.parentElement !== document.body) {
       document.body.appendChild(floatingSupport);
     }
+    const toastContainer = document.getElementById('toastContainer');
+    if (toastContainer && toastContainer.parentElement !== document.body) {
+      document.body.appendChild(toastContainer);
+    }
+    const toastStack = document.querySelector('.toast-notification-stack');
+    if (toastStack && toastStack.parentElement !== document.body) {
+      document.body.appendChild(toastStack);
+    }
 
     // Attach direct click event handlers to Login and Register header buttons
     const btnLoginHeader = document.getElementById('btnLoginHeader');
@@ -10208,15 +10216,27 @@ class TiffinApp {
   }
 
   showToast(message, type = 'info') {
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'toast-container';
+      container.id = 'toastContainer';
+      document.body.appendChild(container);
+    } else if (container.parentElement !== document.body) {
+      document.body.appendChild(container);
+    }
+
+    container.style.setProperty('z-index', '2000000000', 'important');
+    container.style.setProperty('pointer-events', 'none', 'important');
 
     const toast = document.createElement('div');
     toast.className = 'toast';
+    toast.style.setProperty('pointer-events', 'auto', 'important');
 
     let icon = '<i class="fa-solid fa-info-circle" style="color: var(--accent-gold);"></i>';
     if (type === 'success') icon = '<i class="fa-solid fa-circle-check" style="color: var(--status-completed);"></i>';
     if (type === 'error') icon = '<i class="fa-solid fa-circle-exclamation" style="color: var(--color-unavailable);"></i>';
+    if (type === 'warning') icon = '<i class="fa-solid fa-triangle-exclamation" style="color: #FFB300;"></i>';
 
     toast.innerHTML = `${icon} <span>${message}</span>`;
     container.appendChild(toast);
@@ -10224,8 +10244,8 @@ class TiffinApp {
     setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transform = 'translateX(50px)';
-      setTimeout(() => toast.remove(), 300);
-    }, 3500);
+      setTimeout(() => toast.remove(), 350);
+    }, 4000);
   }
 
   async saveCustomerProfile(e) {
