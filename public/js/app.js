@@ -227,6 +227,10 @@ class TiffinApp {
     if (confirmBackdrop && confirmBackdrop.parentElement !== document.body) {
       document.body.appendChild(confirmBackdrop);
     }
+    const floatingSupport = document.querySelector('.floating-support-container');
+    if (floatingSupport && floatingSupport.parentElement !== document.body) {
+      document.body.appendChild(floatingSupport);
+    }
 
     // Attach direct click event handlers to Login and Register header buttons
     const btnLoginHeader = document.getElementById('btnLoginHeader');
@@ -3411,7 +3415,13 @@ class TiffinApp {
     document.body.classList.toggle('owner-mode', isOwnerView);
     document.body.classList.toggle('owner-dashboard-active', this.activeView === 'secOwnerDashboard');
     if (floatingSupport) {
-      floatingSupport.classList.toggle('hidden', isOwnerView);
+      if (isOwnerView) {
+        floatingSupport.classList.add('hidden');
+        floatingSupport.style.setProperty('display', 'none', 'important');
+      } else {
+        floatingSupport.classList.remove('hidden');
+        floatingSupport.style.setProperty('display', 'block', 'important');
+      }
     }
 
     // Trigger render logic per view

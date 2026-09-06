@@ -3650,16 +3650,21 @@ textarea.form-control {
 
 /* Floating Support Button & Popover */
 .floating-support-container {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
   z-index: 99999 !important;
+  display: block !important;
+}
+
+.floating-support-container.hidden {
+  display: none !important;
 }
 
 @media (max-width: 768px) {
   .floating-support-container {
-    bottom: calc(var(--bottom-nav-height) + 16px);
-    right: 16px;
+    bottom: calc(var(--bottom-nav-height, 64px) + 16px) !important;
+    right: 16px !important;
     z-index: 99999 !important;
   }
 }
