@@ -4671,6 +4671,11 @@ class TiffinApp {
     this.appliedLayoutDiscount = 0;
     document.getElementById('layoutAppliedBreakdown')?.classList.add('hidden');
 
+    const chkLoyalty = document.getElementById('chkUseLoyalty');
+    if (chkLoyalty) chkLoyalty.checked = false;
+    this.appliedLoyaltyDiscount = 0;
+    document.getElementById('loyaltyAppliedBreakdown')?.classList.add('hidden');
+
     this.handleCheckoutOrderTypeChange();
     this.updateCartUI();
     this.selectPaymentMethod(this.selectedPaymentMethod || 'Cash');
@@ -4682,6 +4687,17 @@ class TiffinApp {
       this.updateCheckoutConditionalOptionsVisibility();
       this.updateCheckoutPaymentSummary();
     });
+
+    if (typeof this.fetchWithAuth === 'function') {
+      this.fetchWithAuth(`${API_BASE}/loyalty/summary`).then(res => res.json()).then(json => {
+        if (json && json.success && json.data) {
+          this.loyaltySummary = json.data;
+          if (this.currentUser) this.currentUser.loyalty_reward_balance = Number(json.data.reward_balance || 0);
+          this.updateCheckoutConditionalOptionsVisibility();
+          this.updateCheckoutPaymentSummary();
+        }
+      }).catch(() => {});
+    }
 
     this.updateCheckoutConditionalOptionsVisibility();
     this.updateCheckoutPaymentSummary();
@@ -4726,7 +4742,8 @@ class TiffinApp {
     const walletDiscount = Number(this.appliedWalletDiscount || 0);
     const customerWalletDiscount = Number(this.appliedCustomerWalletDiscount || 0);
     const layoutDiscount = Number(this.appliedLayoutDiscount || 0);
-    const totalBalanceDiscount = walletDiscount + customerWalletDiscount + layoutDiscount;
+    const loyaltyDiscount = Number(this.appliedLoyaltyDiscount || 0);
+    const totalBalanceDiscount = walletDiscount + customerWalletDiscount + layoutDiscount + loyaltyDiscount;
 
     const finalTotalPayable = Math.max(0, baseSubtotal + deliveryCharges - premiumDiscount - totalBalanceDiscount);
 
@@ -4742,6 +4759,8 @@ class TiffinApp {
     const elCustWalletVal = document.getElementById('chkBreakdownCustomerWalletDiscount');
     const elLayoutRow = document.getElementById('chkBreakdownLayoutRow');
     const elLayoutVal = document.getElementById('chkBreakdownLayoutDiscount');
+    const elLoyaltyRow = document.getElementById('chkBreakdownLoyaltyRow');
+    const elLoyaltyVal = document.getElementById('chkBreakdownLoyaltyDiscount');
     const elFinalTotal = document.getElementById('chkBreakdownFinalTotal');
 
     const elCheckoutGrandDisplay = document.getElementById('checkoutGrandTotalDisplay');
@@ -4792,6 +4811,15 @@ class TiffinApp {
         if (elLayoutVal) elLayoutVal.innerText = `-₹${layoutDiscount}`;
       } else {
         elLayoutRow.classList.add('hidden');
+      }
+    }
+
+    if (elLoyaltyRow) {
+      if (loyaltyDiscount > 0) {
+        elLoyaltyRow.classList.remove('hidden');
+        if (elLoyaltyVal) elLoyaltyVal.innerText = `-₹${loyaltyDiscount}`;
+      } else {
+        elLoyaltyRow.classList.add('hidden');
       }
     }
 
@@ -5788,6 +5816,7 @@ class TiffinApp {
     const chkWalletUsed = document.getElementById('chkUseWallet')?.checked === true;
     const chkCustWalletUsed = document.getElementById('chkUseCustomerWallet')?.checked === true;
     const chkLayoutUsed = document.getElementById('chkUseLayout')?.checked === true;
+    const chkLoyaltyUsed = document.getElementById('chkUseLoyalty')?.checked === true;
 
     const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
     const grandTotal = cartTotals.grandTotal || 0;
@@ -5795,6 +5824,7 @@ class TiffinApp {
     let finalUsedWalletAmount = (chkWalletUsed && this.appliedWalletDiscount > 0) ? this.appliedWalletDiscount : 0;
     let finalUsedCustomerWalletAmount = (chkCustWalletUsed && this.appliedCustomerWalletDiscount > 0) ? this.appliedCustomerWalletDiscount : 0;
     let finalUsedLayoutAmount = (chkLayoutUsed && this.appliedLayoutDiscount > 0) ? this.appliedLayoutDiscount : 0;
+    let finalUsedLoyaltyAmount = (chkLoyaltyUsed && this.appliedLoyaltyDiscount > 0) ? this.appliedLoyaltyDiscount : 0;
 
     let payMethodName = this.selectedPaymentMethod === 'UPI'
       ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
@@ -5817,6 +5847,7 @@ class TiffinApp {
       used_wallet_amount: finalUsedWalletAmount,
       used_customer_wallet_amount: finalUsedCustomerWalletAmount,
       used_layout_amount: finalUsedLayoutAmount,
+      used_loyalty_amount: finalUsedLoyaltyAmount,
       items: this.cart,
       add_ons: this.getSelectedAddonsPayload ? this.getSelectedAddonsPayload() : []
     };
@@ -11064,6 +11095,7 @@ class TiffinApp {
     const referralBal = Number(this.referralStats?.wallet_balance || this.currentUser?.wallet_balance || 0);
     const customerWalletBal = Number(this.currentUser?.customer_wallet_balance || 0);
     const layoutBal = Number(this.currentUser?.layout_balance || 0);
+    const loyaltyBal = Number(this.loyaltySummary?.reward_balance || this.currentUser?.loyalty_reward_balance || 0);
 
     // 1. Layout Balance Option Card: HIDE if <= 0, SHOW if > 0
     const layoutBox = document.getElementById('checkoutLayoutBox');
@@ -11110,6 +11142,22 @@ class TiffinApp {
         if (chkCustWallet) chkCustWallet.checked = false;
         this.appliedCustomerWalletDiscount = 0;
         document.getElementById('customerWalletAppliedBreakdown')?.classList.add('hidden');
+      }
+    }
+
+    // 4. Loyalty Reward Discount Option Card: HIDE if <= 0, SHOW if > 0
+    const loyaltyBox = document.getElementById('checkoutLoyaltyBox');
+    const chkLoyalty = document.getElementById('chkUseLoyalty');
+    const loyaltyText = document.getElementById('checkoutLoyaltyAvailableText');
+    if (loyaltyBox) {
+      if (loyaltyBal > 0) {
+        loyaltyBox.classList.remove('hidden');
+        if (loyaltyText) loyaltyText.innerHTML = `Available Reward: <strong>₹${loyaltyBal}</strong>`;
+      } else {
+        loyaltyBox.classList.add('hidden');
+        if (chkLoyalty) chkLoyalty.checked = false;
+        this.appliedLoyaltyDiscount = 0;
+        document.getElementById('loyaltyAppliedBreakdown')?.classList.add('hidden');
       }
     }
   }
@@ -13047,25 +13095,51 @@ class TiffinApp {
     if (!chk) return;
 
     if (chk.checked) {
-      try {
-        const res = await this.fetchWithAuth(`${API_BASE}/loyalty/summary`);
-        const json = await res.json();
-        const bal = json.data?.reward_balance || 0;
-        if (bal <= 0) {
-          chk.checked = false;
-          this.showToast('You do not have any available loyalty reward balance to use.', 'info');
-          if (breakdown) breakdown.classList.add('hidden');
-          return;
-        }
-        if (breakdown) breakdown.classList.remove('hidden');
-        if (discountText) discountText.innerText = `-₹${bal}`;
-      } catch (e) {
-        chk.checked = false;
+      let loyaltyBal = Number(this.loyaltySummary?.reward_balance || this.currentUser?.loyalty_reward_balance || 0);
+
+      if (!this.loyaltySummary && typeof this.fetchWithAuth === 'function') {
+        try {
+          const res = await this.fetchWithAuth(`${API_BASE}/loyalty/summary`);
+          const json = await res.json();
+          if (json && json.success && json.data) {
+            this.loyaltySummary = json.data;
+            loyaltyBal = Number(json.data.reward_balance || 0);
+            if (this.currentUser) this.currentUser.loyalty_reward_balance = loyaltyBal;
+          }
+        } catch (e) {}
       }
+
+      const elText = document.getElementById('checkoutLoyaltyAvailableText');
+      if (elText) elText.innerHTML = `Available Reward: <strong>₹${loyaltyBal}</strong>`;
+
+      if (loyaltyBal <= 0) {
+        this.showToast('You do not have any available loyalty reward balance to use.', 'info');
+        chk.checked = false;
+        this.appliedLoyaltyDiscount = 0;
+        if (breakdown) breakdown.classList.add('hidden');
+        this.updateCheckoutConditionalOptionsVisibility();
+        this.updateCheckoutPaymentSummary();
+        return;
+      }
+
+      const cartTotals = this.calculateCartTotals ? this.calculateCartTotals() : { grandTotal: 0 };
+      const grandTotal = cartTotals.grandTotal || 0;
+      const currentPayable = grandTotal - Number(this.appliedWalletDiscount || 0) - Number(this.appliedCustomerWalletDiscount || 0) - Number(this.appliedLayoutDiscount || 0);
+      const applied = Math.max(0, Math.min(loyaltyBal, currentPayable));
+
+      this.appliedLoyaltyDiscount = applied;
+
+      if (discountText) discountText.innerText = `-₹${applied}`;
+      if (breakdown) breakdown.classList.remove('hidden');
+
+      this.showToast(`Loyalty reward applied (-₹${applied})!`, 'success');
     } else {
+      this.appliedLoyaltyDiscount = 0;
       if (breakdown) breakdown.classList.add('hidden');
+      this.showToast('Loyalty reward unapplied.', 'info');
     }
-    this.updateCheckoutTotalsUI();
+
+    this.updateCheckoutPaymentSummary();
   }
 
   // =========================================================================
