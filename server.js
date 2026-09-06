@@ -4116,7 +4116,7 @@ app.get('/api/owner/wallet/requests', authenticateToken, requireRole('OWNER'), a
       sql += ` AND UPPER(payment_method) LIKE UPPER($${params.length})`;
     }
 
-    // Search query: customer_name, customer_mobile, request_id, utr_number, transaction_id
+    // Search query: customer_name, customer_mobile, request_id, utr_number, transaction_id, customer_id, amount, status, rejection_reason
     if (search && search.trim()) {
       const searchTerm = `%${search.trim()}%`;
       params.push(searchTerm);
@@ -4126,7 +4126,11 @@ app.get('/api/owner/wallet/requests', authenticateToken, requireRole('OWNER'), a
         customer_mobile LIKE $${pIdx} OR
         UPPER(request_id) LIKE UPPER($${pIdx}) OR
         UPPER(utr_number) LIKE UPPER($${pIdx}) OR
-        UPPER(transaction_id) LIKE UPPER($${pIdx})
+        UPPER(transaction_id) LIKE UPPER($${pIdx}) OR
+        UPPER(customer_id) LIKE UPPER($${pIdx}) OR
+        CAST(amount AS TEXT) LIKE $${pIdx} OR
+        UPPER(status) LIKE UPPER($${pIdx}) OR
+        UPPER(rejection_reason) LIKE UPPER($${pIdx})
       )`;
     }
 

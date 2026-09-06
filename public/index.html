@@ -2100,19 +2100,19 @@
 
         <!-- Metrics Overview Bar -->
         <div class="owner-wallet-metrics-grid">
-          <div class="metric-card yellow">
+          <div class="metric-card yellow" onclick="app.setOwnerWalletStatusFilter('PENDING')" style="cursor: pointer;" title="Click to view Pending Requests">
             <div class="metric-title">⏳ Pending Requests</div>
             <div class="metric-value" id="ownerMetricPending">0</div>
           </div>
-          <div class="metric-card green">
+          <div class="metric-card green" onclick="app.setOwnerWalletStatusFilter('APPROVED')" style="cursor: pointer;" title="Click to view Approved Requests">
             <div class="metric-title">💰 Total Approved</div>
             <div class="metric-value" id="ownerMetricApproved">₹0.00</div>
           </div>
-          <div class="metric-card red">
+          <div class="metric-card red" onclick="app.setOwnerWalletStatusFilter('REJECTED')" style="cursor: pointer;" title="Click to view Rejected Requests">
             <div class="metric-title">❌ Rejected Requests</div>
             <div class="metric-value" id="ownerMetricRejected">0</div>
           </div>
-          <div class="metric-card blue">
+          <div class="metric-card blue" onclick="app.setOwnerWalletStatusFilter('ALL')" style="cursor: pointer;" title="Click to view All Requests">
             <div class="metric-title">👥 Wallet Customers</div>
             <div class="metric-value" id="ownerMetricCustomers">0</div>
           </div>

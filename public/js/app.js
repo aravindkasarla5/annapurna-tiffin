@@ -20845,6 +20845,14 @@ class TiffinApp {
   // OWNER WALLET MANAGEMENT SYSTEM CONTROLLER
   // =========================================================================
 
+  setOwnerWalletStatusFilter(statusVal) {
+    const statusSel = document.getElementById('selOwnerWalletStatusFilter');
+    if (statusSel) {
+      statusSel.value = statusVal;
+      this.loadOwnerWalletData();
+    }
+  }
+
   async loadOwnerWalletData() {
     if (!this.currentUser || this.currentUser.role !== 'OWNER') return;
 
@@ -20930,6 +20938,7 @@ class TiffinApp {
 
       const safeName = typeof escapeHtml === 'function' ? escapeHtml(r.customer_name || 'Customer') : (r.customer_name || 'Customer');
       const safeMobile = typeof escapeHtml === 'function' ? escapeHtml(r.customer_mobile || '') : (r.customer_mobile || '');
+      const safeCustId = typeof escapeHtml === 'function' ? escapeHtml(r.customer_id || '') : (r.customer_id || '');
       const safeUtr = typeof escapeHtml === 'function' ? escapeHtml(r.utr_number || '') : (r.utr_number || '');
       const safeReason = typeof escapeHtml === 'function' ? escapeHtml(r.rejection_reason || '') : (r.rejection_reason || '');
 
@@ -20938,7 +20947,7 @@ class TiffinApp {
           <div class="owner-card-header">
             <div>
               <div class="cust-name">${safeName}</div>
-              <div class="cust-mobile">📱 ${safeMobile} | Req ID: <strong style="color: var(--primary);">#${r.request_id}</strong></div>
+              <div class="cust-mobile">📱 ${safeMobile} ${safeCustId ? `| Cust ID: ${safeCustId}` : ''} | Req ID: <strong style="color: var(--primary);">#${r.request_id}</strong></div>
             </div>
             <div>
               <span class="req-status-pill ${statusClass}">${statusLabel}</span>
