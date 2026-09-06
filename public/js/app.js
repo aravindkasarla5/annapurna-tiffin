@@ -20965,7 +20965,7 @@ class TiffinApp {
 
           ${r.screenshot_url ? `
             <div style="margin-bottom: 12px;">
-              <button type="button" class="btn-secondary-sm" onclick="app.viewWalletScreenshot('${r.screenshot_url}')">
+              <button type="button" class="btn-secondary-sm" onclick="app.viewWalletScreenshot('${r.screenshot_url.replace(/'/g, "\\'")}', 'Payment Proof - Request #${r.request_id}')">
                 <i class="fa-solid fa-image"></i> View Payment Screenshot
               </button>
             </div>
@@ -20996,9 +20996,12 @@ class TiffinApp {
     }).join('');
   }
 
-  viewWalletScreenshot(url) {
-    if (!url) return;
-    window.open(url, '_blank');
+  viewWalletScreenshot(url, title = 'Wallet Top-Up Payment Proof') {
+    if (!url) {
+      this.showToast('No payment screenshot provided for this request.', 'info');
+      return;
+    }
+    this.viewFullScreenshot(url, title);
   }
 
   async approveOwnerWalletRequest(reqId) {
