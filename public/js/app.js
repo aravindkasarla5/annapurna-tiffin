@@ -20673,9 +20673,8 @@ class TiffinApp {
     if (!txId) return;
 
     try {
-      const modal = document.getElementById('modalWalletTxDetailsBackdrop');
       const bodyEl = document.getElementById('walletTxDetailsBody');
-      if (modal) modal.classList.remove('hidden');
+      this.toggleWalletTxDetailsModal(true);
       if (bodyEl) {
         bodyEl.innerHTML = `
           <div style="text-align: center; padding: 2.5rem 1rem;">
@@ -20690,7 +20689,7 @@ class TiffinApp {
 
       if (!data.success || !data.data) {
         this.showToast(data.message || 'Unable to load transaction details.', 'error');
-        if (modal) modal.classList.add('hidden');
+        this.toggleWalletTxDetailsModal(false);
         return;
       }
 
@@ -20864,15 +20863,33 @@ class TiffinApp {
       }
 
       if (bodyEl) bodyEl.innerHTML = html;
+      this.toggleWalletTxDetailsModal(true);
     } catch (err) {
       console.error('Error fetching transaction details:', err);
       this.showToast('Failed to load transaction details.', 'error');
+      this.toggleWalletTxDetailsModal(false);
     }
   }
 
   toggleWalletTxDetailsModal(show) {
     const modal = document.getElementById('modalWalletTxDetailsBackdrop');
-    if (modal) modal.classList.toggle('hidden', !show);
+    if (!modal) return;
+    if (show) {
+      modal.classList.remove('hidden');
+      modal.classList.add('active', 'open', 'visible');
+      modal.style.display = 'flex';
+      modal.style.opacity = '1';
+      modal.style.visibility = 'visible';
+      modal.style.pointerEvents = 'auto';
+      modal.style.zIndex = '9999999';
+    } else {
+      modal.classList.add('hidden');
+      modal.classList.remove('active', 'open', 'visible');
+      modal.style.display = 'none';
+      modal.style.opacity = '0';
+      modal.style.visibility = 'hidden';
+      modal.style.pointerEvents = 'none';
+    }
   }
 
   selectWalletPreset(amount) {
