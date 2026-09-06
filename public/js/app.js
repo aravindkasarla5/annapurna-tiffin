@@ -20995,11 +20995,20 @@ class TiffinApp {
                 <i class="fa-solid fa-check"></i> Verify & Approve ₹${Number(r.amount || 0).toFixed(2)}
               </button>
             </div>
+          ` : (isRejected ? `
+            <div class="owner-card-actions" style="margin-bottom: 8px;">
+              <button type="button" class="btn-approve-wallet" onclick="app.reapproveOwnerWalletRequest('${r.id}', '${r.request_id}', '${safeName.replace(/'/g, "\\'")}', ${r.amount})" style="width: 100%;">
+                <i class="fa-solid fa-rotate-left"></i> Re-Approve & Credit ₹${Number(r.amount || 0).toFixed(2)}
+              </button>
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); text-align: right;">
+              Rejected at: ${new Date(r.rejected_at || r.updated_at).toLocaleString('en-IN')}
+            </div>
           ` : `
             <div style="font-size: 0.78rem; color: var(--text-muted); text-align: right;">
-              ${isApproved ? `Approved at: ${new Date(r.approved_at || r.updated_at).toLocaleString('en-IN')}` : `Rejected at: ${new Date(r.rejected_at || r.updated_at).toLocaleString('en-IN')}`}
+              Approved at: ${new Date(r.approved_at || r.updated_at).toLocaleString('en-IN')}
             </div>
-          `}
+          `)}
         </div>
       `;
     }).join('');
@@ -21034,6 +21043,30 @@ class TiffinApp {
     } catch (err) {
       console.error('Error approving wallet request:', err);
       this.showToast('Network error approving wallet request.', 'error');
+    }
+  }
+
+  async reapproveOwnerWalletRequest(reqId, reqNum, custName, amount) {
+    if (!confirm(`Are you sure you want to RE-APPROVE this previously rejected wallet top-up request (#${reqNum} for ${custName})?\n\nThis will credit ₹${Number(amount || 0).toFixed(2)} to the customer's available wallet balance.`)) {
+      return;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/owner/wallet/requests/${reqId}/reapprove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        this.showToast(data.message || 'Wallet request re-approved successfully!', 'success');
+        this.loadOwnerWalletData();
+      } else {
+        this.showToast(data.message || 'Failed to re-approve wallet request.', 'error');
+      }
+    } catch (err) {
+      console.error('Error re-approving wallet request:', err);
+      this.showToast('Network error re-approving wallet request.', 'error');
     }
   }
 

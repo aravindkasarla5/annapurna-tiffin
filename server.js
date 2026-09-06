@@ -4330,6 +4330,132 @@ app.post('/api/owner/wallet/requests/:id/approve', authenticateToken, requireRol
   }
 });
 
+// 6b. Owner Re-Approve Previously Rejected Wallet Top-Up Request (`requireRole('OWNER')`)
+app.post('/api/owner/wallet/requests/:id/reapprove', authenticateToken, requireRole('OWNER'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Request ID parameter is required." });
+    }
+
+    let requestObj = null;
+    let customerUser = null;
+    let previousBalance = 0;
+    let newBalance = 0;
+    let approvedAmount = 0;
+
+    await db.executeTransaction(async (tx) => {
+      // 1. Fetch Request & Lock Check inside transaction
+      const reqRes = await tx.query('SELECT * FROM wallet_topup_requests WHERE id = $1 OR request_id = $1;', [id]);
+      if (!reqRes.rows || reqRes.rows.length === 0) {
+        const err = new Error("Wallet top-up request record not found.");
+        err.statusCode = 404;
+        throw err;
+      }
+
+      requestObj = reqRes.rows[0];
+
+      // Status transition guard: Request MUST be REJECTED
+      if (requestObj.status.toUpperCase() !== 'REJECTED') {
+        const err = new Error(`Request #${requestObj.request_id} cannot be re-approved because its status is '${requestObj.status}'. Only REJECTED requests can be re-approved.`);
+        err.statusCode = 409;
+        throw err;
+      }
+
+      approvedAmount = Number(requestObj.amount || 0);
+      if (isNaN(approvedAmount) || approvedAmount <= 0) {
+        const err = new Error("Top-up request has an invalid stored amount.");
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // 2. Fetch Customer Record
+      const userRes = await tx.query('SELECT id, customer_wallet_balance, name FROM users WHERE id = $1;', [requestObj.customer_id]);
+      if (!userRes.rows || userRes.rows.length === 0) {
+        const err = new Error("Associated customer account no longer exists.");
+        err.statusCode = 404;
+        throw err;
+      }
+
+      customerUser = userRes.rows[0];
+      previousBalance = Number(customerUser.customer_wallet_balance || 0);
+
+      // 3. ATOMIC STATE TRANSITION LOCK QUERY:
+      // Update status from REJECTED to APPROVED atomically.
+      const nowIso = new Date().toISOString();
+      const updateReqRes = await tx.query(
+        `UPDATE wallet_topup_requests
+         SET status = 'APPROVED', approved_at = $1, approved_by = $2, updated_at = $1
+         WHERE id = $3 AND UPPER(status) = 'REJECTED';`,
+        [nowIso, req.user.id, requestObj.id]
+      );
+
+      if (updateReqRes.rowCount === 0) {
+        const err = new Error(`Concurrent execution blocked: Request #${requestObj.request_id} was already approved or updated by another session.`);
+        err.statusCode = 409;
+        throw err;
+      }
+
+      // 4. Credit Customer Normal Wallet Balance ONLY (customer_wallet_balance)
+      const creditRes = await tx.query(
+        `UPDATE users SET customer_wallet_balance = customer_wallet_balance + $1 WHERE id = $2 RETURNING customer_wallet_balance;`,
+        [approvedAmount, customerUser.id]
+      );
+      newBalance = Number(creditRes.rows[0]?.customer_wallet_balance || (previousBalance + approvedAmount));
+
+      // 5. Create Financial Source-of-Truth Ledger Entry in `customer_wallet_transactions`
+      const txId = 'cwtx_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+      const dateTimeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+      await tx.query(
+        `INSERT INTO customer_wallet_transactions (
+          id, user_id, request_id, amount, type, description, date_time, balance_before, balance_after, status, created_at
+        ) VALUES ($1, $2, $3, $4, 'TOPUP_REAPPROVED', $5, $6, $7, $8, 'SUCCESS', CURRENT_TIMESTAMP);`,
+        [
+          txId,
+          customerUser.id,
+          requestObj.id,
+          approvedAmount,
+          `Wallet Top-Up Verified & Re-Approved by Owner (Req #${requestObj.request_id})`,
+          dateTimeStr,
+          previousBalance,
+          newBalance
+        ]
+      );
+    });
+
+    // 6. Send Customer Real-Time Notification
+    try {
+      createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: customerUser.id,
+        title: '✅ Wallet Top-Up Re-Approved!',
+        message: `Your previously rejected wallet top-up request #${requestObj.request_id} for ₹${approvedAmount.toFixed(2)} has been re-approved by the Owner! Your new wallet balance is ₹${newBalance.toFixed(2)}.`,
+        type: 'PAYMENT',
+        action_url: '/#secCustomerWallet'
+      });
+    } catch (nErr) {
+      console.warn('Re-approval Customer Notification Notice:', nErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `🟢 SUCCESS: Wallet top-up #${requestObj.request_id} re-approved! ₹${approvedAmount.toFixed(2)} credited to ${customerUser.name}.`,
+      data: {
+        request_id: requestObj.request_id,
+        customer_id: customerUser.id,
+        previous_balance: previousBalance,
+        new_balance: newBalance,
+        credited_amount: approvedAmount
+      }
+    });
+  } catch (err) {
+    console.error('Owner Wallet Re-Approval Error:', err);
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: err.message || "Failed to re-approve wallet top-up request." });
+  }
+});
+
 // 7. Owner Reject Wallet Top-Up Request (`requireRole('OWNER')`)
 app.post('/api/owner/wallet/requests/:id/reject', authenticateToken, requireRole('OWNER'), async (req, res) => {
   try {
