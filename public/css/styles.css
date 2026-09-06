@@ -9572,17 +9572,17 @@ body.guest-mode #btnMobileMenuToggle {
   pointer-events: none !important;
 }
 
-/* Premium Attractive Mobile & Desktop Checkout Submit Button & Price Pill */
+/* Premium Attractive Mobile & Desktop Checkout Submit Button & Price Pill (Strict Single Line) */
 .btn-checkout-submit {
-  display: flex !important;
+  display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 8px !important;
+  gap: 6px !important;
   width: 100% !important;
-  min-height: 52px !important;
-  padding: 12px 18px !important;
+  min-height: 50px !important;
+  padding: 10px 14px !important;
   border-radius: 14px !important;
-  font-size: 1.02rem !important;
+  font-size: 0.95rem !important;
   font-weight: 800 !important;
   letter-spacing: 0.2px !important;
   background: linear-gradient(135deg, #FF6F00 0%, #FF3D00 100%) !important;
@@ -9595,6 +9595,8 @@ body.guest-mode #btnMobileMenuToggle {
   margin-bottom: 0.5rem !important;
   box-sizing: border-box !important;
   text-align: center !important;
+  white-space: nowrap !important;
+  flex-wrap: nowrap !important;
 }
 
 .btn-checkout-submit:hover,
@@ -9608,7 +9610,8 @@ body.guest-mode #btnMobileMenuToggle {
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
-  flex-wrap: wrap !important;
+  white-space: nowrap !important;
+  flex-wrap: nowrap !important;
 }
 
 .chk-price-pill {
@@ -9617,14 +9620,28 @@ body.guest-mode #btnMobileMenuToggle {
   justify-content: center !important;
   background: rgba(0, 0, 0, 0.28) !important;
   color: #FFFFFF !important;
-  padding: 3px 11px !important;
+  padding: 2px 9px !important;
   border-radius: 20px !important;
   font-weight: 800 !important;
-  font-size: 0.94rem !important;
+  font-size: 0.88rem !important;
   border: 1.5px solid rgba(255, 255, 255, 0.35) !important;
   white-space: nowrap !important;
   margin-left: 4px !important;
+  flex-shrink: 0 !important;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3) !important;
+}
+
+@media (max-width: 480px) {
+  .btn-checkout-submit {
+    font-size: 0.88rem !important;
+    padding: 10px 8px !important;
+    gap: 4px !important;
+  }
+  .chk-price-pill {
+    font-size: 0.82rem !important;
+    padding: 2px 7px !important;
+    margin-left: 2px !important;
+  }
 }
 
 
