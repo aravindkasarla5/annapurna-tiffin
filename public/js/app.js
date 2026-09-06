@@ -16,9 +16,6 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 window.escapeHtml = escapeHtml;
-if (typeof TiffinApp !== 'undefined') {
-  TiffinApp.prototype.escapeHtml = escapeHtml;
-}
 
 // =========================================================================
 // GLOBAL EARLY PWA EVENT LISTENER & SERVICE WORKER REGISTRATION
@@ -21096,6 +21093,9 @@ class TiffinApp {
     }
   }
 }
+
+// Safely attach prototype methods AFTER class definition
+TiffinApp.prototype.escapeHtml = escapeHtml;
 
 // Instantiate global app engine
 const app = new TiffinApp();
