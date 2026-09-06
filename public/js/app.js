@@ -1312,6 +1312,9 @@ class TiffinApp {
     const backdrop = document.getElementById('authModalBackdrop');
     if (backdrop) {
       if (open) {
+        if (backdrop.parentElement !== document.body) {
+          document.body.appendChild(backdrop);
+        }
         backdrop.classList.remove('hidden');
         backdrop.classList.add('open', 'visible', 'active');
         backdrop.style.setProperty('display', 'flex', 'important');
@@ -1319,6 +1322,14 @@ class TiffinApp {
         backdrop.style.setProperty('visibility', 'visible', 'important');
         backdrop.style.setProperty('pointer-events', 'auto', 'important');
         backdrop.style.setProperty('z-index', '99999999', 'important');
+
+        const card = document.getElementById('authModalCard');
+        if (card) {
+          card.style.setProperty('display', 'flex', 'important');
+          card.style.setProperty('opacity', '1', 'important');
+          card.style.setProperty('visibility', 'visible', 'important');
+          card.style.setProperty('z-index', '100000000', 'important');
+        }
       } else {
         backdrop.classList.remove('open', 'visible', 'active');
         backdrop.classList.add('hidden');
@@ -1354,9 +1365,35 @@ class TiffinApp {
     const formRegister = document.getElementById('authRegisterForm');
     const formForgot = document.getElementById('authForgotPasswordForm');
 
-    if (formLogin) formLogin.classList.toggle('hidden', mode !== 'LOGIN');
-    if (formRegister) formRegister.classList.toggle('hidden', mode !== 'REGISTER');
-    if (formForgot) formForgot.classList.toggle('hidden', mode !== 'FORGOT_PASSWORD');
+    if (formLogin) {
+      if (mode === 'LOGIN') {
+        formLogin.classList.remove('hidden');
+        formLogin.style.setProperty('display', 'flex', 'important');
+      } else {
+        formLogin.classList.add('hidden');
+        formLogin.style.setProperty('display', 'none', 'important');
+      }
+    }
+
+    if (formRegister) {
+      if (mode === 'REGISTER') {
+        formRegister.classList.remove('hidden');
+        formRegister.style.setProperty('display', 'flex', 'important');
+      } else {
+        formRegister.classList.add('hidden');
+        formRegister.style.setProperty('display', 'none', 'important');
+      }
+    }
+
+    if (formForgot) {
+      if (mode === 'FORGOT_PASSWORD') {
+        formForgot.classList.remove('hidden');
+        formForgot.style.setProperty('display', 'flex', 'important');
+      } else {
+        formForgot.classList.add('hidden');
+        formForgot.style.setProperty('display', 'none', 'important');
+      }
+    }
 
     const regAlert = document.getElementById('regDuplicateAlert');
     if (regAlert && mode !== 'REGISTER') {
