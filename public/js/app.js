@@ -227,6 +227,14 @@ class TiffinApp {
     if (confirmBackdrop && confirmBackdrop.parentElement !== document.body) {
       document.body.appendChild(confirmBackdrop);
     }
+    const verifyPinBackdrop = document.getElementById('verifyPinModalBackdrop');
+    if (verifyPinBackdrop && verifyPinBackdrop.parentElement !== document.body) {
+      document.body.appendChild(verifyPinBackdrop);
+    }
+    const orderDetailBackdrop = document.getElementById('orderDetailBackdrop');
+    if (orderDetailBackdrop && orderDetailBackdrop.parentElement !== document.body) {
+      document.body.appendChild(orderDetailBackdrop);
+    }
     const floatingSupport = document.querySelector('.floating-support-container');
     if (floatingSupport && floatingSupport.parentElement !== document.body) {
       document.body.appendChild(floatingSupport);
@@ -5632,7 +5640,13 @@ class TiffinApp {
     }
 
     if (backdrop) {
-      backdrop.classList.add('open');
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('open', 'visible', 'active');
+      backdrop.style.setProperty('display', 'flex', 'important');
+      backdrop.style.setProperty('opacity', '1', 'important');
+      backdrop.style.setProperty('visibility', 'visible', 'important');
+      backdrop.style.setProperty('pointer-events', 'auto', 'important');
+      backdrop.style.setProperty('z-index', '99999999', 'important');
       setTimeout(() => {
         if (pinInput) pinInput.focus();
       }, 100);
@@ -5641,7 +5655,14 @@ class TiffinApp {
 
   closeVerifyPinModal() {
     const backdrop = document.getElementById('verifyPinModalBackdrop');
-    if (backdrop) backdrop.classList.remove('open');
+    if (backdrop) {
+      backdrop.classList.remove('open', 'visible', 'active');
+      backdrop.classList.add('hidden');
+      backdrop.style.setProperty('display', 'none', 'important');
+      backdrop.style.setProperty('opacity', '0', 'important');
+      backdrop.style.setProperty('visibility', 'hidden', 'important');
+      backdrop.style.setProperty('pointer-events', 'none', 'important');
+    }
   }
 
   async submitModalVerifyPin(e) {
@@ -7604,13 +7625,27 @@ class TiffinApp {
       ` : ''}
     `;
 
-    document.getElementById('orderDetailBackdrop').classList.add('open');
+    const backdrop = document.getElementById('orderDetailBackdrop');
+    if (backdrop) {
+      backdrop.classList.remove('hidden');
+      backdrop.classList.add('open', 'visible', 'active');
+      backdrop.style.setProperty('display', 'flex', 'important');
+      backdrop.style.setProperty('opacity', '1', 'important');
+      backdrop.style.setProperty('visibility', 'visible', 'important');
+      backdrop.style.setProperty('pointer-events', 'auto', 'important');
+      backdrop.style.setProperty('z-index', '99999999', 'important');
+    }
   }
 
   closeOrderDetail() {
     const backdrop = document.getElementById('orderDetailBackdrop');
     if (backdrop) {
-      backdrop.classList.remove('open');
+      backdrop.classList.remove('open', 'visible', 'active');
+      backdrop.classList.add('hidden');
+      backdrop.style.setProperty('display', 'none', 'important');
+      backdrop.style.setProperty('opacity', '0', 'important');
+      backdrop.style.setProperty('visibility', 'hidden', 'important');
+      backdrop.style.setProperty('pointer-events', 'none', 'important');
     }
   }
 
