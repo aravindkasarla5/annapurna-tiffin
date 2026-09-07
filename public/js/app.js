@@ -5185,13 +5185,22 @@ class TiffinApp {
       return;
     }
 
+    const chkWalletUsed = document.getElementById('chkUseWallet')?.checked === true;
+    const chkCustWalletUsed = document.getElementById('chkUseCustomerWallet')?.checked === true;
+    const chkLayoutUsed = document.getElementById('chkUseLayout')?.checked === true;
+    const chkLoyaltyUsed = document.getElementById('chkUseLoyalty')?.checked === true;
+
     const payload = {
       customer_name: name,
       customer_mobile: mobile,
       order_type: orderType,
+      address_id: this.selectedDeliveryAddressId || null,
       delivery_address: deliveryAddress || (orderType === 'Delivery' ? (this.currentUser ? this.currentUser.address : 'Home Delivery') : 'Counter Pickup'),
       notes: notes,
-      used_wallet_amount: this.appliedWalletDiscount || 0,
+      used_wallet_amount: (chkWalletUsed && this.appliedWalletDiscount > 0) ? this.appliedWalletDiscount : 0,
+      used_customer_wallet_amount: (chkCustWalletUsed && this.appliedCustomerWalletDiscount > 0) ? this.appliedCustomerWalletDiscount : 0,
+      used_layout_amount: (chkLayoutUsed && this.appliedLayoutDiscount > 0) ? this.appliedLayoutDiscount : 0,
+      used_loyalty_amount: (chkLoyaltyUsed && this.appliedLoyaltyDiscount > 0) ? this.appliedLoyaltyDiscount : 0,
       items: this.cart,
       add_ons: this.getSelectedAddonsPayload ? this.getSelectedAddonsPayload() : []
     };
@@ -5864,9 +5873,11 @@ class TiffinApp {
       ? (this.selectedOnlineSubOption === 'PhonePe' ? 'UPI (PhonePe)' : 'UPI (QR Pay)')
       : 'Cash';
 
-    if (chkWalletUsed && finalUsedWalletAmount >= grandTotal) {
+    const netPayable = this.lastCalculatedFinalTotal !== undefined ? this.lastCalculatedFinalTotal : 0;
+
+    if (chkWalletUsed && finalUsedWalletAmount > 0 && netPayable === 0) {
       payMethodName = 'REFERRAL';
-    } else if (chkCustWalletUsed && finalUsedCustomerWalletAmount >= grandTotal) {
+    } else if (chkCustWalletUsed && finalUsedCustomerWalletAmount > 0 && netPayable === 0) {
       payMethodName = 'Wallet';
     }
 
