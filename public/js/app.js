@@ -20400,6 +20400,14 @@ class TiffinApp {
     }
   }
 
+  formatCompactAddressLabel(a) {
+    if (!a) return 'Select a saved address';
+    const isProfile = a.id === 'profile_address';
+    const typeStr = isProfile ? 'Profile Delivery Address' : (a.address_type || 'Home');
+    const location = (a.area || a.city || a.address_line1 || '').trim();
+    return location ? `${typeStr} — ${location}` : typeStr;
+  }
+
   toggleCheckoutAddressDropdown(forceState = null) {
     this.isCheckoutAddressDropdownOpen = forceState !== null ? forceState : !this.isCheckoutAddressDropdownOpen;
     this.renderCheckoutAddressDropdown();
@@ -20432,81 +20440,39 @@ class TiffinApp {
     const isOpen = !!this.isCheckoutAddressDropdownOpen;
     const selectedAddr = this.checkoutSavedAddresses.find(a => a.id === this.selectedDeliveryAddressId) || this.checkoutSavedAddresses[0];
 
-    let selectedIcon = '🏠';
-    let selectedTitle = 'Select Saved Delivery Address';
-    let selectedSub = '';
-    let isSelectedProfile = false;
-
-    if (selectedAddr) {
-      isSelectedProfile = selectedAddr.id === 'profile_address';
-      selectedIcon = isSelectedProfile ? '📍' : (selectedAddr.address_type === 'Work' ? '💼' : selectedAddr.address_type === 'Other' ? '📍' : '🏠');
-      selectedTitle = isSelectedProfile
-        ? `Profile Delivery Address (Fallback)`
-        : `${escapeHtml(selectedAddr.address_type || 'Home')} - ${escapeHtml(selectedAddr.full_name || '')}`;
-      
-      const parts = [];
-      if (selectedAddr.address_line1) parts.push(escapeHtml(selectedAddr.address_line1));
-      if (selectedAddr.area) parts.push(escapeHtml(selectedAddr.area));
-      if (selectedAddr.city) parts.push(escapeHtml(selectedAddr.city));
-      if (selectedAddr.pincode) parts.push(escapeHtml(selectedAddr.pincode));
-      selectedSub = parts.join(', ');
-    }
+    const isSelectedProfile = selectedAddr ? selectedAddr.id === 'profile_address' : false;
+    const selectedIcon = selectedAddr ? (isSelectedProfile ? '📍' : (selectedAddr.address_type === 'Work' ? '💼' : selectedAddr.address_type === 'Other' ? '📍' : '🏠')) : '🏠';
+    const selectedCompactText = selectedAddr ? this.formatCompactAddressLabel(selectedAddr) : 'Select a saved address';
 
     container.innerHTML = `
       <div class="custom-address-select-wrapper" style="position: relative; width: 100%;">
-        <div id="checkoutAddressSelectTrigger" onclick="app.toggleCheckoutAddressDropdown()" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.05); border: 1.5px solid ${isOpen ? 'var(--primary, #FF5722)' : 'var(--border-color, #444)'}; border-radius: 12px; cursor: pointer; user-select: none; transition: all 0.2s ease;">
-          <div style="flex: 1; min-width: 0; padding-right: 10px;">
-            ${selectedAddr ? `
-              <div style="font-weight: 800; color: #FFF; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                <span>${selectedIcon} ${selectedTitle}</span>
-                ${selectedAddr.is_default ? `<span style="font-size: 0.68rem; color: #FF7043; background: rgba(255, 112, 67, 0.15); padding: 1px 6px; border-radius: 6px;">⭐ Default</span>` : ''}
-                ${isSelectedProfile ? `<span style="font-size: 0.68rem; color: #FFD54F; background: rgba(255, 213, 79, 0.15); padding: 1px 6px; border-radius: 6px;">Profile Fallback</span>` : ''}
-              </div>
-              <div style="color: #BBB; font-size: 0.78rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                ${selectedSub}
-              </div>
-            ` : `
-              <div style="color: #AAA; font-size: 0.85rem; font-weight: 600;">
-                <i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Select Saved Delivery Address
-              </div>
-            `}
+        <div id="checkoutAddressSelectTrigger" class="form-control" onclick="app.toggleCheckoutAddressDropdown()" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; padding: 8px 12px; font-size: 0.85rem; height: 38px; box-sizing: border-box; border-color: ${isOpen ? 'var(--primary, #FF5722)' : 'var(--border-color, #444)'}; background: var(--bg-surface-elevated, #25211E);">
+          <div style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: ${selectedAddr ? '#FFF' : '#AAA'}; font-weight: 600;">
+            <span>${selectedIcon} ${escapeHtml(selectedCompactText)}</span>
           </div>
-          <div style="color: var(--primary, #FF5722); font-size: 0.85rem; font-weight: 700;">
+          <div style="color: var(--primary, #FF5722); font-size: 0.78rem; font-weight: 700; margin-left: 8px; flex-shrink: 0;">
             <i class="fa-solid ${isOpen ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>
           </div>
         </div>
 
         ${isOpen ? `
-          <div id="checkoutAddressDropdownMenu" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1050; background: #1E1B18; border: 1.5px solid var(--primary, #FF5722); border-radius: 12px; max-height: 240px; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.6); padding: 4px 0;">
+          <div id="checkoutAddressDropdownMenu" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1050; background: #1E1B18; border: 1px solid var(--primary, #FF5722); border-radius: var(--radius-md, 8px); max-height: 220px; overflow-y: auto; box-shadow: 0 8px 20px rgba(0,0,0,0.6); padding: 4px 0;">
             ${this.checkoutSavedAddresses.map(a => {
               const isSelected = a.id === this.selectedDeliveryAddressId;
               const isProfile = a.id === 'profile_address';
               const icon = isProfile ? '📍' : (a.address_type === 'Work' ? '💼' : a.address_type === 'Other' ? '📍' : '🏠');
-              const labelTitle = isProfile
-                ? `Profile Delivery Address (Fallback)`
-                : `${escapeHtml(a.address_type || 'Home')} - ${escapeHtml(a.full_name || '')}`;
-              
-              const parts = [];
-              if (a.address_line1) parts.push(escapeHtml(a.address_line1));
-              if (a.area) parts.push(escapeHtml(a.area));
-              if (a.city) parts.push(escapeHtml(a.city));
-              if (a.pincode) parts.push(escapeHtml(a.pincode));
-              const labelSub = parts.join(', ');
+              const itemCompactLabel = this.formatCompactAddressLabel(a);
 
               return `
-                <div onclick="app.onSelectCheckoutAddressDropdownItem('${a.id}')" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; background: ${isSelected ? 'rgba(255, 87, 34, 0.15)' : 'transparent'}; border-bottom: 1px solid rgba(255,255,255,0.06); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(255,87,34,0.1)'" onmouseout="this.style.background='${isSelected ? 'rgba(255, 87, 34, 0.15)' : 'transparent'}'">
+                <div onclick="app.onSelectCheckoutAddressDropdownItem('${a.id}')" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; background: ${isSelected ? 'rgba(255, 87, 34, 0.15)' : 'transparent'}; border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(255,87,34,0.1)'" onmouseout="this.style.background='${isSelected ? 'rgba(255, 87, 34, 0.15)' : 'transparent'}'">
                   <div style="flex: 1; min-width: 0; padding-right: 8px;">
-                    <div style="font-weight: 700; color: #FFF; font-size: 0.82rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span>${icon} ${labelTitle}</span>
-                      ${a.is_default ? `<span style="font-size: 0.68rem; color: #FF7043; background: rgba(255, 112, 67, 0.15); padding: 1px 5px; border-radius: 4px;">⭐ Default</span>` : ''}
-                      ${isProfile ? `<span style="font-size: 0.68rem; color: #FFD54F; background: rgba(255, 213, 79, 0.15); padding: 1px 5px; border-radius: 4px;">Profile Fallback</span>` : ''}
-                    </div>
-                    <div style="color: #CCC; font-size: 0.76rem; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                      ${labelSub}
+                    <div style="font-weight: 700; color: #FFF; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                      <span>${icon} ${escapeHtml(itemCompactLabel)}</span>
+                      ${a.is_default ? `<span style="font-size: 0.65rem; color: #FF7043; background: rgba(255, 112, 67, 0.15); padding: 1px 4px; border-radius: 4px; margin-left: 4px;">⭐ Default</span>` : ''}
                     </div>
                   </div>
                   ${isSelected ? `
-                    <div style="color: #FF5722; font-size: 0.9rem; font-weight: bold; margin-left: 6px;">
+                    <div style="color: #FF5722; font-size: 0.85rem; font-weight: bold; margin-left: 6px; flex-shrink: 0;">
                       <i class="fa-solid fa-check"></i>
                     </div>
                   ` : ''}
@@ -20517,7 +20483,7 @@ class TiffinApp {
         ` : ''}
 
         <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
-          <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 4px 12px; font-size: 0.78rem; color: #FF7043; border-color: rgba(255, 87, 34, 0.4);">
+          <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 3px 10px; font-size: 0.75rem; color: #FF7043; border-color: rgba(255, 87, 34, 0.4);">
             <i class="fa-solid fa-plus"></i> Add New Address
           </button>
         </div>
