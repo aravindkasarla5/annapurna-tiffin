@@ -20529,8 +20529,8 @@ class TiffinApp {
         this.showToast(json.message || '🚫 Delivery unavailable at this location.', 'error');
       }
 
-      if (typeof this.updateCheckoutTotalDisplay === 'function') {
-        this.updateCheckoutTotalDisplay();
+      if (typeof this.updateCheckoutPaymentSummary === 'function') {
+        this.updateCheckoutPaymentSummary();
       }
     } catch (err) {
       console.error('Pincode check error:', err);
