@@ -3248,6 +3248,7 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
       let finalPayMethod = payment_method || 'Cash';
       let finalPayStatus = 'Pending';
       let netAmount = grand_total;
+      let refTxId = null;
 
       if (isReferralPayment) {
         // Backend Validation: Verify customer has sufficient Referral Wallet balance
@@ -3264,6 +3265,7 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
         finalPayMethod = 'REFERRAL';
         finalPayStatus = 'REFERRAL';
         netAmount = 0; // 100% paid by referral wallet
+        refTxId = 'REF-TXN-' + Date.now().toString().slice(-6) + Math.floor(1000 + Math.random() * 9000);
 
         // Deduct exact order amount atomically from user's wallet
         await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
@@ -3273,16 +3275,16 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
           `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
           [
-            'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            refTxId,
             req.user.id,
             grand_total,
             'DEBIT',
-            `Order Payment #${orderNum}`,
-            new Date().toLocaleString('en-IN'),
+            `Used Order #${orderNum}`,
+            new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
             orderNum,
             currentWallet,
             remainingBal,
-            'SUCCESS'
+            'Used'
           ]
         );
       } else {
@@ -3425,8 +3427,8 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
           net_amount, payment_method, payment_status, order_status, items, add_ons,
           utr_number, payment_screenshot, screenshot_url, pickup_pin, pickup_pin_verified,
           food_member_discount, is_express_delivery, is_premium_member, preparation_minutes, estimated_ready_at,
-          delivery_address_json, delivery_fee, delivery_zone_id, delivery_zone_name, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31);`,
+          delivery_address_json, delivery_fee, delivery_zone_id, delivery_zone_name, referral_transaction_id, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32);`,
         [
           newOrderId, orderNum, req.user.id, req.user.name, req.user.mobile,
           order_type || 'Takeaway', finalDeliveryAddressText || null, notes || null,
@@ -3435,7 +3437,7 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
           cleanUtr, savedScreenshotUrl, savedScreenshotUrl, pickupPin, false,
           foodMemberDiscount, isExpressDelivery ? 1 : 0, isPremiumMember ? 1 : 0,
           initialPrepMins, estimatedReadyAt,
-          deliveryAddressSnapshotJson, deliveryFeeAmount, deliveryZoneId, deliveryZoneName, nowIso
+          deliveryAddressSnapshotJson, deliveryFeeAmount, deliveryZoneId, deliveryZoneName, refTxId, nowIso
         ]
       );
 
@@ -5919,10 +5921,11 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
       if (refRecord.referrer_id) {
         await db.query("UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2;", [rewardAmt, refRecord.referrer_id]);
 
+        const refTxId = 'REF-TXN-' + Date.now().toString().slice(-6) + Math.floor(1000 + Math.random() * 9000);
         // Record Wallet Transaction
         await db.query(
-          "INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time) VALUES ($1, $2, $3, $4, $5, $6);",
-          ['wtx_' + Date.now(), refRecord.referrer_id, rewardAmt, 'CREDIT', `Referral reward for ${refRecord.referred_name || 'friend'}'s first order (#${orderNum})`, new Date().toLocaleString('en-IN')]
+          "INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7);",
+          [refTxId, refRecord.referrer_id, rewardAmt, 'CREDIT', `Referral reward for ${refRecord.referred_name || 'friend'}'s first order (#${orderNum})`, new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }), 'Earned']
         );
 
         // Send Notification to Referrer
@@ -5970,6 +5973,104 @@ app.get('/api/referrals/stats', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Fetch Referral Stats Error:', err);
     res.status(500).json({ success: false, message: "Failed to fetch referral stats." });
+  }
+});
+
+// GET /api/referrals/transactions - Fetch authenticated customer's Referral Transaction History
+app.get('/api/referrals/transactions', authenticateToken, async (req, res) => {
+  try {
+    const txRes = await db.query(
+      `SELECT * FROM wallet_transactions 
+       WHERE user_id = $1 AND (
+         id LIKE 'REF-%' OR 
+         type IN ('CREDIT', 'DEBIT', 'Referral Reward', 'Used Order') OR 
+         description ILIKE '%referral%' OR 
+         description ILIKE '%used order%'
+       )
+       ORDER BY created_at DESC, date_time DESC;`,
+      [req.user.id]
+    );
+    const txs = (txRes.rows || []).map(tx => {
+      const isCredit = (tx.type || '').toUpperCase() === 'CREDIT' || (tx.status || '').toUpperCase() === 'EARNED' || (tx.description || '').toLowerCase().includes('referral reward');
+      return {
+        id: tx.id,
+        user_id: tx.user_id,
+        amount: Number(tx.amount || 0),
+        type: isCredit ? 'Referral Reward' : 'Used Order',
+        status: isCredit ? 'Earned' : 'Used',
+        description: tx.description || (isCredit ? 'Referral Reward' : 'Used Order'),
+        date_time: tx.date_time || (tx.created_at ? new Date(tx.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })),
+        order_id: tx.order_id || null,
+        balance_before: Number(tx.balance_before || 0),
+        balance_after: Number(tx.balance_after || 0),
+        created_at: tx.created_at
+      };
+    });
+    res.json({ success: true, data: { transactions: txs } });
+  } catch (err) {
+    console.error('Fetch Referral Transactions Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch referral transaction history." });
+  }
+});
+
+// GET /api/referrals/transactions/:id/details - Fetch authoritative details of a specific referral transaction
+app.get('/api/referrals/transactions/:id/details', authenticateToken, async (req, res) => {
+  try {
+    const txId = req.params.id;
+    const txRes = await db.query(
+      `SELECT * FROM wallet_transactions WHERE id = $1 AND user_id = $2;`,
+      [txId, req.user.id]
+    );
+    if (!txRes.rows || txRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Referral transaction record not found." });
+    }
+    const tx = txRes.rows[0];
+    const isCredit = (tx.type || '').toUpperCase() === 'CREDIT' || (tx.status || '').toUpperCase() === 'EARNED' || (tx.description || '').toLowerCase().includes('referral reward');
+
+    let orderDetails = null;
+    if (tx.order_id) {
+      const oRes = await db.query(`SELECT * FROM orders WHERE order_number = $1 OR id = $1;`, [tx.order_id]);
+      if (oRes.rows && oRes.rows.length > 0) {
+        const o = oRes.rows[0];
+        let parsedItems = [];
+        try {
+          parsedItems = typeof o.items === 'string' ? JSON.parse(o.items) : (o.items || []);
+        } catch (e) { }
+        orderDetails = {
+          order_id: o.order_number || o.id,
+          order_date: o.created_at,
+          order_status: o.order_status,
+          total_amount: Number(o.total_amount || 0),
+          wallet_amount_used: Number(o.used_wallet_amount || tx.amount || 0),
+          payment_method: o.payment_method,
+          items: parsedItems.map(item => ({
+            name: item.name || 'Item',
+            quantity: item.quantity || 1,
+            price: Number(item.unit_price || item.price || 0),
+            item_total: Number(item.subtotal || item.total_price || (item.quantity * item.price) || 0)
+          }))
+        };
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        id: tx.id,
+        user_id: tx.user_id,
+        amount: Number(tx.amount || 0),
+        type: isCredit ? 'Referral Reward' : 'Used Order',
+        status: isCredit ? 'Earned' : 'Used',
+        description: tx.description,
+        date_time: tx.date_time || (tx.created_at ? new Date(tx.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })),
+        balance_before: Number(tx.balance_before || 0),
+        balance_after: Number(tx.balance_after || 0),
+        order_details: orderDetails
+      }
+    });
+  } catch (err) {
+    console.error('Fetch Referral Transaction Details Error:', err);
+    res.status(500).json({ success: false, message: "Failed to fetch referral transaction details." });
   }
 });
 

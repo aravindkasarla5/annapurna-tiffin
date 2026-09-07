@@ -6900,7 +6900,7 @@ class TiffinApp {
     const progressPct = Math.round((stepIdx / 3) * 100);
 
     const typeIcon = order.order_type === 'Takeaway' ? 'fa-box' : order.order_type === 'Delivery' ? 'fa-motorcycle' : 'fa-utensils';
-    const isReferralPay = (order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL';
+    const isReferralPay = (order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL' || Number(order.used_wallet_amount || 0) > 0 || !!order.referral_transaction_id;
     const isPaid = order.payment_status.includes('Paid') || order.payment_status.includes('Verified');
     const isPendingPayment = order.payment_status.includes('Pending') || order.payment_status.includes('Verification');
 
@@ -6979,9 +6979,15 @@ class TiffinApp {
           <div class="co-top-right">
             <div class="co-payment-status-block">
               <span class="co-pay-title-label"><i class="fa-solid fa-credit-card" style="color: var(--accent-gold);"></i> Payment Status:</span>
-              <span class="co-row-pay-pill ${isReferralPay ? 'referral' : (isPaid ? 'paid' : 'pending')}">
-                <i class="fa-solid ${isReferralPay ? 'fa-circle' : (isPaid ? 'fa-circle-check' : 'fa-hourglass-half')}" style="${isReferralPay ? 'color: #00E676;' : ''}"></i> ${isReferralPay ? '🟢 REFERRAL' : `${order.payment_status} (${order.payment_method})`}
-              </span>
+              ${isReferralPay ? `
+                <span class="co-row-pay-pill referral" style="background: rgba(0, 230, 118, 0.2); color: #00E676; border: 1.5px solid #00E676; font-weight: 800; font-family: monospace; letter-spacing: 0.5px;">
+                  ${order.referral_transaction_id || ('REF-TXN-' + String(order.order_number || order.id).padStart(6, '0'))}
+                </span>
+              ` : `
+                <span class="co-row-pay-pill ${isPaid ? 'paid' : 'pending'}">
+                  <i class="fa-solid ${isPaid ? 'fa-circle-check' : 'fa-hourglass-half'}"></i> ${order.payment_status} (${order.payment_method})
+                </span>
+              `}
             </div>
             <div class="co-total-amount-block">
               <span class="co-total-title-label">Total Amount</span>
@@ -10957,8 +10963,230 @@ class TiffinApp {
         this.referralStats = json.data;
         this.renderReferralDashboard();
       }
+      this.loadCustomerReferralTransactions();
     } catch (err) {
       console.error('Error fetching referral stats:', err);
+    }
+  }
+
+  async loadCustomerReferralTransactions() {
+    if (!this.currentUser) return;
+    try {
+      const resTx = await this.fetchWithAuth(`${API_BASE}/referrals/transactions`);
+      const dataTx = await resTx.json();
+      const txs = (dataTx.success && dataTx.data && Array.isArray(dataTx.data.transactions)) ? dataTx.data.transactions : [];
+      this.renderCustomerReferralTransactions(txs);
+    } catch (err) {
+      console.error('Error loading referral transaction history:', err);
+    }
+  }
+
+  renderCustomerReferralTransactions(transactions) {
+    const container = document.getElementById('containerCustomerReferralTxHistory');
+    if (!container) return;
+
+    if (!transactions || transactions.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+          <i class="fa-solid fa-receipt" style="font-size: 2.5rem; opacity: 0.4; margin-bottom: 8px;"></i>
+          <p style="margin: 0; font-size: 0.95rem;">No referral transactions recorded yet.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch;">
+        <table class="data-table" style="width: 100%; min-width: 680px; border-collapse: collapse; font-size: 0.88rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; color: var(--text-muted);">
+              <th style="padding: 10px; min-width: 150px; white-space: nowrap;">Date & Time</th>
+              <th style="padding: 10px; min-width: 140px; white-space: nowrap;">Transaction ID</th>
+              <th style="padding: 10px; min-width: 130px; white-space: nowrap;">Type</th>
+              <th style="padding: 10px; min-width: 110px; white-space: nowrap;">Amount</th>
+              <th style="padding: 10px; min-width: 110px; white-space: nowrap;">Status</th>
+              <th style="padding: 10px; min-width: 120px; text-align: center; white-space: nowrap;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${transactions.map(tx => {
+              const isCredit = (tx.status || '').toUpperCase() === 'EARNED' || (tx.type || '').toUpperCase() === 'REFERRAL REWARD' || (tx.type || '').toUpperCase() === 'CREDIT';
+              
+              const statusBadge = isCredit 
+                ? `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(76,175,80,0.2); color: #4CAF50; white-space: nowrap; display: inline-block;">🟢 Earned</span>`
+                : `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.75rem; background: rgba(255,152,0,0.2); color: #FF9800; white-space: nowrap; display: inline-block;">🟠 Used</span>`;
+              
+              const typeText = isCredit ? 'Referral Reward' : 'Used Order';
+              
+              const amtDisplay = isCredit
+                ? `<span style="font-weight: 800; color: #4CAF50; white-space: nowrap;">+₹${Number(tx.amount || 0).toFixed(2)}</span>`
+                : `<span style="font-weight: 800; color: #FF9800; white-space: nowrap;">-₹${Number(tx.amount || 0).toFixed(2)}</span>`;
+
+              const actionHtml = `
+                <button type="button" class="btn-wallet-action-sm" onclick="app.viewReferralTransactionDetails('${tx.id}')">
+                  <i class="fa-solid fa-circle-info"></i> View Details
+                </button>
+              `;
+
+              return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 10px; color: var(--text-muted); white-space: nowrap;">${tx.date_time || new Date(tx.created_at).toLocaleString('en-IN')}</td>
+                  <td style="padding: 10px; font-family: monospace; font-weight: 700; color: var(--accent-gold); white-space: nowrap;">${tx.id}</td>
+                  <td style="padding: 10px; color: #FFF; font-weight: 600; white-space: nowrap;">${typeText}</td>
+                  <td style="padding: 10px; white-space: nowrap;">${amtDisplay}</td>
+                  <td style="padding: 10px; white-space: nowrap;">${statusBadge}</td>
+                  <td style="padding: 10px; text-align: center; white-space: nowrap;">
+                    ${actionHtml}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async viewReferralTransactionDetails(txId) {
+    if (!txId) return;
+    try {
+      const bodyEl = document.getElementById('walletTxDetailsBody');
+      this.toggleWalletTxDetailsModal(true);
+      if (bodyEl) {
+        bodyEl.innerHTML = `
+          <div style="text-align: center; padding: 2.5rem 1rem;">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; color: var(--primary); margin-bottom: 12px;"></i>
+            <p style="margin: 0; color: var(--text-muted);">Fetching referral transaction details...</p>
+          </div>
+        `;
+      }
+
+      const res = await this.fetchWithAuth(`${API_BASE}/referrals/transactions/${txId}/details`);
+      const data = await res.json();
+
+      if (!data.success || !data.data) {
+        this.showToast(data.message || 'Unable to load transaction details.', 'error');
+        this.toggleWalletTxDetailsModal(false);
+        return;
+      }
+
+      const d = data.data;
+      const isCredit = (d.status || '').toUpperCase() === 'EARNED' || (d.type || '').toUpperCase() === 'REFERRAL REWARD';
+      const typeBadge = isCredit 
+        ? `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; background: rgba(76,175,80,0.2); color: #4CAF50;">🟢 Earned</span>`
+        : `<span style="padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 0.78rem; background: rgba(255,152,0,0.2); color: #FF9800;">🟠 Used</span>`;
+
+      let html = '';
+
+      if (!isCredit && d.order_details) {
+        const o = d.order_details;
+        const itemsHtml = (o.items && o.items.length > 0) ? o.items.map(item => `
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <td style="padding: 8px 10px; font-weight: 600; color: #FFF;">${item.name}</td>
+            <td style="padding: 8px 10px; text-align: center; color: var(--text-muted);">× ${item.quantity}</td>
+            <td style="padding: 8px 10px; text-align: right; color: var(--text-muted);">₹${Number(item.price).toFixed(2)}</td>
+            <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #FFF;">₹${Number(item.item_total).toFixed(2)}</td>
+          </tr>
+        `).join('') : `<tr><td colspan="4" style="padding: 10px; text-align: center; color: var(--text-muted);">No item details available</td></tr>`;
+
+        html = `
+          <div class="wallet-tx-details-header" style="background: rgba(255,152,0,0.08); border: 1px solid rgba(255,152,0,0.25); padding: 14px; border-radius: 10px; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Referral Wallet Usage Record</div>
+                <div style="font-size: 1.15rem; font-weight: 800; color: #FFF; margin-top: 2px;">Order #${o.order_id}</div>
+              </div>
+              <div>${typeBadge}</div>
+            </div>
+            <div style="margin-top: 10px; font-size: 0.82rem; color: var(--text-muted); display: flex; gap: 16px; flex-wrap: wrap;">
+              <span><i class="fa-regular fa-calendar"></i> Date: <strong style="color: #DDD;">${d.date_time}</strong></span>
+              <span><i class="fa-solid fa-award"></i> Type: <strong style="color: #FF9800;">Used Order</strong></span>
+              <span><i class="fa-solid fa-check"></i> Status: <strong style="color: #FF9800;">Used</strong></span>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 1.25rem;">
+            <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-utensils"></i> Ordered Food Items
+            </h4>
+            <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem;">
+                <thead>
+                  <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); text-align: left;">
+                    <th style="padding: 8px 10px;">Item Name</th>
+                    <th style="padding: 8px 10px; text-align: center;">Qty</th>
+                    <th style="padding: 8px 10px; text-align: right;">Price</th>
+                    <th style="padding: 8px 10px; text-align: right;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); padding: 14px; font-size: 0.86rem;">
+            <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: var(--primary); display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-wallet"></i> Referral Wallet Breakdown
+            </h4>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--text-muted);">
+              <span>Order Total Amount:</span>
+              <strong style="color: #FFF;">₹${Number(o.total_amount).toFixed(2)}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px; color: #FF9800; font-weight: 700;">
+              <span>Referral Wallet Amount Used:</span>
+              <span>-₹${Number(d.amount).toFixed(2)}</span>
+            </div>
+            <hr style="border: 0; border-top: 1px dashed rgba(255,255,255,0.1); margin: 8px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+              <span>Referral Balance Before: ₹${Number(d.balance_before).toFixed(2)}</span>
+              <span>Referral Balance After: <strong style="color: var(--primary);">₹${Number(d.balance_after).toFixed(2)}</strong></span>
+            </div>
+            <div style="margin-top: 8px; font-size: 0.78rem; color: var(--accent-gold); font-family: monospace; font-weight: 700;">
+              Transaction ID: ${d.id}
+            </div>
+          </div>
+        `;
+      } else {
+        html = `
+          <div class="wallet-tx-details-header" style="background: rgba(76,175,80,0.08); border: 1px solid rgba(76,175,80,0.25); padding: 14px; border-radius: 10px; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Referral Reward Record</div>
+                <div style="font-size: 1.15rem; font-weight: 800; color: #4CAF50; margin-top: 2px;">+₹${Number(d.amount).toFixed(2)} Earned</div>
+              </div>
+              <div>${typeBadge}</div>
+            </div>
+            <div style="margin-top: 10px; font-size: 0.82rem; color: var(--text-muted); display: flex; gap: 16px; flex-wrap: wrap;">
+              <span><i class="fa-regular fa-calendar"></i> Date: <strong style="color: #DDD;">${d.date_time}</strong></span>
+              <span><i class="fa-solid fa-award"></i> Type: <strong style="color: #4CAF50;">Referral Reward</strong></span>
+              <span><i class="fa-solid fa-check"></i> Status: <strong style="color: #4CAF50;">Earned</strong></span>
+            </div>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); padding: 14px; font-size: 0.86rem;">
+            <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
+              <i class="fa-solid fa-circle-info"></i> Transaction Information
+            </h4>
+            <p style="color: #DDD; font-size: 0.88rem; margin: 0 0 10px 0;">${d.description || 'Referral Reward Credited'}</p>
+            <hr style="border: 0; border-top: 1px dashed rgba(255,255,255,0.1); margin: 8px 0;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+              <span>Referral Balance Before: ₹${Number(d.balance_before).toFixed(2)}</span>
+              <span>Referral Balance After: <strong style="color: var(--primary);">₹${Number(d.balance_after).toFixed(2)}</strong></span>
+            </div>
+            <div style="margin-top: 8px; font-size: 0.78rem; color: var(--accent-gold); font-family: monospace; font-weight: 700;">
+              Transaction ID: ${d.id}
+            </div>
+          </div>
+        `;
+      }
+
+      if (bodyEl) bodyEl.innerHTML = html;
+    } catch (err) {
+      console.error('Error viewing referral transaction details:', err);
+      this.showToast('Unable to fetch transaction details.', 'error');
+      this.toggleWalletTxDetailsModal(false);
     }
   }
 

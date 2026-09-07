@@ -743,6 +743,7 @@ async function initDatabase() {
     await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_utr ON wallet_topup_requests(utr_number);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_cust_wallet_tx_user ON customer_wallet_transactions(user_id);`);
     try { await query(`ALTER TABLE wallet_transactions ADD COLUMN request_id VARCHAR(100);`); } catch (colErr) {}
+    try { await query(`ALTER TABLE orders ADD COLUMN referral_transaction_id VARCHAR(100);`); } catch (colErr) {}
   } catch (idxErr) {
     console.warn('Index creation notice:', idxErr.message);
   }

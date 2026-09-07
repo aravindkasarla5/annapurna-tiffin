@@ -1025,6 +1025,21 @@
           </div>
         </div>
       </div>
+
+      <!-- Referral Transaction History Ledger -->
+      <div class="wallet-card-section" style="margin-top: 1.5rem;">
+        <div class="card-section-header" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <div>
+            <h3><i class="fa-solid fa-list-check" style="color: var(--accent-gold);"></i> Referral Transaction History</h3>
+            <p>Complete record of referral rewards earned and used</p>
+          </div>
+          <button type="button" class="btn-secondary-sm" onclick="app.loadCustomerReferralData()"><i class="fa-solid fa-arrows-rotate"></i> Refresh History</button>
+        </div>
+
+        <div id="containerCustomerReferralTxHistory" class="tx-history-table-container">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
     </section>
 
     <!-- ========================================================================= -->
