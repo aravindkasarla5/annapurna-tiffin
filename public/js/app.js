@@ -20393,57 +20393,141 @@ class TiffinApp {
 
       this.selectedDeliveryAddressId = initialSelectedId;
 
-      // Render options list including saved addresses and profile fallback (if present)
-      let displayOptions = [...savedAddresses];
-      if (profileVirtualAddr) {
-        displayOptions.push(profileVirtualAddr);
-      }
-
-      container.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          ${displayOptions.map(a => {
-            const isChecked = a.id === initialSelectedId;
-            const isProfile = a.id === 'profile_address';
-            const icon = isProfile ? '📍' : (a.address_type === 'Work' ? '💼' : a.address_type === 'Other' ? '📍' : '🏠');
-            const labelTitle = isProfile
-              ? `Profile Delivery Address (Fallback)`
-              : `${escapeHtml(a.address_type || 'Home')} - ${escapeHtml(a.full_name)}`;
-            const labelSub = isProfile
-              ? escapeHtml(a.address_line1)
-              : `${escapeHtml(a.address_line1)}, ${escapeHtml(a.area || '')}, ${escapeHtml(a.city || '')} - <strong>${escapeHtml(a.pincode || '')}</strong>`;
-            
-            return `
-              <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: ${isChecked ? 'rgba(255, 87, 34, 0.12)' : 'rgba(255,255,255,0.04)'}; border: 1.5px solid ${isChecked ? '#FF5722' : 'var(--border-color)'}; border-radius: 12px; cursor: pointer; transition: all 0.15s ease;">
-                <input type="radio" name="radCheckoutAddress" value="${a.id}" ${isChecked ? 'checked' : ''} onchange="app.selectCheckoutAddress('${a.id}')" style="margin-top: 3px;">
-                <div style="flex: 1; font-size: 0.82rem;">
-                  <div style="font-weight: 800; color: #FFF; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                    <span>${icon} ${labelTitle}</span>
-                    ${a.is_default ? `<span style="font-size: 0.7rem; color: #FF7043; background: rgba(255, 112, 67, 0.15); padding: 1px 6px; border-radius: 6px;">⭐ Default</span>` : ''}
-                    ${isProfile ? `<span style="font-size: 0.7rem; color: #FFD54F; background: rgba(255, 213, 79, 0.15); padding: 1px 6px; border-radius: 6px;">Source: Profile Delivery Address</span>` : ''}
-                  </div>
-                  <div style="color: #DDD; margin-top: 2px;">
-                    ${labelSub}
-                  </div>
-                </div>
-              </label>
-            `;
-          }).join('')}
-          <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-            <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 4px 12px; font-size: 0.78rem; color: #FF7043; border-color: rgba(255, 87, 34, 0.4);">
-              <i class="fa-solid fa-plus"></i> Add New Address
-            </button>
-          </div>
-        </div>
-      `;
-
+      this.renderCheckoutAddressDropdown();
       this.selectCheckoutAddress(initialSelectedId);
     } catch (err) {
       console.error('Load checkout saved addresses error:', err);
     }
   }
 
+  toggleCheckoutAddressDropdown(forceState = null) {
+    this.isCheckoutAddressDropdownOpen = forceState !== null ? forceState : !this.isCheckoutAddressDropdownOpen;
+    this.renderCheckoutAddressDropdown();
+  }
+
+  onSelectCheckoutAddressDropdownItem(addressId) {
+    this.isCheckoutAddressDropdownOpen = false;
+    this.selectedDeliveryAddressId = addressId;
+    this.renderCheckoutAddressDropdown();
+    this.selectCheckoutAddress(addressId);
+  }
+
+  renderCheckoutAddressDropdown() {
+    const container = document.getElementById('savedAddressesCheckoutContainer');
+    if (!container || !this.checkoutSavedAddresses || this.checkoutSavedAddresses.length === 0) return;
+
+    if (!this.boundCheckoutAddressOutsideClick) {
+      this.boundCheckoutAddressOutsideClick = (e) => {
+        if (this.isCheckoutAddressDropdownOpen) {
+          const c = document.getElementById('savedAddressesCheckoutContainer');
+          if (c && !c.contains(e.target)) {
+            this.isCheckoutAddressDropdownOpen = false;
+            this.renderCheckoutAddressDropdown();
+          }
+        }
+      };
+      document.addEventListener('click', this.boundCheckoutAddressOutsideClick);
+    }
+
+    const isOpen = !!this.isCheckoutAddressDropdownOpen;
+    const selectedAddr = this.checkoutSavedAddresses.find(a => a.id === this.selectedDeliveryAddressId) || this.checkoutSavedAddresses[0];
+
+    let selectedIcon = '🏠';
+    let selectedTitle = 'Select Saved Delivery Address';
+    let selectedSub = '';
+    let isSelectedProfile = false;
+
+    if (selectedAddr) {
+      isSelectedProfile = selectedAddr.id === 'profile_address';
+      selectedIcon = isSelectedProfile ? '📍' : (selectedAddr.address_type === 'Work' ? '💼' : selectedAddr.address_type === 'Other' ? '📍' : '🏠');
+      selectedTitle = isSelectedProfile
+        ? `Profile Delivery Address (Fallback)`
+        : `${escapeHtml(selectedAddr.address_type || 'Home')} - ${escapeHtml(selectedAddr.full_name || '')}`;
+      
+      const parts = [];
+      if (selectedAddr.address_line1) parts.push(escapeHtml(selectedAddr.address_line1));
+      if (selectedAddr.area) parts.push(escapeHtml(selectedAddr.area));
+      if (selectedAddr.city) parts.push(escapeHtml(selectedAddr.city));
+      if (selectedAddr.pincode) parts.push(escapeHtml(selectedAddr.pincode));
+      selectedSub = parts.join(', ');
+    }
+
+    container.innerHTML = `
+      <div class="custom-address-select-wrapper" style="position: relative; width: 100%;">
+        <div id="checkoutAddressSelectTrigger" onclick="app.toggleCheckoutAddressDropdown()" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.05); border: 1.5px solid ${isOpen ? 'var(--primary, #FF5722)' : 'var(--border-color, #444)'}; border-radius: 12px; cursor: pointer; user-select: none; transition: all 0.2s ease;">
+          <div style="flex: 1; min-width: 0; padding-right: 10px;">
+            ${selectedAddr ? `
+              <div style="font-weight: 800; color: #FFF; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <span>${selectedIcon} ${selectedTitle}</span>
+                ${selectedAddr.is_default ? `<span style="font-size: 0.68rem; color: #FF7043; background: rgba(255, 112, 67, 0.15); padding: 1px 6px; border-radius: 6px;">⭐ Default</span>` : ''}
+                ${isSelectedProfile ? `<span style="font-size: 0.68rem; color: #FFD54F; background: rgba(255, 213, 79, 0.15); padding: 1px 6px; border-radius: 6px;">Profile Fallback</span>` : ''}
+              </div>
+              <div style="color: #BBB; font-size: 0.78rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${selectedSub}
+              </div>
+            ` : `
+              <div style="color: #AAA; font-size: 0.85rem; font-weight: 600;">
+                <i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Select Saved Delivery Address
+              </div>
+            `}
+          </div>
+          <div style="color: var(--primary, #FF5722); font-size: 0.85rem; font-weight: 700;">
+            <i class="fa-solid ${isOpen ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>
+          </div>
+        </div>
+
+        ${isOpen ? `
+          <div id="checkoutAddressDropdownMenu" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 1050; background: #1E1B18; border: 1.5px solid var(--primary, #FF5722); border-radius: 12px; max-height: 240px; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.6); padding: 4px 0;">
+            ${this.checkoutSavedAddresses.map(a => {
+              const isSelected = a.id === this.selectedDeliveryAddressId;
+              const isProfile = a.id === 'profile_address';
+              const icon = isProfile ? '📍' : (a.address_type === 'Work' ? '💼' : a.address_type === 'Other' ? '📍' : '🏠');
+              const labelTitle = isProfile
+                ? `Profile Delivery Address (Fallback)`
+                : `${escapeHtml(a.address_type || 'Home')} - ${escapeHtml(a.full_name || '')}`;
+              
+              const parts = [];
+              if (a.address_line1) parts.push(escapeHtml(a.address_line1));
+              if (a.area) parts.push(escapeHtml(a.area));
+              if (a.city) parts.push(escapeHtml(a.city));
+              if (a.pincode) parts.push(escapeHtml(a.pincode));
+              const labelSub = parts.join(', ');
+
+              return `
+                <div onclick="app.onSelectCheckoutAddressDropdownItem('${a.id}')" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; background: ${isSelected ? 'rgba(255, 87, 34, 0.15)' : 'transparent'}; border-bottom: 1px solid rgba(255,255,255,0.06); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(255,87,34,0.1)'" onmouseout="this.style.background='${isSelected ? 'rgba(255, 87, 34, 0.15)' : 'transparent'}'">
+                  <div style="flex: 1; min-width: 0; padding-right: 8px;">
+                    <div style="font-weight: 700; color: #FFF; font-size: 0.82rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <span>${icon} ${labelTitle}</span>
+                      ${a.is_default ? `<span style="font-size: 0.68rem; color: #FF7043; background: rgba(255, 112, 67, 0.15); padding: 1px 5px; border-radius: 4px;">⭐ Default</span>` : ''}
+                      ${isProfile ? `<span style="font-size: 0.68rem; color: #FFD54F; background: rgba(255, 213, 79, 0.15); padding: 1px 5px; border-radius: 4px;">Profile Fallback</span>` : ''}
+                    </div>
+                    <div style="color: #CCC; font-size: 0.76rem; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                      ${labelSub}
+                    </div>
+                  </div>
+                  ${isSelected ? `
+                    <div style="color: #FF5722; font-size: 0.9rem; font-weight: bold; margin-left: 6px;">
+                      <i class="fa-solid fa-check"></i>
+                    </div>
+                  ` : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+          <button type="button" class="btn-secondary-outline" onclick="app.openAddressModal()" style="padding: 4px 12px; font-size: 0.78rem; color: #FF7043; border-color: rgba(255, 87, 34, 0.4);">
+            <i class="fa-solid fa-plus"></i> Add New Address
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
   async selectCheckoutAddress(addressId) {
     this.selectedDeliveryAddressId = addressId;
+    this.renderCheckoutAddressDropdown();
     if (!this.checkoutSavedAddresses) return;
 
     const addr = this.checkoutSavedAddresses.find(a => a.id === addressId);
