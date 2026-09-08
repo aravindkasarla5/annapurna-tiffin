@@ -18919,10 +18919,31 @@ class TiffinApp {
   async confirmSubscriptionPurchase(planId) {
     const radMethod = document.querySelector('input[name="radSubPaymentMethod"]:checked');
     const paymentMethod = radMethod ? radMethod.value : 'ONLINE';
-    const utrNumber = document.getElementById('txtSubUtrNumber')?.value || '';
+    const utrNumber = (document.getElementById('txtSubUtrNumber')?.value || '').trim();
+
+    if (paymentMethod === 'ONLINE') {
+      const hasUtr = utrNumber.length > 0;
+      const hasScreenshot = !!(this.subScreenshotData && typeof this.subScreenshotData === 'string' && this.subScreenshotData.trim().length > 0);
+
+      if (!hasUtr && !hasScreenshot) {
+        this.showToast('Please enter the UTR/Transaction ID and upload the payment screenshot before submitting.', 'error');
+        return;
+      }
+      if (!hasUtr) {
+        this.showToast('Please enter the UTR/Transaction ID before submitting.', 'error');
+        return;
+      }
+      if (!hasScreenshot) {
+        this.showToast('Please upload the payment screenshot before submitting.', 'error');
+        return;
+      }
+    }
 
     const btn = document.getElementById('btnSubmitSubPayment');
+    let origBtnContent = '';
     if (btn) {
+      if (btn.disabled) return;
+      origBtnContent = btn.innerHTML;
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
     }
@@ -18940,12 +18961,12 @@ class TiffinApp {
       });
       const json = await res.json();
 
-      this.toggleSubPaymentChoiceModal(false);
-
       if (!json.success || !json.subscription) {
         this.showToast(json.message || '❌ Subscription payment failed.', 'error');
         return;
       }
+
+      this.toggleSubPaymentChoiceModal(false);
 
       this.subScreenshotData = null;
 
@@ -18964,6 +18985,7 @@ class TiffinApp {
     } finally {
       if (btn) {
         btn.disabled = false;
+        if (origBtnContent) btn.innerHTML = origBtnContent;
       }
     }
   }

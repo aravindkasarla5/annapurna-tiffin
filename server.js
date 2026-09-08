@@ -12416,11 +12416,36 @@ app.post('/api/subscriptions/purchase', authenticateToken, async (req, res) => {
       } catch (imgErr) {
         console.error('Subscription proof save notice:', imgErr.message);
       }
-    } else if (payment_screenshot && typeof payment_screenshot === 'string') {
-      savedScreenshotUrl = payment_screenshot;
+    } else if (payment_screenshot && typeof payment_screenshot === 'string' && payment_screenshot.trim().length > 0) {
+      savedScreenshotUrl = payment_screenshot.trim();
     }
 
     const cleanUtr = (utr_number || '').trim();
+
+    // Server-side validation for ONLINE payment method proof
+    if (normalizedPaymentMethod === 'ONLINE') {
+      const hasUtr = cleanUtr.length > 0;
+      const hasScreenshot = !!savedScreenshotUrl;
+
+      if (!hasUtr && !hasScreenshot) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please enter the UTR/Transaction ID and upload the payment screenshot before submitting.'
+        });
+      }
+      if (!hasUtr) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please enter the UTR/Transaction ID before submitting.'
+        });
+      }
+      if (!hasScreenshot) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please upload the payment screenshot before submitting.'
+        });
+      }
+    }
 
     // Idempotency check: check if user has an existing PENDING_PAYMENT for this exact plan in the last 5 minutes
     const pendingRes = await db.query(
