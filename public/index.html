@@ -659,7 +659,12 @@
                 <button type="button" class="btn-copy-upi" onclick="app.copyWalletUpiId()"><i class="fa-regular fa-copy"></i> Copy UPI ID</button>
               </div>
               <div class="qr-image-container">
-                <img id="imgWalletUpiQr" src="/images/tiffin_logo.png" alt="UPI QR Code" class="wallet-qr-img">
+                <div style="position: relative; display: inline-block; cursor: pointer;" onclick="app.viewFullScreenshot(document.getElementById('imgWalletUpiQr').src, 'UPI Payment QR Scanner')">
+                  <img id="imgWalletUpiQr" src="/images/tiffin_logo.png" alt="UPI QR Code" class="wallet-qr-img" style="cursor: pointer; display: block;">
+                  <div style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.85); color: var(--accent-gold, #FF9800); border-radius: 20px; padding: 2px 8px; font-size: 0.72rem; font-weight: 800; border: 1px solid var(--accent-gold, #FF9800); pointer-events: none;">
+                    <i class="fa-solid fa-magnifying-glass-plus"></i> Zoom
+                  </div>
+                </div>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;">Scan with any UPI app and enter exact amount <strong id="walletQrAmountText" style="color: var(--primary);">₹500.00</strong></p>
               </div>
             </div>
@@ -6444,7 +6449,7 @@
     <!-- Client PDF Generator Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <!-- JavaScript Entry Point -->
-    <script src="/js/app.js?v=176"></script>
+    <script src="/js/app.js?v=177"></script>
 </body>
 
 </html>
