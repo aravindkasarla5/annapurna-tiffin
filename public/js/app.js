@@ -6707,28 +6707,53 @@ class TiffinApp {
     let timelineDotsHtml = '';
     if (active_queue_list && active_queue_list.length > 0) {
       timelineDotsHtml = `
-        <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 14px; padding: 1.25rem 1rem; margin-bottom: 1.5rem;">
-          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.5px; text-align: center;">
-            <i class="fa-solid fa-layer-group"></i> Active Kitchen Queue Sequence
+        <div style="background: rgba(18, 12, 10, 0.95); border: 1.5px solid rgba(255, 152, 0, 0.2); border-radius: 18px; padding: 1.5rem 1rem; margin-bottom: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+          <div style="font-size: 0.82rem; font-weight: 800; color: #D7CCC8; text-transform: uppercase; letter-spacing: 1px; text-align: center; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <i class="fa-solid fa-layer-group" style="color: #FFB300; font-size: 0.95rem;"></i>
+            <span>ACTIVE KITCHEN QUEUE SEQUENCE</span>
           </div>
-          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; overflow-x: auto; padding: 8px 4px; -webkit-overflow-scrolling: touch;">
-            ${active_queue_list.map((item, index) => `
-              <div style="display: flex; flex-direction: column; align-items: center; min-width: 68px; flex-shrink: 0;">
-                <div style="width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.78rem; margin-bottom: 6px; ${
-                  item.is_customer 
-                    ? 'background: linear-gradient(135deg, var(--primary), var(--accent-gold)); color: #000; box-shadow: 0 0 12px rgba(255, 179, 0, 0.6); border: 2px solid #FFF;' 
-                    : item.status === 'Preparing' 
-                      ? 'background: rgba(234, 162, 33, 0.25); color: var(--accent-gold); border: 1.5px solid var(--accent-gold);' 
-                      : 'background: rgba(255, 255, 255, 0.08); color: var(--text-muted); border: 1px solid var(--border-color);'
-                }">
-                  ${item.token}
+          <div style="display: flex; align-items: center; justify-content: center; gap: 12px; overflow-x: auto; padding: 10px 6px 14px 6px; -webkit-overflow-scrolling: touch;">
+            ${active_queue_list.map((item, index) => {
+              const tokenStr = String(item.token || '');
+              let topText = 'Q-';
+              let bottomText = tokenStr;
+              if (tokenStr.includes('-')) {
+                const parts = tokenStr.split('-');
+                topText = parts[0] + '-';
+                bottomText = parts.slice(1).join('-');
+              } else if (tokenStr.startsWith('Q')) {
+                topText = 'Q-';
+                bottomText = tokenStr.replace(/^Q-?/, '');
+              }
+
+              let nodeBg = 'background: rgba(255, 255, 255, 0.05); color: #B0BEC5; border: 1.5px solid rgba(255, 255, 255, 0.15);';
+              let topColor = '#90A4AE';
+              let bottomColor = '#ECEFF1';
+              let labelHtml = '<span style="font-size: 0.72rem; font-weight: 700; color: #A1887F; white-space: nowrap; margin-top: 8px;">Queued</span>';
+
+              if (item.is_customer) {
+                nodeBg = 'background: linear-gradient(145deg, #FF6F00, #FFA000); color: #000; border: 2.5px solid #FFFFFF; box-shadow: 0 0 0 3px rgba(255, 143, 0, 0.4), 0 0 20px rgba(255, 143, 0, 0.85), 0 0 35px rgba(255, 111, 0, 0.4);';
+                topColor = '#000000';
+                bottomColor = '#000000';
+                labelHtml = '<span style="font-size: 0.74rem; font-weight: 900; color: #FFAB00; white-space: nowrap; margin-top: 8px; display: flex; align-items: center; gap: 3px;"><i class="fa-solid fa-star" style="font-size: 0.65rem; color: #FFAB00;"></i> YOU</span>';
+              } else if (item.status === 'Preparing') {
+                nodeBg = 'background: rgba(255, 160, 0, 0.18); color: #FFB300; border: 2px solid #FFB300; box-shadow: 0 0 12px rgba(255, 179, 0, 0.35);';
+                topColor = '#FFB300';
+                bottomColor = '#FFB300';
+                labelHtml = '<span style="font-size: 0.72rem; font-weight: 700; color: #FFB300; white-space: nowrap; margin-top: 8px;">Serving</span>';
+              }
+
+              return `
+                <div style="display: flex; flex-direction: column; align-items: center; min-width: 62px; flex-shrink: 0;">
+                  <div style="width: 52px; height: 52px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; transition: all 0.3s ease; ${nodeBg}">
+                    <span style="font-size: 0.63rem; font-weight: 800; opacity: 0.9; line-height: 1; margin-bottom: 1px; color: ${topColor};">${topText}</span>
+                    <span style="font-size: 0.88rem; font-weight: 950; line-height: 1.05; color: ${bottomColor};">${bottomText}</span>
+                  </div>
+                  ${labelHtml}
                 </div>
-                <span style="font-size: 0.68rem; font-weight: 700; color: ${item.is_customer ? 'var(--accent-gold)' : 'var(--text-muted)'}; white-space: nowrap;">
-                  ${item.is_customer ? '⭐ YOU' : (item.status === 'Preparing' ? 'Serving' : 'Queued')}
-                </span>
-              </div>
-              ${index < active_queue_list.length - 1 ? '<div style="height: 2px; width: 16px; background: var(--border-color); flex-shrink: 0; margin-bottom: 18px;"></div>' : ''}
-            `).join('')}
+                ${index < active_queue_list.length - 1 ? '<div style="height: 2px; width: 22px; background: rgba(255, 183, 77, 0.22); flex-shrink: 0; align-self: center; margin-bottom: 24px;"></div>' : ''}
+              `;
+            }).join('')}
           </div>
         </div>
       `;
