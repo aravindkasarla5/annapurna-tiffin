@@ -3265,17 +3265,19 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
         finalPayMethod = 'REFERRAL';
         finalPayStatus = 'REFERRAL';
         netAmount = 0; // 100% paid by referral wallet
-        refTxId = 'REF-TXN-' + Date.now().toString().slice(-6) + Math.floor(1000 + Math.random() * 9000);
+        refTxId = 'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        const custRefTxId = await generateCustomerReferralTxId();
 
         // Deduct exact order amount atomically from user's wallet
         await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
 
         // Insert Wallet Transaction Record
         await tx.query(
-          `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+          `INSERT INTO wallet_transactions (id, customer_tx_id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
           [
             refTxId,
+            custRefTxId,
             req.user.id,
             grand_total,
             'DEBIT',
@@ -3328,12 +3330,14 @@ app.post('/api/orders', authenticateToken, requireRole('CUSTOMER'), orderLimiter
           if (refDeduct > 0) {
             walletDeducted = refDeduct;
             const remainingBal = currentWallet - refDeduct;
+            const custRefTxId = await generateCustomerReferralTxId();
             await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
             await tx.query(
-              `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+              `INSERT INTO wallet_transactions (id, customer_tx_id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
               [
                 'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                custRefTxId,
                 req.user.id,
                 refDeduct,
                 'DEBIT',
@@ -3659,11 +3663,13 @@ app.put('/api/orders/:id/modify', authenticateToken, requireRole('CUSTOMER'), as
 
         const walletDiff = originalWalletDeducted - grandTotal;
         if (walletDiff !== 0) {
+          const custRefTxId = await generateCustomerReferralTxId();
           await tx.query(
-            `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+            `INSERT INTO wallet_transactions (id, customer_tx_id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
             [
               'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+              custRefTxId,
               req.user.id,
               Math.abs(walletDiff),
               walletDiff > 0 ? 'CREDIT' : 'DEBIT',
@@ -3791,11 +3797,13 @@ app.post('/api/orders/:id/cancel', authenticateToken, requireRole('CUSTOMER'), a
         newWalletBal = currentWallet + walletDeducted;
         await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [newWalletBal, req.user.id]);
 
+        const custRefTxId = await generateCustomerReferralTxId();
         await tx.query(
-          `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+          `INSERT INTO wallet_transactions (id, customer_tx_id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
           [
             'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            custRefTxId,
             req.user.id,
             walletDeducted,
             'CREDIT',
@@ -5128,11 +5136,13 @@ app.post('/api/phonepe/initiate', optionalAuth, async (req, res) => {
           if (walletDeducted > 0) {
             const remainingBal = currentWallet - walletDeducted;
             await tx.query('UPDATE users SET wallet_balance = $1 WHERE id = $2;', [remainingBal, req.user.id]);
+            const custRefTxId = await generateCustomerReferralTxId();
             await tx.query(
-              `INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+              `INSERT INTO wallet_transactions (id, customer_tx_id, user_id, amount, type, description, date_time, order_id, balance_before, balance_after, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
               [
                 'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                custRefTxId,
                 req.user.id,
                 walletDeducted,
                 'DEBIT',
@@ -5891,6 +5901,16 @@ app.get('/api/stats', authenticateToken, requireRole('OWNER'), async (req, res) 
 // REFERRAL & EARN SYSTEM API
 // =========================================================================
 
+async function generateCustomerReferralTxId() {
+  try {
+    const nextVal = await db.getNextCounter('referral_transaction_counter');
+    return `REF-${nextVal}`;
+  } catch (err) {
+    console.error('Error generating customer referral tx ID:', err);
+    return `REF-${Date.now().toString().slice(-6)}`;
+  }
+}
+
 async function checkAndProcessReferralReward(customerId, orderNum) {
   try {
     const refRes = await db.query("SELECT * FROM referrals WHERE referred_id = $1 AND status = 'Pending' LIMIT 1;", [customerId]);
@@ -5898,10 +5918,10 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
     const refRecord = refRes.rows[0];
 
     // Check if this is customer's first order
-    const orderCountRes = await db.query("SELECT COUNT(*) FROM orders WHERE customer_id = $1 AND order_number != $2 AND order_status != 'Cancelled';", [customerId, orderNum]);
-    const previousOrdersCount = Number(orderCountRes.rows[0]?.count || 0);
+    const completedOrdersRes = await db.query("SELECT COUNT(*) as c FROM orders WHERE customer_id = $1 AND order_status = 'Completed';", [customerId]);
+    const completedCount = parseInt(completedOrdersRes.rows[0]?.c || completedOrdersRes.rows[0]?.['COUNT(*)'] || '0', 10);
 
-    if (previousOrdersCount === 0) {
+    if (completedCount === 1) {
       // Get currently configured Owner referral amount dynamically
       const settingsRes = await db.query('SELECT referral FROM settings WHERE id = 1;');
       let settingsReferral = settingsRes.rows[0]?.referral || {};
@@ -5921,11 +5941,12 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
       if (refRecord.referrer_id) {
         await db.query("UPDATE users SET wallet_balance = wallet_balance + $1 WHERE id = $2;", [rewardAmt, refRecord.referrer_id]);
 
-        const refTxId = 'REF-TXN-' + Date.now().toString().slice(-6) + Math.floor(1000 + Math.random() * 9000);
+        const refTxId = 'wtx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+        const custRefTxId = await generateCustomerReferralTxId();
         // Record Wallet Transaction
         await db.query(
-          "INSERT INTO wallet_transactions (id, user_id, amount, type, description, date_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7);",
-          [refTxId, refRecord.referrer_id, rewardAmt, 'CREDIT', `Referral reward for ${refRecord.referred_name || 'friend'}'s first order (#${orderNum})`, new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }), 'Earned']
+          "INSERT INTO wallet_transactions (id, customer_tx_id, user_id, amount, type, description, date_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
+          [refTxId, custRefTxId, refRecord.referrer_id, rewardAmt, 'CREDIT', `Referral reward for ${refRecord.referred_name || 'friend'}'s first order (#${orderNum})`, new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }), 'Earned']
         );
 
         // Send Notification to Referrer
@@ -5983,17 +6004,21 @@ app.get('/api/referrals/transactions', authenticateToken, async (req, res) => {
       `SELECT * FROM wallet_transactions 
        WHERE user_id = $1 AND (
          id LIKE 'REF-%' OR 
+         customer_tx_id LIKE 'REF-%' OR 
          type IN ('CREDIT', 'DEBIT', 'Referral Reward', 'Used Order') OR 
-         description ILIKE '%referral%' OR 
-         description ILIKE '%used order%'
+         LOWER(description) LIKE '%referral%' OR 
+         LOWER(description) LIKE '%used order%'
        )
        ORDER BY created_at DESC, date_time DESC;`,
       [req.user.id]
     );
-    const txs = (txRes.rows || []).map(tx => {
+    let txs = (txRes.rows || []).map(tx => {
       const isCredit = (tx.type || '').toUpperCase() === 'CREDIT' || (tx.status || '').toUpperCase() === 'EARNED' || (tx.description || '').toLowerCase().includes('referral reward');
+      const displayId = tx.customer_tx_id || (tx.id && tx.id.startsWith('REF-') ? tx.id : null) || tx.id;
       return {
-        id: tx.id,
+        id: displayId,
+        customer_tx_id: displayId,
+        internal_id: tx.id,
         user_id: tx.user_id,
         amount: Number(tx.amount || 0),
         type: isCredit ? 'Referral Reward' : 'Used Order',
@@ -6006,6 +6031,18 @@ app.get('/api/referrals/transactions', authenticateToken, async (req, res) => {
         created_at: tx.created_at
       };
     });
+
+    const queryTerm = (req.query.q || req.query.search || '').toString().trim().toLowerCase();
+    if (queryTerm) {
+      txs = txs.filter(t => 
+        (t.id || '').toLowerCase().includes(queryTerm) ||
+        (t.internal_id || '').toLowerCase().includes(queryTerm) ||
+        (t.description || '').toLowerCase().includes(queryTerm) ||
+        (t.type || '').toLowerCase().includes(queryTerm) ||
+        (t.status || '').toLowerCase().includes(queryTerm)
+      );
+    }
+
     res.json({ success: true, data: { transactions: txs } });
   } catch (err) {
     console.error('Fetch Referral Transactions Error:', err);
@@ -6018,7 +6055,7 @@ app.get('/api/referrals/transactions/:id/details', authenticateToken, async (req
   try {
     const txId = req.params.id;
     const txRes = await db.query(
-      `SELECT * FROM wallet_transactions WHERE id = $1 AND user_id = $2;`,
+      `SELECT * FROM wallet_transactions WHERE (customer_tx_id = $1 OR id = $1) AND user_id = $2;`,
       [txId, req.user.id]
     );
     if (!txRes.rows || txRes.rows.length === 0) {
@@ -6026,6 +6063,7 @@ app.get('/api/referrals/transactions/:id/details', authenticateToken, async (req
     }
     const tx = txRes.rows[0];
     const isCredit = (tx.type || '').toUpperCase() === 'CREDIT' || (tx.status || '').toUpperCase() === 'EARNED' || (tx.description || '').toLowerCase().includes('referral reward');
+    const displayId = tx.customer_tx_id || (tx.id && tx.id.startsWith('REF-') ? tx.id : null) || tx.id;
 
     let orderDetails = null;
     if (tx.order_id) {
@@ -6056,7 +6094,9 @@ app.get('/api/referrals/transactions/:id/details', authenticateToken, async (req
     res.json({
       success: true,
       data: {
-        id: tx.id,
+        id: displayId,
+        customer_tx_id: displayId,
+        internal_id: tx.id,
         user_id: tx.user_id,
         amount: Number(tx.amount || 0),
         type: isCredit ? 'Referral Reward' : 'Used Order',

@@ -11022,8 +11022,9 @@ class TiffinApp {
                 ? `<span style="font-weight: 800; color: #4CAF50; white-space: nowrap;">+₹${Number(tx.amount || 0).toFixed(2)}</span>`
                 : `<span style="font-weight: 800; color: #FF9800; white-space: nowrap;">-₹${Number(tx.amount || 0).toFixed(2)}</span>`;
 
+              const displayTxId = tx.customer_tx_id || (tx.id && tx.id.startsWith('REF-') ? tx.id : null) || tx.id;
               const actionHtml = `
-                <button type="button" class="btn-wallet-action-sm" onclick="app.viewReferralTransactionDetails('${tx.id}')">
+                <button type="button" class="btn-wallet-action-sm" onclick="app.viewReferralTransactionDetails('${displayTxId}')">
                   <i class="fa-solid fa-circle-info"></i> View Details
                 </button>
               `;
@@ -11031,7 +11032,7 @@ class TiffinApp {
               return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                   <td style="padding: 10px; color: var(--text-muted); white-space: nowrap;">${tx.date_time || new Date(tx.created_at).toLocaleString('en-IN')}</td>
-                  <td style="padding: 10px; font-family: monospace; font-weight: 700; color: var(--accent-gold); white-space: nowrap;">${tx.id}</td>
+                  <td style="padding: 10px; font-family: monospace; font-weight: 700; color: var(--accent-gold); white-space: nowrap;">${displayTxId}</td>
                   <td style="padding: 10px; color: #FFF; font-weight: 600; white-space: nowrap;">${typeText}</td>
                   <td style="padding: 10px; white-space: nowrap;">${amtDisplay}</td>
                   <td style="padding: 10px; white-space: nowrap;">${statusBadge}</td>
@@ -11144,7 +11145,7 @@ class TiffinApp {
               <span>Referral Balance After: <strong style="color: var(--primary);">₹${Number(d.balance_after).toFixed(2)}</strong></span>
             </div>
             <div style="margin-top: 8px; font-size: 0.78rem; color: var(--accent-gold); font-family: monospace; font-weight: 700;">
-              Transaction ID: ${d.id}
+              Transaction ID: ${d.customer_tx_id || d.id}
             </div>
           </div>
         `;
@@ -11176,7 +11177,7 @@ class TiffinApp {
               <span>Referral Balance After: <strong style="color: var(--primary);">₹${Number(d.balance_after).toFixed(2)}</strong></span>
             </div>
             <div style="margin-top: 8px; font-size: 0.78rem; color: var(--accent-gold); font-family: monospace; font-weight: 700;">
-              Transaction ID: ${d.id}
+              Transaction ID: ${d.customer_tx_id || d.id}
             </div>
           </div>
         `;

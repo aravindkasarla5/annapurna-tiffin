@@ -244,6 +244,7 @@ async function initDatabase() {
 
     `CREATE TABLE IF NOT EXISTS wallet_transactions (
       id VARCHAR(100) PRIMARY KEY,
+      customer_tx_id VARCHAR(100),
       user_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
       amount NUMERIC(10, 2) NOT NULL,
       type VARCHAR(20) NOT NULL,
@@ -805,6 +806,10 @@ async function initDatabase() {
     if (!redSeqRes.rows || redSeqRes.rows.length === 0) {
       await query(`INSERT INTO counters (name, current_value) VALUES ('redemption_seq', 1001);`);
     }
+    const refCounterRes = await query(`SELECT current_value FROM counters WHERE name = 'referral_transaction_counter';`);
+    if (!refCounterRes.rows || refCounterRes.rows.length === 0) {
+      await query(`INSERT INTO counters (name, current_value) VALUES ('referral_transaction_counter', 9);`);
+    }
 
     // Seed default subscription plans if table is empty
     const plansCheck = await query(`SELECT COUNT(*) as cnt FROM subscription_plans;`);
@@ -882,6 +887,7 @@ async function initDatabase() {
         await query(`ALTER TABLE password_resets ADD COLUMN IF NOT EXISTS attempts INT DEFAULT 0;`);
         await query(`ALTER TABLE password_resets ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false;`);
         await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'SUCCESS';`);
+        await query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS customer_tx_id VARCHAR(100);`);
         await query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(100) DEFAULT 'ONLINE';`);
         await query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS utr_number VARCHAR(100);`);
         await query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS payment_screenshot TEXT;`);
@@ -942,6 +948,7 @@ async function initDatabase() {
       await safeAlter(`ALTER TABLE password_resets ADD COLUMN attempts INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE password_resets ADD COLUMN is_verified INTEGER DEFAULT 0;`);
       await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN status TEXT DEFAULT 'SUCCESS';`);
+      await safeAlter(`ALTER TABLE wallet_transactions ADD COLUMN customer_tx_id TEXT;`);
       await safeAlter(`ALTER TABLE food_member_cards ADD COLUMN reminded_7d_at TEXT;`);
       await safeAlter(`ALTER TABLE food_member_cards ADD COLUMN reminded_3d_at TEXT;`);
       await safeAlter(`ALTER TABLE food_member_cards ADD COLUMN reminded_1d_at TEXT;`);
@@ -973,6 +980,31 @@ async function initDatabase() {
     }
   } catch (idxErr) {
     console.warn('Notice regarding unique index creation on users table:', idxErr.message);
+  }
+
+  // Safe Backfill Migration for existing Referral Transactions without customer_tx_id
+  try {
+    const unassignedTxs = await query(
+      `SELECT * FROM wallet_transactions 
+       WHERE (customer_tx_id IS NULL OR customer_tx_id = '') 
+         AND (
+           id LIKE 'REF-%' OR 
+           type IN ('CREDIT', 'DEBIT', 'Referral Reward', 'Used Order') OR 
+           LOWER(description) LIKE '%referral%' OR 
+           LOWER(description) LIKE '%used order%'
+         )
+       ORDER BY created_at ASC, date_time ASC;`
+    );
+    if (unassignedTxs.rows && unassignedTxs.rows.length > 0) {
+      for (const txRow of unassignedTxs.rows) {
+        const nextVal = await getNextCounter('referral_transaction_counter');
+        const refTxId = `REF-${nextVal}`;
+        await query(`UPDATE wallet_transactions SET customer_tx_id = $1 WHERE id = $2;`, [refTxId, txRow.id]);
+      }
+      console.log(`✓ Backfilled ${unassignedTxs.rows.length} existing referral transactions with customer-facing REF IDs.`);
+    }
+  } catch (migErr) {
+    console.warn('Notice regarding referral transactions backfill migration:', migErr.message);
   }
 
   console.log('PostgreSQL database schemas successfully initialized.');
