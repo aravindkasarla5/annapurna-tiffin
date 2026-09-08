@@ -18865,7 +18865,7 @@ class TiffinApp {
           </label>
         </div>
 
-        <button type="button" id="btnSubmitSubPayment" class="btn-primary-block" onclick="app.confirmSubscriptionPurchase('${plan.id}')" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800; font-size: 1rem;">
+        <button type="button" id="btnSubmitSubPayment" class="btn-primary-block" onclick="app.confirmSubscriptionPurchase('${plan.id}', event)" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800; font-size: 1rem;">
           <i class="fa-solid fa-lock"></i> Pay ₹${parseFloat(plan.price).toLocaleString('en-IN')} & Subscribe
         </button>
       `;
@@ -18916,7 +18916,9 @@ class TiffinApp {
     }
   }
 
-  async confirmSubscriptionPurchase(planId) {
+  async confirmSubscriptionPurchase(planId, evt) {
+    if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+    if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
     const radMethod = document.querySelector('input[name="radSubPaymentMethod"]:checked');
     const paymentMethod = radMethod ? radMethod.value : 'ONLINE';
     const utrNumber = (document.getElementById('txtSubUtrNumber')?.value || '').trim();
