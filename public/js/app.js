@@ -2019,6 +2019,7 @@ class TiffinApp {
     const btnCart = document.getElementById('btnCart');
     const btnNotif = document.getElementById('btnNotifications');
     const btnProfile = document.getElementById('btnHeaderProfile');
+    const homeHeroWalletBadge = document.getElementById('homeHeroWalletBadge');
     const homeHeroWalletBal = document.getElementById('homeHeroWalletBal');
     const lblProfile = document.getElementById('headerProfileLabel');
     const bannerGreeting = document.getElementById('bannerGreeting');
@@ -2041,9 +2042,16 @@ class TiffinApp {
         }
       }
 
-      if (homeHeroWalletBal) {
-        const balNum = Number(this.currentUser.customer_wallet_balance || 0);
-        homeHeroWalletBal.innerText = `₹${balNum.toFixed(2)}`;
+      // Wallet Balance Component (Visible ONLY for authenticated customers)
+      if (this.currentUser.role === 'CUSTOMER') {
+        if (homeHeroWalletBadge) homeHeroWalletBadge.classList.remove('hidden');
+        if (homeHeroWalletBal) {
+          const balNum = Number(this.currentUser.customer_wallet_balance || 0);
+          homeHeroWalletBal.innerText = `₹${balNum.toFixed(2)}`;
+        }
+      } else {
+        if (homeHeroWalletBadge) homeHeroWalletBadge.classList.add('hidden');
+        if (homeHeroWalletBal) homeHeroWalletBal.innerText = '';
       }
 
       // 3. Profile Card Badge with Full Name (Visible ONLY when logged in)
@@ -2105,7 +2113,9 @@ class TiffinApp {
       if (btnLogin) btnLogin.classList.remove('hidden');
       if (btnRegister) btnRegister.classList.remove('hidden');
 
-      // HIDE all authenticated buttons for Guests
+      // HIDE all authenticated buttons & wallet badge for Guests
+      if (homeHeroWalletBadge) homeHeroWalletBadge.classList.add('hidden');
+      if (homeHeroWalletBal) homeHeroWalletBal.innerText = '';
       if (btnNotif) btnNotif.classList.add('hidden');
       if (btnCart) btnCart.classList.add('hidden');
       if (btnProfile) btnProfile.classList.add('hidden');

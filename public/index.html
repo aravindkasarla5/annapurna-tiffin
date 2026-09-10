@@ -323,7 +323,7 @@
             traditional family love.
           </p>
           <div class="hero-badges-wrapper">
-            <span class="hero-badge" onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerWallet' : 'secCustomerWallet')" style="cursor: pointer;" title="View Wallet Balance"><i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i> Wallet: <strong id="homeHeroWalletBal">₹0.00</strong></span>
+            <span id="homeHeroWalletBadge" class="hero-badge hidden" onclick="app.switchView(app.currentRole === 'OWNER' ? 'secOwnerWallet' : 'secCustomerWallet')" style="cursor: pointer;" title="View Wallet Balance"><i class="fa-solid fa-wallet" style="color: var(--accent-gold);"></i> Wallet: <strong id="homeHeroWalletBal"></strong></span>
             <span class="hero-badge"><i class="fa-solid fa-fire-flame-curved" style="color: var(--primary);"></i> Hot &
               Fresh Daily</span>
             <span class="hero-badge"><i class="fa-solid fa-mortar-pestle" style="color: var(--accent-gold);"></i>
