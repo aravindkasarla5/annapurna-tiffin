@@ -648,6 +648,8 @@ async function initDatabase() {
       meal_number INT NOT NULL,
       secure_token VARCHAR(255) NOT NULL UNIQUE,
       status VARCHAR(50) DEFAULT 'AVAILABLE',
+      order_id VARCHAR(100),
+      order_number VARCHAR(100),
       redeemed_at TIMESTAMPTZ,
       redemption_id VARCHAR(100),
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -921,6 +923,8 @@ async function initDatabase() {
         await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS action_url VARCHAR(255);`);
         await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_order_id VARCHAR(100);`);
         await query(`ALTER TABLE subscription_redemptions ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
+        await query(`ALTER TABLE subscription_meal_passes ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
+        await query(`ALTER TABLE subscription_meal_passes ADD COLUMN IF NOT EXISTS order_number VARCHAR(100);`);
       } catch (aErr) {
         console.warn('PostgreSQL DDL Notice:', aErr.message);
       }

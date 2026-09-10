@@ -19355,21 +19355,28 @@ class TiffinApp {
       grid.innerHTML = json.passes.map(pass => {
         const passStatusUpper = (pass.status || '').toUpperCase();
         const isAvailable = passStatusUpper === 'AVAILABLE';
+        const isOrdered = passStatusUpper === 'ORDERED';
         const isUsed = passStatusUpper === 'USED';
 
         const redeemedFormatted = pass.redeemed_at
           ? new Date(pass.redeemed_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
           : 'N/A';
 
+        let borderStyle = 'var(--border-color)';
+        if (isAvailable) borderStyle = '#4CAF50';
+        else if (isOrdered) borderStyle = '#FF9800';
+
         return `
-          <div style="background: var(--bg-surface-elevated); border: 1px solid ${isAvailable ? '#4CAF50' : 'var(--border-color)'}; border-radius: 16px; padding: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); text-align: center; position: relative;">
+          <div style="background: var(--bg-surface-elevated); border: 1px solid ${borderStyle}; border-radius: 16px; padding: 16px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); text-align: center; position: relative;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
               <span style="font-size: 0.95rem; font-weight: 800; color: #FFF;">🎫 Pass #${pass.meal_number}</span>
               ${isAvailable
                 ? '<span style="background: rgba(76, 175, 80, 0.15); color: #81C784; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">🟢 AVAILABLE</span>'
-                : (isUsed
-                  ? '<span style="background: rgba(255, 152, 0, 0.15); color: #FF9800; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">✓ USED</span>'
-                  : '<span style="background: rgba(255, 82, 82, 0.15); color: #FF5252; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">🔴 EXPIRED</span>')
+                : (isOrdered
+                  ? '<span style="background: rgba(255, 152, 0, 0.15); color: #FF9800; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">🟠 ORDERED / READY FOR SCAN</span>'
+                  : (isUsed
+                    ? '<span style="background: rgba(158, 158, 158, 0.15); color: #B0BEC5; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">✓ USED</span>'
+                    : '<span style="background: rgba(255, 82, 82, 0.15); color: #FF5252; padding: 2px 10px; border-radius: 10px; font-weight: 700; font-size: 0.75rem;">🔴 EXPIRED</span>'))
               }
             </div>
 
@@ -19389,6 +19396,15 @@ class TiffinApp {
                   <i class="fa-solid fa-qrcode"></i> QR Code
                 </button>
               </div>
+            ` : (isOrdered ? `
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="font-size: 0.78rem; color: #FFB74D; background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); padding: 6px 10px; border-radius: 8px; text-align: center;">
+                  <i class="fa-solid fa-clock"></i> Order Created ${pass.order_number ? '(#' + escapeHtml(pass.order_number) + ')' : ''}. Show QR Code to Owner when collecting meal.
+                </div>
+                <button type="button" class="btn-primary-block" onclick="app.showMealPassQrModal('${pass.secure_token}', ${pass.meal_number}, '${escapeHtml(pass.plan_name)}')" style="width: 100%; background: linear-gradient(135deg, #00E676, #00B0FF); color: #1A1A2E; font-weight: 800;">
+                  <i class="fa-solid fa-qrcode"></i> QR Code
+                </button>
+              </div>
             ` : `
               <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px; margin-bottom: 10px;">
                 ${isUsed ? `Redeemed: <br><strong style="color: #FFF;">${redeemedFormatted}</strong>` : 'Expired'}
@@ -19396,7 +19412,7 @@ class TiffinApp {
               <button type="button" class="btn-secondary-outline" onclick="app.deleteMealPass('${pass.id}')" style="color: #FF5252; border: 1.5px solid #FF5252; background: rgba(255, 82, 82, 0.15); padding: 8px 12px; font-size: 0.8rem; border-radius: 10px; font-weight: 800; width: 100%; cursor: pointer;">
                 <i class="fa-solid fa-trash"></i> Delete Pass
               </button>
-            `}
+            `)}
           </div>
         `;
       }).join('');

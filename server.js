@@ -13515,8 +13515,13 @@ app.get('/api/subscriptions/my-passes', authenticateToken, async (req, res) => {
     }
 
     if (status && status !== 'ALL') {
-      params.push(status.toUpperCase());
-      queryText += ` AND UPPER(p.status) = $${params.length}`;
+      const uStatus = status.toUpperCase();
+      if (uStatus === 'AVAILABLE') {
+        queryText += ` AND UPPER(p.status) IN ('AVAILABLE', 'ORDERED')`;
+      } else {
+        params.push(uStatus);
+        queryText += ` AND UPPER(p.status) = $${params.length}`;
+      }
     }
 
     queryText += ' ORDER BY p.meal_number ASC, p.created_at DESC;';
@@ -13780,35 +13785,10 @@ app.post('/api/subscriptions/place-order', authenticateToken, async (req, res) =
         [newPayId, orderNum, newOrderId, customerId, req.user.name, req.user.mobile, deliveryFeeAmount, 'SUBSCRIPTION_MEMBERSHIP', 'Subscription Membership', `Subscription Order #${orderNum} - Covered by ${sub.plan_name}`]
       );
 
-      // 9. Mark Pass as USED
+      // 9. Mark Pass as ORDERED (Linked to Order, pending QR scan)
       await tx.query(
-        `UPDATE subscription_meal_passes SET status = 'USED', redeemed_at = $1, redemption_id = $2 WHERE id = $3;`,
-        [nowIso, newOrderId, pass.id]
-      );
-
-      // 10. Update Subscription used_meals count
-      const newUsed = usedMeals + 1;
-      const isNowCompleted = newUsed >= totalMeals;
-      const newSubStatus = isNowCompleted ? 'COMPLETED' : sub.status;
-
-      await tx.query(
-        `UPDATE subscriptions SET used_meals = $1, status = $2, updated_at = $3 WHERE id = $4;`,
-        [newUsed, newSubStatus, nowIso, sub.id]
-      );
-
-      // 11. Record Redemption Audit Log
-      const redDbId = 'red_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
-      const redRef = 'SUB_ORD_' + orderNum;
-
-      await tx.query(
-        `INSERT INTO subscription_redemptions (
-          id, redemption_reference, meal_pass_id, subscription_id, customer_id, customer_name,
-          customer_mobile, plan_name, meal_number, order_id, redeemed_at, redeemed_by, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'SUCCESS');`,
-        [
-          redDbId, redRef, pass.id, sub.id, customerId, req.user.name,
-          req.user.mobile, sub.plan_name, pass.meal_number, newOrderId, nowIso, req.user.name
-        ]
+        `UPDATE subscription_meal_passes SET status = 'ORDERED', order_id = $1, order_number = $2 WHERE id = $3;`,
+        [newOrderId, orderNum, pass.id]
       );
 
       // Fetch created order record to return
@@ -13819,9 +13799,9 @@ app.post('/api/subscriptions/place-order', authenticateToken, async (req, res) =
         order: createdOrder,
         order_number: orderNum,
         pickup_pin: pickupPin,
-        remaining_meals: Math.max(0, totalMeals - newUsed),
+        remaining_meals: Math.max(0, totalMeals - usedMeals),
         pass_number: pass.meal_number,
-        is_completed: isNowCompleted
+        is_completed: false
       };
     });
 
@@ -13949,7 +13929,7 @@ app.post('/api/subscriptions/verify-pass', authenticateToken, requireOwnerOrKitc
       used_meals: used,
       remaining_meals: remaining,
       expiry_date: pass.expiry_date,
-      status: 'AVAILABLE'
+      status: pass.status || 'AVAILABLE'
     });
   } catch (err) {
     console.error('Error verifying meal pass:', err);
@@ -13987,7 +13967,7 @@ app.post('/api/subscriptions/redeem-pass', authenticateToken, requireOwnerOrKitc
       const pass = passRes.rows[0];
 
       // PART T: Double Redemption Guard
-      if (pass.status !== 'AVAILABLE') {
+      if (pass.status !== 'AVAILABLE' && pass.status !== 'ORDERED') {
         const redemptionRes = await tx.query('SELECT redeemed_at FROM subscription_redemptions WHERE meal_pass_id = $1 LIMIT 1;', [pass.id]);
         const redeemedAtStr = redemptionRes.rows[0]?.redeemed_at
           ? new Date(redemptionRes.rows[0].redeemed_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -14015,11 +13995,11 @@ app.post('/api/subscriptions/redeem-pass', authenticateToken, requireOwnerOrKitc
       const redDbId = 'red_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
       const nowIso = new Date().toISOString();
 
-      // ATOMIC UPDATE: Meal Pass AVAILABLE -> USED (Row-matching lock)
+      // ATOMIC UPDATE: Meal Pass AVAILABLE or ORDERED -> USED (Row-matching lock)
       const updatePassRes = await tx.query(
         `UPDATE subscription_meal_passes
          SET status = 'USED', redeemed_at = $1, redemption_id = $2
-         WHERE id = $3 AND status = 'AVAILABLE';`,
+         WHERE id = $3 AND status IN ('AVAILABLE', 'ORDERED');`,
         [nowIso, redDbId, pass.id]
       );
 
@@ -14040,11 +14020,11 @@ app.post('/api/subscriptions/redeem-pass', authenticateToken, requireOwnerOrKitc
       await tx.query(
         `INSERT INTO subscription_redemptions (
           id, redemption_reference, meal_pass_id, subscription_id, customer_id, customer_name,
-          customer_mobile, plan_name, meal_number, redeemed_at, redeemed_by, status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'SUCCESS');`,
+          customer_mobile, plan_name, meal_number, order_id, redeemed_at, redeemed_by, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'SUCCESS');`,
         [
           redDbId, redFormattedId, pass.id, pass.sub_db_id, pass.customer_id, pass.customer_name,
-          pass.customer_mobile, pass.plan_name, pass.meal_number, nowIso, req.user.name || 'Owner'
+          pass.customer_mobile, pass.plan_name, pass.meal_number, pass.order_id || null, nowIso, req.user.name || 'Owner'
         ]
       );
 
