@@ -290,6 +290,7 @@ class TiffinApp {
 
     this.bindGlobalQuickActionListeners();
     this.startLivePrepTicker();
+    this.detectReferralLinkInUrl();
 
     // Restore session and token from localStorage if available
     const savedToken = localStorage.getItem('tiffin_token') || sessionStorage.getItem('tiffin_token');
@@ -1258,7 +1259,10 @@ class TiffinApp {
     if (regPassword) regPassword.value = '';
     if (regConfirmPassword) regConfirmPassword.value = '';
     if (regAddress) regAddress.value = '';
-    if (regReferralCode) regReferralCode.value = '';
+    if (regReferralCode) {
+      const savedRef = localStorage.getItem('annapurna_ref_code') || sessionStorage.getItem('annapurna_ref_code');
+      regReferralCode.value = savedRef || '';
+    }
 
     const forgotIdent = document.getElementById('forgotIdentifier');
     if (forgotIdent) forgotIdent.value = '';
@@ -10988,6 +10992,43 @@ class TiffinApp {
   // REFERRAL SYSTEM (REFER & EARN) CLIENT METHODS
   // =========================================================================
 
+  detectReferralLinkInUrl() {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      let refCode = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('referral_code');
+
+      if (!refCode) {
+        refCode = localStorage.getItem('annapurna_ref_code') || sessionStorage.getItem('annapurna_ref_code');
+      }
+
+      if (refCode) {
+        const cleanCode = refCode.trim().toUpperCase();
+        localStorage.setItem('annapurna_ref_code', cleanCode);
+        sessionStorage.setItem('annapurna_ref_code', cleanCode);
+        document.cookie = `annapurna_ref_code=${cleanCode}; path=/; max-age=${30*24*60*60}`;
+
+        const regInput = document.getElementById('regReferralCode');
+        if (regInput && !regInput.value) {
+          regInput.value = cleanCode;
+        }
+
+        fetch(`${API_BASE}/referrals/track-open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ referral_code: cleanCode })
+        }).then(res => res.json()).then(data => {
+          if (data.success && data.referrer_name) {
+            console.log(`[Referral Engine] Referral link valid. Referred by ${data.referrer_name}`);
+          }
+        }).catch(err => {
+          console.warn('[Referral Engine] Track open notice:', err.message);
+        });
+      }
+    } catch (e) {
+      console.warn('[Referral Engine] Detect error:', e);
+    }
+  }
+
   async fetchReferralStats() {
     if (!this.currentUser) return;
 
@@ -10999,6 +11040,7 @@ class TiffinApp {
         this.renderReferralDashboard();
       }
       this.loadCustomerReferralTransactions();
+      this.loadReferralLifecycleData();
     } catch (err) {
       console.error('Error fetching referral stats:', err);
     }
@@ -11357,20 +11399,128 @@ class TiffinApp {
     `).join('');
   }
 
-  copyReferralCode() {
+  async loadReferralLifecycleData() {
+    if (!this.currentUser) return;
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/referrals/lifecycle`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        this.renderReferralLifecycle(json.data);
+      }
+    } catch (err) {
+      console.error('Error loading referral lifecycle:', err);
+    }
+  }
+
+  renderReferralLifecycle(items) {
+    const tableBody = document.getElementById('refLifecycleTableBody');
+    if (!tableBody) return;
+
+    if (!items || items.length === 0) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; padding: 2rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-route" style="font-size: 2rem; color: var(--accent-gold); margin-bottom: 0.5rem; opacity: 0.6;"></i>
+            <p style="margin:0;">No referral invitation activity recorded yet. Share your unique link to invite friends!</p>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tableBody.innerHTML = items.map((item, idx) => {
+      const refNum = `Referral #${items.length - idx}`;
+      const nameDisp = item.referred_name || refNum;
+      
+      const createdStr = item.created_at ? new Date(item.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent';
+      const expiryStr = item.expires_at ? new Date(item.expires_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '30 Days';
+
+      let statusBadge = '<span class="status-badge" style="background: rgba(41,182,246,0.2); color: #29B6F6; border: 1px solid #29B6F6; font-weight:700;">📲 Invited</span>';
+      let progressText = '1/5 Link Shared';
+      let progressPct = 20;
+
+      const st = (item.status || '').toUpperCase();
+      if (st === 'REGISTERED') {
+        statusBadge = '<span class="status-badge" style="background: rgba(156,39,176,0.2); color: #AB47BC; border: 1px solid #AB47BC; font-weight:700;">👤 Registered</span>';
+        progressText = '2/5 Registered';
+        progressPct = 40;
+      } else if (st === 'ORDER PENDING' || st === 'PENDING') {
+        statusBadge = '<span class="status-badge" style="background: rgba(255,152,0,0.2); color: #FF9800; border: 1px solid #FF9800; font-weight:700;">⏳ Order Pending</span>';
+        progressText = '3/5 First Order Placed';
+        progressPct = 60;
+      } else if (st === 'QUALIFIED') {
+        statusBadge = '<span class="status-badge" style="background: rgba(76,175,80,0.2); color: #4CAF50; border: 1px solid #4CAF50; font-weight:700;">✅ Qualified</span>';
+        progressText = '4/5 Order Completed';
+        progressPct = 80;
+      } else if (st === 'REWARD EARNED' || st === 'COMPLETED') {
+        statusBadge = '<span class="status-badge" style="background: rgba(255,215,0,0.2); color: #FFD700; border: 1px solid #FFD700; font-weight:800;">🎉 Reward Earned</span>';
+        progressText = '5/5 ₹30 Credited';
+        progressPct = 100;
+      } else if (st === 'REWARD REVERSED') {
+        statusBadge = '<span class="status-badge" style="background: rgba(244,67,54,0.2); color: #F44336; border: 1px solid #F44336; font-weight:700;">🔴 Reward Reversed</span>';
+        progressText = 'Reversed';
+        progressPct = 0;
+      } else if (st === 'EXPIRED') {
+        statusBadge = '<span class="status-badge" style="background: rgba(158,158,158,0.2); color: #9E9E9E; border: 1px solid #9E9E9E; font-weight:700;">⚪ Expired</span>';
+        progressText = 'Link Expired';
+        progressPct = 0;
+      }
+
+      return `
+        <tr style="border-bottom: 1px solid var(--border-color);">
+          <td style="padding: 10px; font-weight: 700; color: #FFF;">
+            <div>${nameDisp}</div>
+            <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: normal;">${refNum}</div>
+          </td>
+          <td style="padding: 10px; color: var(--text-muted); font-size: 0.78rem; white-space: nowrap;">${createdStr}</td>
+          <td style="padding: 10px; color: var(--text-muted); font-size: 0.78rem; white-space: nowrap;">${expiryStr}</td>
+          <td style="padding: 10px; white-space: nowrap;">${statusBadge}</td>
+          <td style="padding: 10px; text-align: right;">
+            <div style="font-size: 0.75rem; font-weight: 700; color: var(--accent-gold); margin-bottom: 4px;">${progressText}</div>
+            <div style="width: 100px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-left: auto;">
+              <div style="width: ${progressPct}%; height: 100%; background: ${progressPct === 100 ? '#FFD700' : 'var(--primary)'}; border-radius: 4px;"></div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async copyReferralCode() {
     const code = this.referralStats?.referral_code || document.getElementById('referralCodeDisplay')?.innerText || '---';
-    navigator.clipboard.writeText(code).then(() => {
-      this.showToast(`Referral Code ${code} copied to clipboard!`, 'success');
+    const siteUrl = window.location.origin.includes('localhost') ? 'https://annapurna-tiffin-1.onrender.com' : window.location.origin;
+    const refUrl = `${siteUrl}/?ref=${code}`;
+
+    // Event 1: Link Created - Log on backend
+    if (this.currentUser) {
+      try {
+        await this.fetchWithAuth(`${API_BASE}/referrals/generate-link`, { method: 'POST' });
+        this.loadReferralLifecycleData();
+      } catch (err) { }
+    }
+
+    navigator.clipboard.writeText(refUrl).then(() => {
+      this.showToast(`Unique referral link copied: ${refUrl}`, 'success');
     }).catch(() => {
       this.showToast(`Referral Code: ${code}`, 'info');
     });
   }
 
-  shareReferralWhatsApp() {
+  async shareReferralWhatsApp() {
     const code = this.referralStats?.referral_code || document.getElementById('referralCodeDisplay')?.innerText || '---';
     const hotelName = this.settings.hotel_name || 'Sri Lakshmi Annapurna Tiffin Center';
     const siteUrl = window.location.origin.includes('localhost') ? 'https://annapurna-tiffin-1.onrender.com' : window.location.origin;
-    const msg = `Hey! Order delicious, authentic South Indian tiffins from ${hotelName}! Use my Referral Code *${code}* during registration to get ₹30 OFF your first order! 🍲✨ Order here: ${siteUrl}`;
+    const refUrl = `${siteUrl}/?ref=${code}`;
+
+    // Event 1: Link Created - Log on backend
+    if (this.currentUser) {
+      try {
+        await this.fetchWithAuth(`${API_BASE}/referrals/generate-link`, { method: 'POST' });
+        this.loadReferralLifecycleData();
+      } catch (err) { }
+    }
+
+    const msg = `Hey! Order delicious, authentic South Indian tiffins from ${hotelName}! Use my Referral Link to get ₹30 OFF your first order! 🍲✨ Order here: ${refUrl}`;
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, '_blank');
   }

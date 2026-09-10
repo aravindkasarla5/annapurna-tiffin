@@ -242,6 +242,27 @@ async function initDatabase() {
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );`,
 
+    `CREATE TABLE IF NOT EXISTS referral_lifecycle (
+      id VARCHAR(100) PRIMARY KEY,
+      referrer_id VARCHAR(100) REFERENCES users(id) ON DELETE CASCADE,
+      referrer_code VARCHAR(50) NOT NULL,
+      referred_id VARCHAR(100) REFERENCES users(id) ON DELETE SET NULL,
+      referred_mobile VARCHAR(50),
+      referred_name VARCHAR(255),
+      status VARCHAR(50) NOT NULL DEFAULT 'Invited',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      opened_at TIMESTAMPTZ,
+      registered_at TIMESTAMPTZ,
+      first_order_at TIMESTAMPTZ,
+      reward_generated_at TIMESTAMPTZ,
+      reversed_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ NOT NULL,
+      ip_address VARCHAR(100),
+      user_agent TEXT,
+      order_number INT,
+      referral_id VARCHAR(100)
+    );`,
+
     `CREATE TABLE IF NOT EXISTS wallet_transactions (
       id VARCHAR(100) PRIMARY KEY,
       customer_tx_id VARCHAR(100),
@@ -743,6 +764,10 @@ async function initDatabase() {
     await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_status ON wallet_topup_requests(status);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_wallet_req_utr ON wallet_topup_requests(utr_number);`);
     await query(`CREATE INDEX IF NOT EXISTS idx_cust_wallet_tx_user ON customer_wallet_transactions(user_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_ref_lifecycle_referrer ON referral_lifecycle(referrer_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_ref_lifecycle_code ON referral_lifecycle(referrer_code);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_ref_lifecycle_referred ON referral_lifecycle(referred_id);`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_ref_lifecycle_status ON referral_lifecycle(status);`);
     try { await query(`ALTER TABLE wallet_transactions ADD COLUMN request_id VARCHAR(100);`); } catch (colErr) {}
     try { await query(`ALTER TABLE orders ADD COLUMN referral_transaction_id VARCHAR(100);`); } catch (colErr) {}
   } catch (idxErr) {

@@ -1251,6 +1251,16 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         return res.status(400).json({ success: false, message: "Self-referral is not allowed." });
       }
 
+      // Check Referral Expiry Mechanism
+      const expiredCheck = await db.query(
+        `SELECT * FROM referral_lifecycle WHERE referrer_id = $1 AND status = 'Invited' AND expires_at < CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1;`,
+        [referrer.id]
+      );
+      if (expiredCheck.rows && expiredCheck.rows.length > 0) {
+        await db.query(`UPDATE referral_lifecycle SET status = 'Expired' WHERE id = $1;`, [expiredCheck.rows[0].id]);
+        return res.status(400).json({ success: false, message: "This referral invitation link has expired." });
+      }
+
       newUser.referred_by = referrer.id;
       newUser.referred_by_code = referrer.referral_code;
     }
@@ -1316,12 +1326,13 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       }
       const rawVal = Number(settingsReferral.referrer_reward);
       const rewardVal = (!isNaN(rawVal) && isFinite(rawVal) && rawVal > 0) ? rawVal : 10;
+      const refId = 'ref_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
 
       await db.query(
         `INSERT INTO referrals (id, referrer_id, referrer_mobile, referrer_name, referred_id, referred_mobile, referred_name, status, reward_amount, date_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
         [
-          'ref_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+          refId,
           referrer.id,
           referrer.mobile,
           referrer.name,
@@ -1334,6 +1345,32 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
         ]
       );
       refMessage = ` ₹${rewardVal} first-order referral linked successfully!`;
+
+      // Event 3: Registration Completed & Status Transition -> 'Order Pending'
+      try {
+        const openRef = await db.query(
+          `SELECT * FROM referral_lifecycle WHERE referrer_id = $1 AND status = 'Invited' AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1;`,
+          [referrer.id]
+        );
+        if (openRef.rows && openRef.rows.length > 0) {
+          await db.query(
+            `UPDATE referral_lifecycle 
+             SET status = 'Order Pending', registered_at = CURRENT_TIMESTAMP, referred_id = $1, referred_mobile = $2, referred_name = $3, referral_id = $4 
+             WHERE id = $5;`,
+            [newUser.id, newUser.mobile, newUser.name, refId, openRef.rows[0].id]
+          );
+        } else {
+          const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          const linkId = 'reflink_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+          await db.query(
+            `INSERT INTO referral_lifecycle (id, referrer_id, referrer_code, referred_id, referred_mobile, referred_name, status, created_at, registered_at, expires_at, referral_id)
+             VALUES ($1, $2, $3, $4, $5, $6, 'Order Pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $7, $8);`,
+            [linkId, referrer.id, referrer.referral_code, newUser.id, newUser.mobile, newUser.name, expiresAt, refId]
+          );
+        }
+      } catch (lcErr) {
+        console.warn('Registration Lifecycle Update Notice:', lcErr.message);
+      }
     }
 
     const token = await generateToken(newUser.id);
@@ -6095,6 +6132,20 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
     if (!refRes.rows || refRes.rows.length === 0) return;
     const refRecord = refRes.rows[0];
 
+    // Expiry Mechanism Check (Feature 1)
+    const lcCheck = await db.query(
+      "SELECT * FROM referral_lifecycle WHERE referred_id = $1 OR referral_id = $2 ORDER BY created_at DESC LIMIT 1;",
+      [customerId, refRecord.id]
+    );
+    const lcRecord = lcCheck.rows[0];
+
+    if (lcRecord && lcRecord.expires_at && new Date(lcRecord.expires_at) < new Date()) {
+      await db.query("UPDATE referrals SET status = 'Expired' WHERE id = $1;", [refRecord.id]);
+      await db.query("UPDATE referral_lifecycle SET status = 'Expired' WHERE id = $1;", [lcRecord.id]);
+      console.log(`Referral invitation ${refRecord.id} has expired. Reward generation aborted.`);
+      return;
+    }
+
     // Check if this is customer's first order
     const completedOrdersRes = await db.query("SELECT COUNT(*) as c FROM orders WHERE customer_id = $1 AND order_status = 'Completed';", [customerId]);
     const completedCount = parseInt(completedOrdersRes.rows[0]?.c || completedOrdersRes.rows[0]?.['COUNT(*)'] || '0', 10);
@@ -6112,6 +6163,14 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
         ? activeRewardAmt
         : Number(refRecord.reward_amount || 10);
 
+      // Event 4: First Order Completed -> Update status to 'Qualified'
+      if (lcRecord) {
+        await db.query(
+          "UPDATE referral_lifecycle SET status = 'Qualified', first_order_at = CURRENT_TIMESTAMP, order_number = $1 WHERE id = $2;",
+          [orderNum, lcRecord.id]
+        );
+      }
+
       // Update referral to Completed with the dynamic reward amount used
       await db.query("UPDATE referrals SET status = 'Completed', order_number = $1, reward_amount = $2 WHERE id = $3;", [orderNum, rewardAmt, refRecord.id]);
 
@@ -6126,6 +6185,14 @@ async function checkAndProcessReferralReward(customerId, orderNum) {
           "INSERT INTO wallet_transactions (id, customer_tx_id, user_id, amount, type, description, date_time, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8);",
           [refTxId, custRefTxId, refRecord.referrer_id, rewardAmt, 'CREDIT', `Referral reward for ${refRecord.referred_name || 'friend'}'s first order (#${orderNum})`, new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }), 'Earned']
         );
+
+        // Event 5: Reward Generated -> Update status to 'Reward Earned'
+        if (lcRecord) {
+          await db.query(
+            "UPDATE referral_lifecycle SET status = 'Reward Earned', reward_generated_at = CURRENT_TIMESTAMP WHERE id = $1;",
+            [lcRecord.id]
+          );
+        }
 
         // Send Notification to Referrer
         await createAndDispatchNotification({
@@ -6172,6 +6239,178 @@ app.get('/api/referrals/stats', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Fetch Referral Stats Error:', err);
     res.status(500).json({ success: false, message: "Failed to fetch referral stats." });
+  }
+});
+
+// POST /api/referrals/generate-link - Generate & track referral link creation (Feature 1, 2, 4)
+app.post('/api/referrals/generate-link', authenticateToken, async (req, res) => {
+  try {
+    const userRes = await db.query('SELECT id, referral_code, name, mobile FROM users WHERE id = $1;', [req.user.id]);
+    const user = userRes.rows[0];
+    if (!user || !user.referral_code) {
+      return res.status(400).json({ success: false, message: 'Referral code not found for user.' });
+    }
+
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const linkId = 'reflink_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+
+    const existing = await db.query(
+      `SELECT * FROM referral_lifecycle WHERE referrer_id = $1 AND status = 'Invited' AND expires_at > CURRENT_TIMESTAMP LIMIT 1;`,
+      [req.user.id]
+    );
+
+    let activeRecord = existing.rows[0];
+    if (!activeRecord) {
+      const insRes = await db.query(
+        `INSERT INTO referral_lifecycle (id, referrer_id, referrer_code, status, created_at, expires_at)
+         VALUES ($1, $2, $3, 'Invited', CURRENT_TIMESTAMP, $4) RETURNING *;`,
+        [linkId, req.user.id, user.referral_code, expiresAt]
+      );
+      activeRecord = insRes.rows[0];
+    }
+
+    const host = req.headers.host || 'localhost';
+    const protocol = req.protocol || 'https';
+    const baseUrl = `${protocol}://${host}`;
+    const referralUrl = `${baseUrl}/?ref=${user.referral_code}`;
+
+    res.json({
+      success: true,
+      data: {
+        referral_code: user.referral_code,
+        referral_url: referralUrl,
+        expires_at: activeRecord?.expires_at || expiresAt,
+        status: activeRecord?.status || 'Invited'
+      }
+    });
+  } catch (err) {
+    console.error('Generate Referral Link Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to generate referral link.' });
+  }
+});
+
+// POST /api/referrals/track-open - Track when someone opens a referral link (Feature 2, 3, 4)
+app.post('/api/referrals/track-open', async (req, res) => {
+  try {
+    const rawRefCode = (req.body.referral_code || '').toString().trim().toUpperCase().replace(/\s+/g, '');
+    if (!rawRefCode) {
+      return res.status(400).json({ success: false, message: 'Referral code required.' });
+    }
+
+    const refUserRes = await db.query('SELECT id, name, referral_code FROM users WHERE UPPER(referral_code) = $1 AND role = $2;', [rawRefCode, 'CUSTOMER']);
+    const referrer = refUserRes.rows[0];
+    if (!referrer) {
+      return res.status(404).json({ success: false, message: 'Invalid referral code.' });
+    }
+
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    const userAgent = (req.headers['user-agent'] || '').slice(0, 255);
+
+    const existing = await db.query(
+      `SELECT * FROM referral_lifecycle WHERE referrer_code = $1 AND status = 'Invited' AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1;`,
+      [referrer.referral_code]
+    );
+
+    if (existing.rows && existing.rows.length > 0) {
+      await db.query(
+        `UPDATE referral_lifecycle SET opened_at = COALESCE(opened_at, CURRENT_TIMESTAMP), ip_address = $1, user_agent = $2 WHERE id = $3;`,
+        [clientIp, userAgent, existing.rows[0].id]
+      );
+    } else {
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const linkId = 'reflink_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+      await db.query(
+        `INSERT INTO referral_lifecycle (id, referrer_id, referrer_code, status, created_at, opened_at, expires_at, ip_address, user_agent)
+         VALUES ($1, $2, $3, 'Invited', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, $4, $5, $6);`,
+        [linkId, referrer.id, referrer.referral_code, expiresAt, clientIp, userAgent]
+      );
+    }
+
+    const nameParts = (referrer.name || 'Friend').trim().split(' ');
+    const maskedName = nameParts.length > 1 ? `${nameParts[0]} ${nameParts[1][0]}.` : nameParts[0];
+
+    res.json({
+      success: true,
+      valid: true,
+      referral_code: referrer.referral_code,
+      referrer_name: maskedName
+    });
+  } catch (err) {
+    console.error('Track Referral Open Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to track referral link open.' });
+  }
+});
+
+// GET /api/referrals/lifecycle - Fetch referral lifecycle history (Feature 4, 5)
+app.get('/api/referrals/lifecycle', authenticateToken, async (req, res) => {
+  try {
+    // Automatically update expired invitations past 30 days
+    await db.query(
+      `UPDATE referral_lifecycle SET status = 'Expired' WHERE referrer_id = $1 AND status = 'Invited' AND expires_at < CURRENT_TIMESTAMP;`,
+      [req.user.id]
+    );
+
+    const lifecycleRes = await db.query(
+      `SELECT id, referrer_code, referred_id, referred_mobile, referred_name, status, created_at, opened_at, registered_at, first_order_at, reward_generated_at, reversed_at, expires_at, order_number 
+       FROM referral_lifecycle WHERE referrer_id = $1 ORDER BY created_at DESC;`,
+      [req.user.id]
+    );
+    let items = lifecycleRes.rows || [];
+
+    // Fallback sync with referrals table for backward compatibility
+    const oldRefRes = await db.query(`SELECT * FROM referrals WHERE referrer_id = $1 ORDER BY created_at DESC;`, [req.user.id]);
+    const oldRefs = oldRefRes.rows || [];
+
+    const lifecycleReferredIds = new Set(items.map(i => i.referred_id).filter(Boolean));
+    for (const oldRef of oldRefs) {
+      if (oldRef.referred_id && !lifecycleReferredIds.has(oldRef.referred_id)) {
+        let mappedStatus = 'Order Pending';
+        if (oldRef.status === 'Completed') mappedStatus = 'Reward Earned';
+        if (oldRef.status === 'Cancelled' || oldRef.status === 'Expired') mappedStatus = 'Expired';
+
+        items.push({
+          id: oldRef.id,
+          referrer_code: req.user.referral_code || 'REF',
+          referred_id: oldRef.referred_id,
+          referred_mobile: oldRef.referred_mobile,
+          referred_name: oldRef.referred_name,
+          status: mappedStatus,
+          created_at: oldRef.created_at || oldRef.date_time,
+          expires_at: new Date(new Date(oldRef.created_at || Date.now()).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          registered_at: oldRef.created_at,
+          reward_generated_at: oldRef.status === 'Completed' ? oldRef.created_at : null,
+          reward_amount: oldRef.reward_amount || 30
+        });
+      }
+    }
+
+    const safeItems = items.map(item => {
+      const nameParts = (item.referred_name || 'Referred Friend').trim().split(' ');
+      const maskedName = nameParts.length > 1 ? `${nameParts[0]} ${nameParts[1][0]}.` : nameParts[0];
+      const maskedMobile = item.referred_mobile ? `xxxx${item.referred_mobile.slice(-4)}` : null;
+      return {
+        id: item.id,
+        status: item.status,
+        referred_name: maskedName,
+        referred_mobile: maskedMobile,
+        created_at: item.created_at,
+        opened_at: item.opened_at,
+        registered_at: item.registered_at,
+        first_order_at: item.first_order_at,
+        reward_generated_at: item.reward_generated_at,
+        reversed_at: item.reversed_at,
+        expires_at: item.expires_at,
+        order_number: item.order_number
+      };
+    });
+
+    res.json({
+      success: true,
+      data: safeItems
+    });
+  } catch (err) {
+    console.error('Fetch Referral Lifecycle Error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch referral lifecycle.' });
   }
 });
 

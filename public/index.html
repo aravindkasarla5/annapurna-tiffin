@@ -972,6 +972,36 @@
             </p>
           </div>
         </div>
+      <!-- Referral Lifecycle & Real-time Progress Tracking Section -->
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h3 style="font-size: 1.05rem; color: #FFF; margin: 0; display: flex; align-items: center; gap: 8px;">
+              <i class="fa-solid fa-route" style="color: var(--accent-gold);"></i> Referral Invitations Lifecycle & Progress
+            </h3>
+            <p style="font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 0 0;">Track real-time invitation status: Invited → Registered → Order Pending → Qualified → Reward Earned</p>
+          </div>
+          <button type="button" class="btn-secondary-sm" onclick="app.loadReferralLifecycleData()">
+            <i class="fa-solid fa-arrows-rotate"></i> Refresh Progress
+          </button>
+        </div>
+
+        <div id="containerReferralLifecycle" style="overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px;">
+            <thead>
+              <tr style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--accent-gold); font-size: 0.78rem; text-transform: uppercase;">
+                <th style="padding: 10px;">Referral / Friend</th>
+                <th style="padding: 10px;">Created Date</th>
+                <th style="padding: 10px;">Expiry Date</th>
+                <th style="padding: 10px;">Current Status</th>
+                <th style="padding: 10px; text-align: right;">Progress</th>
+              </tr>
+            </thead>
+            <tbody id="refLifecycleTableBody">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- How It Works & Top Referrers Side-by-Side Grid -->
