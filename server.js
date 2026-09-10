@@ -6535,18 +6535,53 @@ app.get('/api/referrals/leaderboard', async (req, res) => {
   try {
     const lbRes = await db.query(`
       SELECT u.id, u.name, u.referral_code, 
-             COUNT(r.id) FILTER (WHERE r.status = 'Completed') AS completed_count,
-             COALESCE(SUM(r.reward_amount) FILTER (WHERE r.status = 'Completed'), 0) AS total_earned
+             COUNT(CASE WHEN r.status IN ('Completed', 'Reward Earned', 'Qualified') THEN 1 END) AS completed_count,
+             COALESCE(SUM(CASE WHEN r.status IN ('Completed', 'Reward Earned') THEN r.reward_amount ELSE 0 END), 0) AS total_earned
       FROM users u
       LEFT JOIN referrals r ON u.id = r.referrer_id
-      WHERE u.role = 'CUSTOMER' AND u.show_on_leaderboard = true
+      WHERE u.role = 'CUSTOMER' AND (u.show_on_leaderboard IS NULL OR u.show_on_leaderboard = true OR u.show_on_leaderboard = 1)
       GROUP BY u.id, u.name, u.referral_code
-      HAVING COUNT(r.id) FILTER (WHERE r.status = 'Completed') > 0
-      ORDER BY completed_count DESC, total_earned DESC
+      HAVING COUNT(CASE WHEN r.status IN ('Completed', 'Reward Earned', 'Qualified') THEN 1 END) > 0
+      ORDER BY completed_count DESC, total_earned DESC, u.name ASC
       LIMIT 10;
     `);
 
-    res.json({ success: true, data: lbRes.rows || [] });
+    let rows = lbRes.rows || [];
+
+    // Fallback sync with referral_lifecycle table if main referrals table is empty
+    if (!rows || rows.length === 0) {
+      const lcLbRes = await db.query(`
+        SELECT u.id, u.name, u.referral_code,
+               COUNT(CASE WHEN lc.status IN ('Reward Earned', 'Qualified', 'Completed') THEN 1 END) AS completed_count,
+               COALESCE(SUM(CASE WHEN lc.status IN ('Reward Earned', 'Completed') THEN 30 ELSE 0 END), 0) AS total_earned
+        FROM users u
+        LEFT JOIN referral_lifecycle lc ON u.id = lc.referrer_id
+        WHERE u.role = 'CUSTOMER' AND (u.show_on_leaderboard IS NULL OR u.show_on_leaderboard = true OR u.show_on_leaderboard = 1)
+        GROUP BY u.id, u.name, u.referral_code
+        HAVING COUNT(CASE WHEN lc.status IN ('Reward Earned', 'Qualified', 'Completed') THEN 1 END) > 0
+        ORDER BY completed_count DESC, total_earned DESC, u.name ASC
+        LIMIT 10;
+      `);
+      rows = lcLbRes.rows || [];
+    }
+
+    const data = rows.map(r => {
+      const nameParts = (r.name || 'Customer').trim().split(' ');
+      const maskedName = nameParts.length > 1 ? `${nameParts[0]} ${nameParts[1][0]}.` : nameParts[0];
+      const countVal = parseInt(r.completed_count || '0', 10);
+      const earnedVal = parseFloat(r.total_earned || '0');
+      return {
+        id: r.id,
+        name: maskedName,
+        full_name: r.name,
+        count: countVal,
+        rewards: earnedVal,
+        completed_count: countVal,
+        total_earned: earnedVal
+      };
+    });
+
+    res.json({ success: true, data: data });
   } catch (err) {
     console.error('Fetch Leaderboard Error:', err);
     res.json({ success: true, data: [] });

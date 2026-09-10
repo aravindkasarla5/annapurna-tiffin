@@ -11041,6 +11041,7 @@ class TiffinApp {
       }
       this.loadCustomerReferralTransactions();
       this.loadReferralLifecycleData();
+      this.fetchLeaderboard();
     } catch (err) {
       console.error('Error fetching referral stats:', err);
     }
@@ -11373,30 +11374,38 @@ class TiffinApp {
     const container = document.getElementById('referralLeaderboardContainer');
     if (!container) return;
 
-    if (!this.referralLeaderboard.length) {
+    if (!this.referralLeaderboard || !this.referralLeaderboard.length) {
       container.innerHTML = `
-        <div style="text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.82rem;">
-          <i class="fa-solid fa-trophy" style="font-size: 1.5rem; color: var(--accent-gold); margin-bottom: 0.5rem;"></i>
-          <p>Leaderboard opens after first completed referral this month!</p>
+        <div style="text-align: center; padding: 1.5rem 1rem; color: var(--text-muted); font-size: 0.82rem;">
+          <i class="fa-solid fa-trophy" style="font-size: 1.8rem; color: var(--accent-gold); margin-bottom: 0.5rem; opacity: 0.6;"></i>
+          <p style="margin: 0;">Leaderboard opens after first completed referral!</p>
         </div>
       `;
       return;
     }
 
     const rankBadges = ['🥇', '🥈', '🥉'];
-    container.innerHTML = this.referralLeaderboard.map((item, idx) => `
-      <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(10,10,14,0.4); padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1rem; width: 22px;">${rankBadges[idx] || `#${idx + 1}`}</span>
-          <span style="font-size: 0.85rem; font-weight: 700; color: ${item.is_anonymous ? 'var(--text-muted)' : '#FFF'};">
-            ${item.name}
-          </span>
+    container.innerHTML = this.referralLeaderboard.map((item, idx) => {
+      const isMe = this.currentUser && item.id === this.currentUser.id;
+      const rawName = item.full_name || item.name || 'Customer';
+      const displayName = isMe ? `${rawName} (You)` : item.name;
+      const countVal = Number(item.count !== undefined ? item.count : (item.completed_count || 0));
+      const rewardsVal = Number(item.rewards !== undefined ? item.rewards : (item.total_earned || 0));
+
+      return `
+        <div style="display: flex; align-items: center; justify-content: space-between; background: ${isMe ? 'rgba(255, 179, 0, 0.12)' : 'rgba(10, 10, 14, 0.4)'}; padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid ${isMe ? 'var(--accent-gold)' : 'var(--border-color)'}; width: 100%; box-sizing: border-box; min-width: 0; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow: hidden;">
+            <span style="font-size: 1rem; width: 22px; flex-shrink: 0; text-align: center;">${rankBadges[idx] || `#${idx + 1}`}</span>
+            <span style="font-size: 0.85rem; font-weight: 700; color: ${isMe ? 'var(--accent-gold)' : '#FFF'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${escapeHtml(displayName)}
+            </span>
+          </div>
+          <div style="font-size: 0.8rem; font-weight: 800; color: var(--accent-gold); white-space: nowrap; flex-shrink: 0;">
+            ${countVal} ${countVal === 1 ? 'Ref' : 'Refs'} (₹${rewardsVal})
+          </div>
         </div>
-        <div style="font-size: 0.8rem; font-weight: 800; color: var(--accent-gold);">
-          ${item.count} Referrals (₹${item.rewards})
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   }
 
   async loadReferralLifecycleData() {

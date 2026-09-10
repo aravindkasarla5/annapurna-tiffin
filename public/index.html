@@ -973,7 +973,7 @@
           </div>
         </div>
       <!-- Referral Lifecycle & Real-time Progress Tracking Section -->
-      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem;">
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1.5rem; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
           <div>
             <h3 style="font-size: 1.05rem; color: #FFF; margin: 0; display: flex; align-items: center; gap: 8px;">
@@ -986,8 +986,8 @@
           </button>
         </div>
 
-        <div id="containerReferralLifecycle" style="overflow-x: auto; width: 100%; -webkit-overflow-scrolling: touch;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px;">
+        <div id="containerReferralLifecycle" style="overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 520px;">
             <thead>
               <tr style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--accent-gold); font-size: 0.78rem; text-transform: uppercase;">
                 <th style="padding: 10px;">Referral / Friend</th>
@@ -1005,18 +1005,18 @@
       </div>
 
       <!-- How It Works & Top Referrers Side-by-Side Grid -->
-      <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.25rem; margin-bottom: 1.5rem;"
+      <div style="display: grid; grid-template-columns: 1fr 320px; gap: 1.25rem; margin-bottom: 1.5rem; width: 100%; max-width: 100%; box-sizing: border-box;"
         class="referral-grid-responsive">
         <!-- Left: Referral History Table -->
         <div
-          style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem;">
+          style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden;">
           <h3
             style="font-size: 1.05rem; color: #FFF; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px;">
             <i class="fa-solid fa-list-check" style="color: var(--primary);"></i> My Referred Friends & Rewards History
           </h3>
 
-          <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+          <div style="overflow-x: auto; width: 100%; max-width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch;">
+            <table style="width: 100%; min-width: 440px; border-collapse: collapse; font-size: 0.85rem;">
               <thead>
                 <tr
                   style="border-bottom: 2px solid var(--border-color); text-align: left; color: var(--accent-gold); font-size: 0.78rem; text-transform: uppercase;">
@@ -1035,7 +1035,7 @@
 
         <!-- Right: Monthly Leaderboard & Privacy Control -->
         <div
-          style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; display: flex; flex-direction: column;">
+          style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1.25rem; display: flex; flex-direction: column; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.85rem;">
             <h3 style="font-size: 1rem; color: var(--accent-gold); display: flex; align-items: center; gap: 6px;">
               <i class="fa-solid fa-trophy"></i> Top Referrers
