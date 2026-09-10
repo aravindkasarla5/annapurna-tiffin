@@ -598,49 +598,168 @@ app.post('/api/push/test-send', authenticateToken, async (req, res) => {
 // SMART DUPLICATE PROTECTION & UTR DEDUPLICATION ENGINE
 // =========================================================================
 
-async function checkDuplicateUtr(utrNumber, currentOrderId = null) {
+function validateUtrFormatAndFraud(utrNumber) {
+  if (!utrNumber || typeof utrNumber !== 'string') {
+    return { isValid: false, isSuspicious: false, reason: 'MISSING', message: 'UTR / Transaction Reference ID is required for online payments.' };
+  }
+
+  const cleanUtr = utrNumber.trim();
+  if (!cleanUtr) {
+    return { isValid: false, isSuspicious: false, reason: 'EMPTY', message: 'UTR / Transaction Reference ID cannot be empty.' };
+  }
+
+  // 1. Length Check: UPI UTR numbers are typically 12 digits, but alphanumeric transaction reference IDs range between 6 and 30 characters
+  if (cleanUtr.length < 6 || cleanUtr.length > 30) {
+    return {
+      isValid: false,
+      isSuspicious: true,
+      reason: 'INVALID_LENGTH',
+      message: 'UTR / Transaction Reference ID must be between 6 and 30 characters (standard UPI UTR is 12 digits).'
+    };
+  }
+
+  // 2. Character Set Check: Only alphanumeric characters, hyphens, underscores (no space, special chars, script tags)
+  if (!/^[a-zA-Z0-9_-]+$/.test(cleanUtr)) {
+    return {
+      isValid: false,
+      isSuspicious: true,
+      reason: 'INVALID_CHARACTERS',
+      message: 'UTR / Transaction Reference ID contains invalid characters. Only alphanumeric characters are allowed.'
+    };
+  }
+
+  // 3. Fake / Repetitive Character Pattern Protection (e.g. 000000000000, 111111111111, 999999999999, aaaaaaaaaaaa)
+  if (/^(.)\1+$/i.test(cleanUtr)) {
+    return {
+      isValid: false,
+      isSuspicious: true,
+      reason: 'REPETITIVE_PATTERN',
+      message: 'Invalid or dummy UTR entered (all characters are identical). Please provide authentic 12-digit UPI UTR from your payment app.'
+    };
+  }
+
+  // 4. Sequential Repetitive Numbers (e.g. 123456789012, 012345678901, 987654321098, 123412341234)
+  const sequentialPatterns = [
+    '1234567890', '0123456789', '9876543210', '12341234', '12345678', '00001111', '11112222'
+  ];
+  const isSeqPattern = sequentialPatterns.some(pat => cleanUtr.includes(pat));
+  if (isSeqPattern && cleanUtr.length <= 14) {
+    return {
+      isValid: false,
+      isSuspicious: true,
+      reason: 'SEQUENTIAL_PATTERN',
+      message: 'Invalid or dummy UTR entered (sequential number pattern detected). Please enter authentic 12-digit UPI UTR.'
+    };
+  }
+
+  // 5. Common Test / Dummy Words Protection
+  const dummyKeywords = [
+    'TEST', 'TESTING', 'DUMMY', 'FAKE', 'SAMPLE', 'PAYMENT', 'PHONEPE', 'GPAY',
+    'PAYTM', 'NULL', 'NONE', 'ASDFGH', 'QWERTY', 'ABCD', '123456', 'UPIPAYMENT',
+    'TRANSACTION', 'REFNUM', 'XXXXXXXX'
+  ];
+  const upperUtr = cleanUtr.toUpperCase();
+  const hasDummyKeyword = dummyKeywords.some(kw => upperUtr.includes(kw));
+  if (hasDummyKeyword) {
+    return {
+      isValid: false,
+      isSuspicious: true,
+      reason: 'DUMMY_KEYWORD',
+      message: 'Invalid or dummy UTR entered. Please enter authentic 12-digit UPI UTR from your payment app.'
+    };
+  }
+
+  return { isValid: true, isSuspicious: false, cleanUtr };
+}
+
+async function checkDuplicateUtr(utrNumber, currentReferenceId = null, currentUserId = null) {
   if (!utrNumber || typeof utrNumber !== 'string') return null;
   const cleanUtr = utrNumber.trim();
   if (!cleanUtr || cleanUtr.length < 4) return null;
 
   try {
-    // Search orders table
+    // 1. Search orders table
     let orderQuery = 'SELECT id, order_number FROM orders WHERE UPPER(utr_number) = UPPER($1)';
     let params = [cleanUtr];
-    if (currentOrderId) {
+    if (currentReferenceId) {
       orderQuery += ' AND id != $2 AND order_number != $2';
-      params.push(currentOrderId);
+      params.push(currentReferenceId);
     }
     const oRes = await db.query(orderQuery, params);
     if (oRes.rows && oRes.rows.length > 0) {
-      const existingOrderNum = oRes.rows[0].order_number;
+      const existingRef = oRes.rows[0].order_number || oRes.rows[0].id;
       logSecurityEvent({
         event_type: 'DUPLICATE_PAYMENT',
         risk_level: 'HIGH',
-        order_id: currentOrderId,
-        details: `Duplicate UTR reference "${cleanUtr}" submitted for order ${currentOrderId || 'N/A'} (Already used in Order ${existingOrderNum})`
+        customer_id: currentUserId,
+        order_id: currentReferenceId,
+        details: `Duplicate UTR reference "${cleanUtr}" submitted (Already used in Order #${existingRef})`
       });
-      return existingOrderNum;
+      return { found: true, source: 'order', refNumber: existingRef, orderNumber: existingRef };
     }
 
-    // Search payments table
+    // 2. Search payments table
     let payQuery = 'SELECT order_number FROM payments WHERE UPPER(utr_number) = UPPER($1)';
     let payParams = [cleanUtr];
-    if (currentOrderId) {
+    if (currentReferenceId) {
       payQuery += ' AND order_id != $2 AND order_number != $2';
-      payParams.push(currentOrderId);
+      payParams.push(currentReferenceId);
     }
     const pRes = await db.query(payQuery, payParams);
     if (pRes.rows && pRes.rows.length > 0) {
-      const existingOrderNum = pRes.rows[0].order_number;
+      const existingRef = pRes.rows[0].order_number;
       logSecurityEvent({
         event_type: 'DUPLICATE_PAYMENT',
         risk_level: 'HIGH',
-        order_id: currentOrderId,
-        details: `Duplicate UTR reference "${cleanUtr}" submitted for order ${currentOrderId || 'N/A'} (Already used in Payment for Order ${existingOrderNum})`
+        customer_id: currentUserId,
+        order_id: currentReferenceId,
+        details: `Duplicate UTR reference "${cleanUtr}" submitted (Already used in Payment record for Order #${existingRef})`
       });
-      return existingOrderNum;
+      return { found: true, source: 'payment', refNumber: existingRef, orderNumber: existingRef };
     }
+
+    // 3. Search wallet_topup_requests table (PENDING or APPROVED)
+    let walletQuery = 'SELECT request_id, customer_name, status FROM wallet_topup_requests WHERE UPPER(utr_number) = UPPER($1) AND UPPER(status) IN (\'PENDING\', \'APPROVED\')';
+    let walletParams = [cleanUtr];
+    if (currentReferenceId) {
+      walletQuery += ' AND id != $2 AND request_id != $2';
+      walletParams.push(currentReferenceId);
+    }
+    const wRes = await db.query(walletQuery, walletParams);
+    if (wRes.rows && wRes.rows.length > 0) {
+      const existingReq = wRes.rows[0];
+      logSecurityEvent({
+        event_type: 'DUPLICATE_PAYMENT',
+        risk_level: 'HIGH',
+        customer_id: currentUserId,
+        details: `Duplicate UTR reference "${cleanUtr}" submitted (Already used in Wallet Top-Up Request #${existingReq.request_id} [Status: ${existingReq.status}])`
+      });
+      return { found: true, source: 'wallet_topup', refNumber: existingReq.request_id, orderNumber: existingReq.request_id, status: existingReq.status };
+    }
+
+    // 4. Search subscriptions table if utr_number exists
+    try {
+      let subQuery = 'SELECT id FROM subscriptions WHERE UPPER(utr_number) = UPPER($1)';
+      let subParams = [cleanUtr];
+      if (currentReferenceId) {
+        subQuery += ' AND id != $2';
+        subParams.push(currentReferenceId);
+      }
+      const sRes = await db.query(subQuery, subParams);
+      if (sRes.rows && sRes.rows.length > 0) {
+        const existingSub = sRes.rows[0].id;
+        logSecurityEvent({
+          event_type: 'DUPLICATE_PAYMENT',
+          risk_level: 'HIGH',
+          customer_id: currentUserId,
+          details: `Duplicate UTR reference "${cleanUtr}" submitted (Already used in Subscription #${existingSub})`
+        });
+        return { found: true, source: 'subscription', refNumber: existingSub, orderNumber: existingSub };
+      }
+    } catch (sErr) {
+      // Subscriptions table might not have utr_number column in all DB schemas, ignore error safely
+    }
+
   } catch (err) {
     console.error('Error checking duplicate UTR:', err.message);
   }
@@ -3970,39 +4089,98 @@ app.post('/api/wallet/topup', authenticateToken, handleIdempotencyMiddleware, as
     }
 
     if (numAmount < 1) {
-      return res.status(400).json({ success: false, message: "Minimum top-up amount is ₹1.00." });
+      return res.status(400).json({ success: false, message: "Minimum wallet top-up amount is ₹1.00." });
     }
 
     if (numAmount > 50000) {
-      return res.status(400).json({ success: false, message: "Maximum single top-up limit is ₹50,000.00." });
+      return res.status(400).json({ success: false, message: "Maximum single wallet top-up limit is ₹50,000.00." });
+    }
+
+    // Pending Top-Up Requests Limit (Flood & Spam Fraud Protection)
+    const pendingCountRes = await db.query(
+      `SELECT COUNT(*) as pending_count FROM wallet_topup_requests 
+       WHERE customer_id = $1 AND UPPER(status) = 'PENDING';`,
+      [req.user.id]
+    );
+    const pendingCount = Number(pendingCountRes.rows[0]?.pending_count || 0);
+    if (pendingCount >= 3) {
+      return res.status(429).json({
+        success: false,
+        message: "You currently have 3 pending wallet top-up requests waiting for Owner verification. Please wait for the Owner to approve your pending requests before submitting a new request."
+      });
     }
 
     // Payment Method Normalization
     const cleanMethod = (payment_method && typeof payment_method === 'string') ? payment_method.trim() : 'UPI';
+    const isOnlineMethod = cleanMethod.toUpperCase() !== 'CASH';
 
     // UTR / Reference ID Handling & Sanitization
     const cleanUtr = (utr_number && typeof utr_number === 'string') ? utr_number.trim() : '';
 
-    // Check UTR Deduplication across pending top-up requests & orders if provided
-    if (cleanUtr && cleanUtr.length >= 4) {
-      const dupCheckReq = await db.query(
-        'SELECT request_id FROM wallet_topup_requests WHERE UPPER(utr_number) = UPPER($1) AND UPPER(status) IN (\'PENDING\', \'APPROVED\');',
-        [cleanUtr]
-      );
-      if (dupCheckReq.rows && dupCheckReq.rows.length > 0) {
+    // Image Upload Handling & Strict Validation
+    let finalScreenshotUrl = null;
+    if (payment_screenshot && typeof payment_screenshot === 'string' && payment_screenshot.startsWith('data:image/')) {
+      try {
+        finalScreenshotUrl = await saveBase64Image(payment_screenshot, 'wallet_screenshots');
+      } catch (imgErr) {
+        console.error('Wallet topup screenshot save error:', imgErr.message);
         return res.status(400).json({
           success: false,
-          message: `This UTR / Reference number (${cleanUtr}) has already been submitted for wallet top-up request #${dupCheckReq.rows[0].request_id}. Duplicate payment references are not allowed.`
+          message: "Failed to save payment screenshot image. Please ensure you upload a valid image file under 5MB."
         });
       }
+    } else if (screenshot_url && typeof screenshot_url === 'string' && screenshot_url.trim().length > 0) {
+      finalScreenshotUrl = screenshot_url.trim();
     }
 
-    // Image Upload Handling
-    let finalScreenshotUrl = null;
-    if (payment_screenshot) {
-      finalScreenshotUrl = await saveBase64Image(payment_screenshot, 'wallet_screenshots');
-    } else if (screenshot_url) {
-      finalScreenshotUrl = screenshot_url;
+    // Server-side validation for Online Payment proof requirements & Fraud Protection
+    if (isOnlineMethod) {
+      if (!finalScreenshotUrl) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment screenshot upload is required for online payments (UPI/PhonePe). Please attach your payment proof image."
+        });
+      }
+
+      // UTR Format & Dummy/Fake Pattern Validation
+      const utrValidation = validateUtrFormatAndFraud(cleanUtr);
+      if (!utrValidation.isValid) {
+        if (utrValidation.isSuspicious) {
+          // Log Suspicious Payment Security Event for Owner Alert
+          await logSecurityEvent({
+            event_type: 'SUSPICIOUS_PAYMENT_PROOF',
+            risk_level: 'HIGH',
+            customer_id: req.user.id,
+            details: `Suspicious/fake UTR reference "${cleanUtr}" submitted for wallet top-up of ₹${numAmount.toFixed(2)} (Reason: ${utrValidation.reason})`,
+            internal_note: `Blocked fraudulent wallet top-up attempt by customer ${req.user.name} (${req.user.mobile})`
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: utrValidation.message || "Invalid UTR / Transaction Reference ID provided."
+        });
+      }
+
+      // Check UTR Deduplication across Orders, Payments, Wallet Top-Ups, and Subscriptions
+      const dupCheck = await checkDuplicateUtr(cleanUtr, null, req.user.id);
+      if (dupCheck && dupCheck.found) {
+        const refName = dupCheck.source === 'wallet_topup' ? `Wallet Top-Up Request #${dupCheck.refNumber}` : `Order #${dupCheck.refNumber}`;
+        return res.status(400).json({
+          success: false,
+          message: `This UTR / Transaction Reference ID (${cleanUtr}) has already been submitted in ${refName}. Duplicate payment proof submission is not allowed.`
+        });
+      }
+    } else {
+      // Cash method - optional UTR deduplication check if provided
+      if (cleanUtr && cleanUtr.length >= 4) {
+        const dupCheck = await checkDuplicateUtr(cleanUtr, null, req.user.id);
+        if (dupCheck && dupCheck.found) {
+          return res.status(400).json({
+            success: false,
+            message: `This Transaction Reference ID (${cleanUtr}) has already been submitted.`
+          });
+        }
+      }
     }
 
     const id = 'wtr_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');

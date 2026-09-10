@@ -21269,9 +21269,43 @@ class TiffinApp {
 
     const qrBox = document.getElementById('walletQrDetailsBox');
     const proofBox = document.getElementById('walletProofFieldsBox');
+    const reqSpan = document.getElementById('spanWalletScreenshotRequired');
 
     if (qrBox) qrBox.classList.toggle('hidden', selMethod === 'Cash');
     if (proofBox) proofBox.classList.toggle('hidden', selMethod === 'Cash');
+    if (reqSpan) {
+      reqSpan.innerHTML = selMethod === 'Cash'
+        ? '<span style="color: var(--text-muted); font-weight: normal;">(Optional for Cash Payment)</span>'
+        : '* (Required for Online Verification)';
+    }
+  }
+
+  validateWalletUtrLive(val) {
+    const statusEl = document.getElementById('walletUtrValidationStatus');
+    if (!statusEl) return;
+    const clean = (val || '').trim();
+    if (!clean) {
+      statusEl.innerHTML = '';
+      return;
+    }
+
+    const isDigits = /^\d{12}$/.test(clean);
+    const isAlphanumeric = /^[a-zA-Z0-9_-]{6,30}$/.test(clean);
+    const isRepetitive = /^(.)\1+$/i.test(clean);
+    const sequentialPatterns = ['1234567890', '0123456789', '9876543210', '12341234'];
+    const isSequential = sequentialPatterns.some(p => clean.includes(p));
+    const dummyKeywords = ['TEST', 'DUMMY', 'FAKE', 'SAMPLE', 'PAYMENT', 'NULL', 'NONE', 'ASDFGH', 'QWERTY', '123456'];
+    const hasDummyKeyword = dummyKeywords.some(kw => clean.toUpperCase().includes(kw));
+
+    if (isRepetitive || isSequential || hasDummyKeyword) {
+      statusEl.innerHTML = `<span style="color: var(--danger, #e53935); font-weight: 700;"><i class="fa-solid fa-triangle-exclamation"></i> Invalid or dummy UTR format detected.</span>`;
+    } else if (isDigits) {
+      statusEl.innerHTML = `<span style="color: var(--success, #4caf50); font-weight: 700;"><i class="fa-solid fa-circle-check"></i> Standard 12-Digit UPI UTR Format</span>`;
+    } else if (isAlphanumeric) {
+      statusEl.innerHTML = `<span style="color: #2196f3; font-weight: 700;"><i class="fa-solid fa-circle-info"></i> Valid Transaction Reference ID</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color: var(--warning, #ff9800); font-weight: 700;"><i class="fa-solid fa-circle-exclamation"></i> UTR must be 6-30 alphanumeric characters.</span>`;
+    }
   }
 
   copyWalletUpiId() {
@@ -21335,9 +21369,44 @@ class TiffinApp {
       return;
     }
 
-    if (selMethod !== 'Cash' && (!utr || utr.length < 4)) {
-      this.showToast('Please enter a valid 12-digit UTR or Reference Number.', 'error');
+    if (amount < 1) {
+      this.showToast('Minimum wallet top-up amount is ₹1.00.', 'error');
       return;
+    }
+
+    if (amount > 50000) {
+      this.showToast('Maximum single wallet top-up limit is ₹50,000.00.', 'error');
+      return;
+    }
+
+    if (selMethod !== 'Cash') {
+      const hasUtr = !!(utr && utr.length >= 6);
+      const hasScreenshot = !!(this.tempWalletScreenshotBase64 && typeof this.tempWalletScreenshotBase64 === 'string' && this.tempWalletScreenshotBase64.trim().length > 0);
+
+      if (!hasUtr && !hasScreenshot) {
+        this.showToast('Please enter a valid UTR/Transaction ID and upload the payment screenshot proof before submitting.', 'error');
+        return;
+      }
+      if (!hasUtr) {
+        this.showToast('Please enter a valid UTR / Transaction Reference ID (between 6 and 30 characters).', 'error');
+        return;
+      }
+      if (!hasScreenshot) {
+        this.showToast('Please upload the payment screenshot image for online verification.', 'error');
+        return;
+      }
+
+      // Fraud Pattern Pre-Check Client Side
+      const isRepetitive = /^(.)\1+$/i.test(utr);
+      const sequentialPatterns = ['1234567890', '0123456789', '9876543210', '12341234'];
+      const isSequential = sequentialPatterns.some(p => utr.includes(p));
+      const dummyKeywords = ['TEST', 'DUMMY', 'FAKE', 'SAMPLE', 'PAYMENT', 'NULL', 'NONE', 'ASDFGH', 'QWERTY', '123456'];
+      const hasDummyKeyword = dummyKeywords.some(kw => utr.toUpperCase().includes(kw));
+
+      if (isRepetitive || isSequential || hasDummyKeyword) {
+        this.showToast('Invalid or dummy UTR format entered. Please enter authentic 12-digit UPI UTR from your payment app.', 'error');
+        return;
+      }
     }
 
     this.isSubmittingWalletTopup = true;
@@ -21370,6 +21439,8 @@ class TiffinApp {
         this.tempWalletScreenshotBase64 = null;
         const prevBox = document.getElementById('walletScreenshotPreview');
         if (prevBox) { prevBox.innerHTML = ''; prevBox.classList.add('hidden'); }
+        const statusEl = document.getElementById('walletUtrValidationStatus');
+        if (statusEl) statusEl.innerHTML = '';
         await this.loadCustomerWalletData();
       } else {
         this.showToast(data.message || 'Failed to submit wallet top-up request.', 'error');
