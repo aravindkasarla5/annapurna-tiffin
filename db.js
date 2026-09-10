@@ -663,6 +663,7 @@ async function initDatabase() {
       customer_mobile VARCHAR(50),
       plan_name VARCHAR(255),
       meal_number INT,
+      order_id VARCHAR(100),
       redeemed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       redeemed_by VARCHAR(100),
       status VARCHAR(50) DEFAULT 'SUCCESS'
@@ -919,6 +920,7 @@ async function initDatabase() {
         await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS priority VARCHAR(50) DEFAULT 'NORMAL';`);
         await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS action_url VARCHAR(255);`);
         await query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS related_order_id VARCHAR(100);`);
+        await query(`ALTER TABLE subscription_redemptions ADD COLUMN IF NOT EXISTS order_id VARCHAR(100);`);
       } catch (aErr) {
         console.warn('PostgreSQL DDL Notice:', aErr.message);
       }

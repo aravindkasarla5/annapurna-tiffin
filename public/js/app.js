@@ -6939,9 +6939,10 @@ class TiffinApp {
     const progressPct = Math.round((stepIdx / 3) * 100);
 
     const typeIcon = order.order_type === 'Takeaway' ? 'fa-box' : order.order_type === 'Delivery' ? 'fa-motorcycle' : 'fa-utensils';
+    const isSubscriptionPay = (order.payment_status || '').toUpperCase().includes('SUBSCRIPTION') || (order.payment_method || '').toUpperCase().includes('SUBSCRIPTION');
     const isReferralPay = (order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL' || Number(order.used_wallet_amount || 0) > 0 || !!order.referral_transaction_id;
-    const isPaid = order.payment_status.includes('Paid') || order.payment_status.includes('Verified');
-    const isPendingPayment = order.payment_status.includes('Pending') || order.payment_status.includes('Verification');
+    const isPaid = order.payment_status.includes('Paid') || order.payment_status.includes('Verified') || isSubscriptionPay;
+    const isPendingPayment = (order.payment_status.includes('Pending') || order.payment_status.includes('Verification')) && !isSubscriptionPay;
 
     const premInfo = this.getPremiumHighlightDetails(order);
 
@@ -7018,7 +7019,11 @@ class TiffinApp {
           <div class="co-top-right">
             <div class="co-payment-status-block">
               <span class="co-pay-title-label"><i class="fa-solid fa-credit-card" style="color: var(--accent-gold);"></i> Payment Status:</span>
-              ${isReferralPay ? `
+              ${isSubscriptionPay ? `
+                <span class="co-row-pay-pill subscription" style="background: rgba(156, 39, 176, 0.22); color: #E040FB; border: 1.5px solid #AB47BC; font-weight: 800; padding: 4px 12px; border-radius: 12px; display: inline-flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-circle" style="color: #E040FB; font-size: 0.75rem;"></i> 🟣 Subscription Membership
+                </span>
+              ` : isReferralPay ? `
                 <span class="co-row-pay-pill referral" style="background: rgba(0, 230, 118, 0.2); color: #00E676; border: 1.5px solid #00E676; font-weight: 800; font-family: monospace; letter-spacing: 0.5px;">
                   ${order.referral_transaction_id || ('REF-TXN-' + String(order.order_number || order.id).padStart(6, '0'))}
                 </span>
@@ -7539,15 +7544,17 @@ class TiffinApp {
                 </button>
               ` : ''}
 
-              ${order.review ? `
-                <button class="co-row-btn review reviewed" onclick="app.openOrderReviewModal('${order.order_number}')" style="background: rgba(255, 179, 0, 0.22); color: var(--accent-gold); border: 1.5px solid var(--accent-gold); font-weight: 800;" title="Click to view or edit your review">
-                  <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rated ${order.review.rating}/5 • Edit Review
-                </button>
-              ` : `
-                <button class="co-row-btn review" onclick="app.openOrderReviewModal('${order.order_number}')">
-                  <i class="fa-regular fa-star" style="color: var(--accent-gold);"></i> Rate & Review Order
-                </button>
-              `}
+              ${(['completed', 'delivered'].includes((order.order_status || '').toLowerCase())) ? (
+                order.review ? `
+                  <button class="co-row-btn review reviewed" onclick="app.openOrderReviewModal('${order.order_number}')" style="background: rgba(255, 179, 0, 0.22); color: var(--accent-gold); border: 1.5px solid var(--accent-gold); font-weight: 800;" title="Click to view or edit your review">
+                    <i class="fa-solid fa-star" style="color: var(--accent-gold);"></i> Rated ${order.review.rating}/5 • Edit Review
+                  </button>
+                ` : `
+                  <button class="co-row-btn review" onclick="app.openOrderReviewModal('${order.order_number}')">
+                    <i class="fa-regular fa-star" style="color: var(--accent-gold);"></i> Rate & Review Order
+                  </button>
+                `
+              ) : ''}
 
               <button class="co-row-btn support" onclick="app.openOrderSupport('${order.order_number}')">
                 <i class="fa-solid fa-headset"></i> Order Support & Help
@@ -7680,14 +7687,20 @@ class TiffinApp {
         </div>
         <div class="od-info-item">
           <span class="od-label">Payment Method</span>
-          <span class="od-value">${order.payment_method}</span>
+          <span class="od-value">
+            ${((order.payment_status || '').toUpperCase().includes('SUBSCRIPTION') || (order.payment_method || '').toUpperCase().includes('SUBSCRIPTION'))
+              ? '<span style="color: #E040FB; font-weight: 800;">🟣 Subscription Membership</span>'
+              : order.payment_method}
+          </span>
         </div>
         <div class="od-info-item">
           <span class="od-label">Payment Status</span>
           <span class="od-value">
-            ${((order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL')
-              ? '<span class="badge-status REFERRAL">🟢 REFERRAL</span>'
-              : `${order.payment_status}`}
+            ${((order.payment_status || '').toUpperCase().includes('SUBSCRIPTION') || (order.payment_method || '').toUpperCase().includes('SUBSCRIPTION'))
+              ? '<span class="badge-status SUBSCRIPTION" style="background: rgba(156, 39, 176, 0.2); color: #E040FB; border: 1.5px solid #AB47BC; font-weight: 800; padding: 2px 8px; border-radius: 8px;">🟣 Subscription Membership</span>'
+              : (((order.payment_status || '').toUpperCase() === 'REFERRAL' || (order.payment_method || '').toUpperCase() === 'REFERRAL')
+                ? '<span class="badge-status REFERRAL">🟢 REFERRAL</span>'
+                : `${order.payment_status}`)}
           </span>
         </div>
         ${((order.payment_method || '').toUpperCase() === 'REFERRAL' || Number(order.used_wallet_amount || 0) > 0) ? `
@@ -19253,9 +19266,14 @@ class TiffinApp {
             </div>
 
             ${isActive ? `
-              <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold);">
-                <i class="fa-solid fa-qrcode"></i> View Meal Passes (${sub.remaining_meals} Available)
-              </button>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn-primary-block" onclick="app.orderWithSubscription('${sub.id}')" style="flex: 1; min-width: 120px; background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800;">
+                  <i class="fa-solid fa-cart-shopping"></i> Order
+                </button>
+                <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="flex: 1; min-width: 140px; background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold); font-weight: 700;">
+                  <i class="fa-solid fa-qrcode"></i> View Passes (${sub.remaining_meals})
+                </button>
+              </div>
             ` : (isCompleted ? `
               <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <button type="button" class="btn-secondary-outline" onclick="app.viewSubscriptionPasses('${sub.id}')" style="flex: 1; padding: 8px; font-size: 0.8rem; border-color: #2196F3; color: #64B5F6; font-weight: 700;">
@@ -19368,9 +19386,14 @@ class TiffinApp {
             </div>
 
             ${isAvailable ? `
-              <button type="button" class="btn-primary-block" onclick="app.showMealPassQrModal('${pass.secure_token}', ${pass.meal_number}, '${escapeHtml(pass.plan_name)}')" style="background: linear-gradient(135deg, #00E676, #00B0FF); color: #1A1A2E; font-weight: 800;">
-                <i class="fa-solid fa-qrcode"></i> Show QR Code
-              </button>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn-primary-block" onclick="app.orderWithSubscriptionMealPass('${pass.id}', '${pass.subscription_id}')" style="flex: 1; min-width: 100px; background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800;">
+                  <i class="fa-solid fa-cart-shopping"></i> Order
+                </button>
+                <button type="button" class="btn-primary-block" onclick="app.showMealPassQrModal('${pass.secure_token}', ${pass.meal_number}, '${escapeHtml(pass.plan_name)}')" style="flex: 1; min-width: 110px; background: linear-gradient(135deg, #00E676, #00B0FF); color: #1A1A2E; font-weight: 800;">
+                  <i class="fa-solid fa-qrcode"></i> QR Code
+                </button>
+              </div>
             ` : `
               <div style="font-size: 0.78rem; color: var(--text-muted); background: rgba(0,0,0,0.2); padding: 8px; border-radius: 8px; margin-bottom: 10px;">
                 ${isUsed ? `Redeemed: <br><strong style="color: #FFF;">${redeemedFormatted}</strong>` : 'Expired'}
@@ -19436,6 +19459,244 @@ class TiffinApp {
       backdrop.classList.toggle('open', show);
       backdrop.classList.toggle('hidden', !show);
       backdrop.style.display = show ? 'flex' : 'none';
+    }
+  }
+
+  togglePlaceSubscriptionOrderModal(show = true) {
+    const backdrop = document.getElementById('modalPlaceSubscriptionOrder');
+    if (backdrop) {
+      backdrop.classList.toggle('open', show);
+      backdrop.classList.toggle('hidden', !show);
+      backdrop.style.display = show ? 'flex' : 'none';
+      if (!show) {
+        this.activeSubOrderPassId = null;
+        this.activeSubOrderSubId = null;
+      }
+    }
+  }
+
+  async orderWithSubscriptionMealPass(passId, subId) {
+    this.activeSubOrderPassId = passId;
+    this.activeSubOrderSubId = subId;
+    await this.openSubscriptionOrderModal({ passId, subId });
+  }
+
+  async orderWithSubscription(subId) {
+    this.activeSubOrderPassId = null;
+    this.activeSubOrderSubId = subId;
+    await this.openSubscriptionOrderModal({ subId });
+  }
+
+  async openSubscriptionOrderModal(params) {
+    const container = document.getElementById('placeSubscriptionOrderContent');
+    if (!container) return;
+
+    container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 30px;"><i class="fa-solid fa-spinner fa-spin fa-2x"></i><p style="margin-top: 10px;">Loading subscription details...</p></div>';
+    this.togglePlaceSubscriptionOrderModal(true);
+
+    try {
+      // Fetch customer subscriptions to get sub detail
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/my-subscriptions`);
+      const json = await res.json();
+      const subscriptions = json.subscriptions || [];
+
+      let targetSub = subscriptions.find(s => s.id === params.subId || s.subscription_id === params.subId);
+      if (!targetSub && params.passId) {
+        // Fetch passes if subId not provided directly
+        const pRes = await this.fetchWithAuth(`${API_BASE}/subscriptions/my-passes?status=AVAILABLE`);
+        const pJson = await pRes.json();
+        const foundPass = (pJson.passes || []).find(p => p.id === params.passId || p.pass_id === params.passId);
+        if (foundPass) {
+          targetSub = subscriptions.find(s => s.id === foundPass.subscription_id);
+        }
+      }
+
+      if (!targetSub) {
+        container.innerHTML = '<div style="text-align: center; color: #FF5252; padding: 20px;">Active subscription not found or no remaining meals available.</div>';
+        return;
+      }
+
+      if (targetSub.status !== 'ACTIVE' || targetSub.remaining_meals <= 0) {
+        container.innerHTML = `<div style="text-align: center; color: #FF5252; padding: 20px;"><i class="fa-solid fa-circle-exclamation fa-2x" style="margin-bottom: 10px;"></i><p>Subscription status is <strong>${targetSub.status}</strong> with <strong>${targetSub.remaining_meals}</strong> remaining meals. Cannot place order.</p></div>`;
+        return;
+      }
+
+      // Fetch customer addresses for delivery option
+      let addresses = [];
+      try {
+        const aRes = await this.fetchWithAuth(`${API_BASE}/customer/addresses`);
+        const aJson = await aRes.json();
+        addresses = aJson.addresses || [];
+      } catch (e) {}
+
+      // Available tiffin items for choice
+      let menuItems = [];
+      try {
+        const mRes = await fetch(`${API_BASE}/tiffins`);
+        const mJson = await mRes.json();
+        menuItems = (mJson.data || mJson.tiffins || []).filter(t => t.is_available);
+      } catch (e) {}
+
+      const defaultFoodName = targetSub.plan_name ? `${targetSub.plan_name} Special Tiffin` : 'Fresh Subscription Meal';
+
+      container.innerHTML = `
+        <form onsubmit="app.submitSubscriptionOrder(event)" style="display: flex; flex-direction: column; gap: 16px;">
+          <input type="hidden" name="subscription_id" value="${targetSub.id}">
+          ${params.passId ? `<input type="hidden" name="pass_id" value="${params.passId}">` : ''}
+
+          <div style="background: rgba(156, 39, 176, 0.12); border: 1.5px solid #AB47BC; border-radius: 14px; padding: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-weight: 800; color: #FFF; font-size: 1.05rem;">🥣 ${escapeHtml(targetSub.plan_name)}</span>
+              <span style="background: rgba(76, 175, 80, 0.2); color: #81C784; border: 1px solid #4CAF50; padding: 2px 10px; border-radius: 10px; font-weight: 800; font-size: 0.78rem;">🟢 ACTIVE</span>
+            </div>
+            <div style="font-size: 0.84rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+              <span>Subscription ID: <code style="color: var(--accent-gold);">${targetSub.subscription_id}</code></span>
+              <span style="color: #4CAF50; font-weight: 800;">${targetSub.remaining_meals} Meals Remaining</span>
+            </div>
+          </div>
+
+          <div>
+            <label style="font-weight: 700; font-size: 0.88rem; color: #FFF; display: block; margin-bottom: 6px;">
+              <i class="fa-solid fa-utensils" style="color: var(--accent-gold);"></i> Select Meal / Item
+            </label>
+            <select name="food_name" class="input-field" style="width: 100%; background: var(--bg-surface-elevated); color: #FFF; border: 1px solid var(--border-color); padding: 10px; border-radius: 10px;">
+              <option value="${escapeHtml(defaultFoodName)}">🥣 ${escapeHtml(defaultFoodName)} (Included Plan Meal)</option>
+              ${menuItems.map(item => `<option value="${escapeHtml(item.name)}">🍱 ${escapeHtml(item.name)} (₹${item.price} - Covered by Pass)</option>`).join('')}
+            </select>
+          </div>
+
+          <div>
+            <label style="font-weight: 700; font-size: 0.88rem; color: #FFF; display: block; margin-bottom: 6px;">
+              <i class="fa-solid fa-truck" style="color: var(--accent-gold);"></i> Order Fulfillment Type
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <label style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color); cursor: pointer;">
+                <input type="radio" name="order_type" value="Takeaway" checked onchange="document.getElementById('subDeliveryAddressBlock').style.display='none';">
+                <span style="font-weight: 700; color: #FFF; font-size: 0.88rem;"><i class="fa-solid fa-box"></i> Takeaway (Pickup)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-color); cursor: pointer;">
+                <input type="radio" name="order_type" value="Delivery" onchange="document.getElementById('subDeliveryAddressBlock').style.display='block';">
+                <span style="font-weight: 700; color: #FFF; font-size: 0.88rem;"><i class="fa-solid fa-motorcycle"></i> Home Delivery</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="subDeliveryAddressBlock" style="display: none;">
+            <label style="font-weight: 700; font-size: 0.88rem; color: #FFF; display: block; margin-bottom: 6px;">
+              <i class="fa-solid fa-location-dot" style="color: var(--primary);"></i> Delivery Address
+            </label>
+            ${addresses.length > 0 ? `
+              <select name="address_id" class="input-field" style="width: 100%; background: var(--bg-surface-elevated); color: #FFF; border: 1px solid var(--border-color); padding: 10px; border-radius: 10px;">
+                ${addresses.map(a => `<option value="${a.id}" ${a.is_default ? 'selected' : ''}>${escapeHtml(a.address_type)}: ${escapeHtml(a.full_name)} (${a.pincode}) - ${escapeHtml(a.address_line1)}</option>`).join('')}
+                <option value="profile_address">Default Profile Address</option>
+              </select>
+            ` : `
+              <div style="font-size: 0.82rem; color: var(--accent-gold); margin-bottom: 6px;">
+                <i class="fa-solid fa-circle-info"></i> Delivery will use your profile address: ${escapeHtml(this.currentUser?.address || 'Saved Address')}
+              </div>
+              <input type="hidden" name="address_id" value="profile_address">
+            `}
+          </div>
+
+          <div>
+            <label style="font-weight: 700; font-size: 0.88rem; color: #FFF; display: block; margin-bottom: 6px;">
+              <i class="fa-solid fa-note-sticky" style="color: var(--accent-gold);"></i> Special Instructions / Notes (Optional)
+            </label>
+            <input type="text" name="notes" placeholder="e.g. Less spicy, pack extra chutney" class="input-field" style="width: 100%; background: var(--bg-surface-elevated); color: #FFF; border: 1px solid var(--border-color); padding: 10px; border-radius: 10px;">
+          </div>
+
+          <div style="background: rgba(0,0,0,0.3); border-radius: 12px; padding: 12px; font-size: 0.85rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="color: var(--text-muted);">Meal Charge:</span>
+              <strong style="color: #4CAF50;">₹0 (Covered by Subscription)</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1);">
+              <span style="color: var(--text-muted);">Payment Source:</span>
+              <span style="background: rgba(156, 39, 176, 0.2); color: #E040FB; border: 1px solid #AB47BC; padding: 2px 8px; border-radius: 10px; font-weight: 800; font-size: 0.78rem;">🟣 Subscription Membership</span>
+            </div>
+          </div>
+
+          <button type="submit" id="btnSubmitSubOrder" class="btn-primary-block" style="background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800; font-size: 0.98rem; padding: 12px; border-radius: 12px; cursor: pointer; width: 100%;">
+            <i class="fa-solid fa-circle-check"></i> Confirm & Place Order (Consume 1 Meal)
+          </button>
+        </form>
+      `;
+
+    } catch (err) {
+      console.error('Error loading subscription order modal:', err);
+      container.innerHTML = '<div style="text-align: center; color: #FF5252; padding: 20px;">Failed to load subscription details.</div>';
+    }
+  }
+
+  async submitSubscriptionOrder(e) {
+    if (e) e.preventDefault();
+    if (this.isSubmittingSubOrder) return;
+
+    const form = e.target;
+    const formData = new FormData(form);
+    const payload = {
+      subscription_id: formData.get('subscription_id'),
+      pass_id: formData.get('pass_id') || null,
+      food_name: formData.get('food_name') || '',
+      order_type: formData.get('order_type') || 'Takeaway',
+      address_id: formData.get('address_id') || null,
+      notes: formData.get('notes') || ''
+    };
+
+    const btnSubmit = document.getElementById('btnSubmitSubOrder');
+    this.isSubmittingSubOrder = true;
+    if (btnSubmit) {
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Placing Order...`;
+    }
+
+    try {
+      const res = await this.fetchWithAuth(`${API_BASE}/subscriptions/place-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json();
+
+      if (json.success) {
+        this.togglePlaceSubscriptionOrderModal(false);
+        this.showToast(json.message || '🎉 Subscription meal order placed successfully!', 'success');
+
+        // Show Celebration Modal with Order Number and Pickup PIN
+        document.getElementById('confirmedOrderNumDisplay').innerText = `#${json.order_number || json.data?.order_number}`;
+        const pinDisp = document.getElementById('confirmedPickupPinDisplay');
+        if (pinDisp && (json.pickup_pin || json.data?.pickup_pin)) {
+          pinDisp.innerText = json.pickup_pin || json.data?.pickup_pin;
+        }
+        const confirmBackdrop = document.getElementById('confirmationModalBackdrop');
+        if (confirmBackdrop) {
+          confirmBackdrop.classList.remove('hidden');
+          confirmBackdrop.classList.add('open', 'visible', 'active');
+          confirmBackdrop.style.setProperty('display', 'flex', 'important');
+          confirmBackdrop.style.setProperty('opacity', '1', 'important');
+          confirmBackdrop.style.setProperty('visibility', 'visible', 'important');
+          confirmBackdrop.style.setProperty('pointer-events', 'auto', 'important');
+          confirmBackdrop.style.setProperty('z-index', '99999999', 'important');
+        }
+
+        // Refresh UI state
+        await this.renderCustomerMealPasses();
+        await this.renderCustomerSubscriptions();
+        await this.fetchOrders();
+        await this.fetchNotifications();
+      } else {
+        this.showToast(json.message || 'Failed to place subscription order.', 'error');
+      }
+    } catch (err) {
+      console.error('Error submitting subscription order:', err);
+      this.showToast('Server communication error placing subscription order.', 'error');
+    } finally {
+      this.isSubmittingSubOrder = false;
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = `<i class="fa-solid fa-circle-check"></i> Confirm & Place Order (Consume 1 Meal)`;
+      }
     }
   }
 

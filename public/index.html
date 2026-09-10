@@ -3975,6 +3975,19 @@
       </div>
     </div>
 
+    <!-- Modal for Customer Place Order Using Active Subscription -->
+    <div class="modal-backdrop" id="modalPlaceSubscriptionOrder" onclick="if(event.target === this) app.togglePlaceSubscriptionOrderModal(false)" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 99999; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);">
+      <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 480px; width: 92%; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-cart-shopping" style="color: #FF9800;"></i> Order Using Meal Pass</h3>
+          <button type="button" class="icon-btn" onclick="app.togglePlaceSubscriptionOrderModal(false)"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="placeSubscriptionOrderContent">
+          <!-- Populated dynamically by JavaScript -->
+        </div>
+      </div>
+    </div>
+
     <!-- Modal for Customer Subscription Payment Method Selection -->
     <div class="modal-backdrop" id="modalSubPaymentChoiceBackdrop" onclick="app.toggleSubPaymentChoiceModal(false)">
       <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 480px;">

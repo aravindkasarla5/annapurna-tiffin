@@ -8481,6 +8481,11 @@ app.post('/api/reviews', authenticateToken, async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied. You can only review your own orders." });
     }
 
+    const isDeliveredStatus = ['delivered', 'completed'].includes((order.order_status || '').toLowerCase());
+    if (!isDeliveredStatus) {
+      return res.status(400).json({ success: false, message: "Reviews can only be submitted for delivered orders." });
+    }
+
     // Check if review already exists for this order
     const existingRevRes = await db.query(
       'SELECT * FROM reviews WHERE order_number = $1 AND customer_id = $2;',
@@ -13523,6 +13528,341 @@ app.get('/api/subscriptions/my-passes', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching customer meal passes:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch meal passes.' });
+  }
+});
+
+// POST /api/subscriptions/place-order - Place Order Using Active Subscription Meal Plan
+app.post('/api/subscriptions/place-order', authenticateToken, async (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const {
+      subscription_id,
+      pass_id,
+      order_type = 'Takeaway',
+      address_id,
+      delivery_address,
+      notes = '',
+      food_name = ''
+    } = req.body || {};
+
+    if (!subscription_id && !pass_id) {
+      return res.status(400).json({ success: false, message: 'Subscription or Pass ID is required.' });
+    }
+
+    // 1. Check Hotel Status
+    const sRes = await db.query('SELECT is_open FROM settings WHERE id = 1;');
+    const settings = sRes.rows[0] || {};
+    if (settings.is_open === false) {
+      return res.status(400).json({ success: false, message: 'Hotel is currently closed. Orders are not being accepted.' });
+    }
+
+    // Execute atomic transaction for order creation and meal pass deduction
+    const result = await db.executeTransaction(async (tx) => {
+      // 2. Fetch and lock subscription record belonging strictly to logged-in customer
+      let subQuery = 'SELECT * FROM subscriptions WHERE customer_id = $1';
+      const subParams = [customerId];
+
+      if (subscription_id) {
+        subParams.push(subscription_id);
+        subQuery += ` AND (id = $${subParams.length} OR subscription_id = $${subParams.length})`;
+      } else if (pass_id) {
+        subQuery += ` AND id IN (SELECT subscription_id FROM subscription_meal_passes WHERE id = $2 OR pass_id = $2)`;
+        subParams.push(pass_id);
+      }
+
+      subQuery += ' FOR UPDATE;';
+
+      const subRes = await tx.query(subQuery, subParams);
+      if (!subRes.rows || subRes.rows.length === 0) {
+        throw new Error('Subscription record not found or does not belong to you.');
+      }
+
+      const sub = subRes.rows[0];
+
+      // 3. Verify Subscription Active & Valid
+      if (sub.status !== 'ACTIVE') {
+        throw new Error(`Subscription is currently in status '${sub.status}' and cannot be used for ordering.`);
+      }
+
+      if (sub.expiry_date && new Date(sub.expiry_date).getTime() < Date.now()) {
+        throw new Error('Subscription has expired.');
+      }
+
+      const totalMeals = parseInt(sub.total_meals, 10);
+      const usedMeals = parseInt(sub.used_meals, 10);
+      const remainingMeals = Math.max(0, totalMeals - usedMeals);
+
+      if (remainingMeals <= 0) {
+        throw new Error('No remaining meals in this subscription.');
+      }
+
+      // 4. Fetch available pass record to consume
+      let passRes;
+      if (pass_id) {
+        passRes = await tx.query(
+          `SELECT * FROM subscription_meal_passes WHERE (id = $1 OR pass_id = $1) AND subscription_id = $2 AND status = 'AVAILABLE' FOR UPDATE;`,
+          [pass_id, sub.id]
+        );
+      } else {
+        passRes = await tx.query(
+          `SELECT * FROM subscription_meal_passes WHERE subscription_id = $1 AND status = 'AVAILABLE' ORDER BY meal_number ASC LIMIT 1 FOR UPDATE;`,
+          [sub.id]
+        );
+      }
+
+      if (!passRes.rows || passRes.rows.length === 0) {
+        throw new Error('No available meal pass remaining for this subscription.');
+      }
+
+      const pass = passRes.rows[0];
+
+      // 5. Handle Delivery Address & Zone Logic if Order Type is Delivery
+      let deliveryFeeAmount = 0.00;
+      let deliveryZoneId = null;
+      let deliveryZoneName = null;
+      let deliveryAddressSnapshotJson = null;
+      let finalDeliveryAddressText = delivery_address || '';
+
+      if ((order_type || '').toLowerCase() === 'delivery') {
+        let selectedAddressRecord = null;
+        let profileFallbackAddress = null;
+
+        if (address_id && address_id !== 'profile_address') {
+          const addrRes = await tx.query(
+            `SELECT * FROM customer_addresses WHERE id = $1 AND customer_id = $2;`,
+            [address_id, customerId]
+          );
+          if (addrRes.rows && addrRes.rows.length > 0) {
+            selectedAddressRecord = addrRes.rows[0];
+          } else {
+            throw new Error('Selected delivery address not found.');
+          }
+        }
+
+        if (!selectedAddressRecord && !address_id) {
+          const defaultAddrRes = await tx.query(
+            `SELECT * FROM customer_addresses WHERE customer_id = $1 AND is_default = true LIMIT 1;`,
+            [customerId]
+          );
+          if (defaultAddrRes.rows && defaultAddrRes.rows.length > 0) {
+            selectedAddressRecord = defaultAddrRes.rows[0];
+          }
+        }
+
+        if (!selectedAddressRecord) {
+          const userRes = await tx.query(`SELECT id, name, mobile, address FROM users WHERE id = $1;`, [customerId]);
+          const uProfile = userRes.rows[0];
+          const profAddr = (uProfile && uProfile.address) ? uProfile.address.trim() : '';
+
+          if (profAddr) {
+            const pinMatch = profAddr.match(/\b\d{6}\b/);
+            profileFallbackAddress = {
+              id: 'profile_address',
+              address_type: 'Profile Address',
+              full_name: uProfile.name || req.user.name,
+              mobile_number: uProfile.mobile || req.user.mobile,
+              address_line1: profAddr,
+              address_line2: '',
+              area: '',
+              city: '',
+              state: '',
+              pincode: pinMatch ? pinMatch[0] : '',
+              landmark: '',
+              delivery_instructions: '',
+              is_profile_fallback: true
+            };
+          }
+        }
+
+        const finalAddrObj = selectedAddressRecord || profileFallbackAddress;
+        if (!finalAddrObj) {
+          throw new Error('Please add a delivery address before placing your order.');
+        }
+
+        // Delivery Zone Check
+        const pincode = (finalAddrObj.pincode || '').trim();
+        const activeZonesRes = await tx.query(`SELECT * FROM delivery_zones WHERE status = 'ACTIVE';`);
+        let matchedZone = null;
+
+        for (const z of (activeZonesRes.rows || [])) {
+          let pinList = [];
+          try {
+            pinList = typeof z.pincodes === 'string' ? JSON.parse(z.pincodes) : (z.pincodes || []);
+          } catch (e) { pinList = []; }
+          if (Array.isArray(pinList) && pincode && pinList.map(p => String(p).trim()).includes(pincode)) {
+            matchedZone = z;
+            break;
+          }
+        }
+
+        if (activeZonesRes.rows && activeZonesRes.rows.length > 0 && !matchedZone) {
+          if (!pincode && activeZonesRes.rows.length === 1) {
+            matchedZone = activeZonesRes.rows[0];
+          } else {
+            throw new Error('Sorry, delivery is currently unavailable at this location.');
+          }
+        }
+
+        if (matchedZone) {
+          deliveryFeeAmount = Number(matchedZone.delivery_fee || 0);
+          deliveryZoneId = matchedZone.id;
+          deliveryZoneName = matchedZone.zone_name;
+        }
+
+        deliveryAddressSnapshotJson = JSON.stringify({
+          address_id: finalAddrObj.id,
+          address_type: finalAddrObj.address_type,
+          full_name: finalAddrObj.full_name,
+          mobile_number: finalAddrObj.mobile_number,
+          address_line1: finalAddrObj.address_line1,
+          address_line2: finalAddrObj.address_line2 || '',
+          area: finalAddrObj.area || '',
+          city: finalAddrObj.city || '',
+          state: finalAddrObj.state || '',
+          pincode: finalAddrObj.pincode || '',
+          landmark: finalAddrObj.landmark || '',
+          delivery_instructions: finalAddrObj.delivery_instructions || '',
+          source: finalAddrObj.id === 'profile_address' ? 'Profile Delivery Address' : (finalAddrObj.is_default ? 'Default Address' : 'Saved Address')
+        });
+
+        if (finalAddrObj.id === 'profile_address') {
+          finalDeliveryAddressText = `${finalAddrObj.full_name} (${finalAddrObj.mobile_number}), ${finalAddrObj.address_line1}`;
+        } else {
+          finalDeliveryAddressText = `${finalAddrObj.full_name} (${finalAddrObj.mobile_number}), ${finalAddrObj.address_line1}${finalAddrObj.address_line2 ? ', ' + finalAddrObj.address_line2 : ''}, ${finalAddrObj.area}, ${finalAddrObj.city}, ${finalAddrObj.state} - ${finalAddrObj.pincode}${finalAddrObj.landmark ? ' (Landmark: ' + finalAddrObj.landmark + ')' : ''}`;
+        }
+      }
+
+      // 6. Generate Unique Order Counter & ID
+      const orderSeq = await db.getNextCounter('order_counter');
+      const orderNum = 'TF' + orderSeq;
+      const newOrderId = 'ord_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
+      const mealItemName = food_name.trim() || `${sub.plan_name} Meal (#${pass.meal_number})`;
+      const formattedItems = [{
+        tiffin_id: 'sub_meal_' + sub.id,
+        name: mealItemName,
+        price: 0,
+        quantity: 1,
+        subscription_meal: true,
+        subscription_id: sub.subscription_id,
+        pass_number: pass.meal_number
+      }];
+
+      const nowIso = new Date().toISOString();
+      const pickupPin = String(Math.floor(1000 + Math.random() * 9000));
+      const initialPrepMins = 15;
+      const estimatedReadyAt = new Date(Date.now() + initialPrepMins * 60000).toISOString();
+
+      // 7. Insert Order Record with Payment Status "Subscription Membership"
+      await tx.query(
+        `INSERT INTO orders (
+          id, order_number, customer_id, customer_name, customer_mobile, 
+          order_type, delivery_address, notes, total_amount, used_wallet_amount, 
+          net_amount, payment_method, payment_status, order_status, items, add_ons,
+          pickup_pin, pickup_pin_verified, preparation_minutes, estimated_ready_at,
+          delivery_address_json, delivery_fee, delivery_zone_id, delivery_zone_name, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25);`,
+        [
+          newOrderId, orderNum, customerId, req.user.name, req.user.mobile,
+          order_type || 'Takeaway', finalDeliveryAddressText || null, notes ? `[Subscription Order] ${notes}` : 'Subscription Meal Order',
+          0.00, 0.00, deliveryFeeAmount, 'SUBSCRIPTION_MEMBERSHIP',
+          'Subscription Membership', 'Received', JSON.stringify(formattedItems), '[]',
+          pickupPin, false, initialPrepMins, estimatedReadyAt,
+          deliveryAddressSnapshotJson, deliveryFeeAmount, deliveryZoneId, deliveryZoneName, nowIso
+        ]
+      );
+
+      // 8. Insert Payment Record
+      const newPayId = 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      await tx.query(
+        `INSERT INTO payments (id, order_number, order_id, customer_id, customer_name, customer_mobile, amount, payment_method, payment_status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+        [newPayId, orderNum, newOrderId, customerId, req.user.name, req.user.mobile, deliveryFeeAmount, 'SUBSCRIPTION_MEMBERSHIP', 'Subscription Membership', `Subscription Order #${orderNum} - Covered by ${sub.plan_name}`]
+      );
+
+      // 9. Mark Pass as USED
+      await tx.query(
+        `UPDATE subscription_meal_passes SET status = 'USED', redeemed_at = $1, redemption_id = $2 WHERE id = $3;`,
+        [nowIso, newOrderId, pass.id]
+      );
+
+      // 10. Update Subscription used_meals count
+      const newUsed = usedMeals + 1;
+      const isNowCompleted = newUsed >= totalMeals;
+      const newSubStatus = isNowCompleted ? 'COMPLETED' : sub.status;
+
+      await tx.query(
+        `UPDATE subscriptions SET used_meals = $1, status = $2, updated_at = $3 WHERE id = $4;`,
+        [newUsed, newSubStatus, nowIso, sub.id]
+      );
+
+      // 11. Record Redemption Audit Log
+      const redDbId = 'red_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
+      const redRef = 'SUB_ORD_' + orderNum;
+
+      await tx.query(
+        `INSERT INTO subscription_redemptions (
+          id, redemption_reference, meal_pass_id, subscription_id, customer_id, customer_name,
+          customer_mobile, plan_name, meal_number, order_id, redeemed_at, redeemed_by, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'SUCCESS');`,
+        [
+          redDbId, redRef, pass.id, sub.id, customerId, req.user.name,
+          req.user.mobile, sub.plan_name, pass.meal_number, newOrderId, nowIso, req.user.name
+        ]
+      );
+
+      // Fetch created order record to return
+      const createdOrderRes = await tx.query('SELECT * FROM orders WHERE id = $1;', [newOrderId]);
+      const createdOrder = createdOrderRes.rows[0];
+
+      return {
+        order: createdOrder,
+        order_number: orderNum,
+        pickup_pin: pickupPin,
+        remaining_meals: Math.max(0, totalMeals - newUsed),
+        pass_number: pass.meal_number,
+        is_completed: isNowCompleted
+      };
+    });
+
+    // 12. Dispatch Notifications
+    try {
+      await createAndDispatchNotification({
+        target_role: 'OWNER',
+        title: `🧺 New Subscription Order #${result.order_number}`,
+        message: `🧺 New subscription meal order #${result.order_number} placed by ${req.user.name} (Paid via Subscription Membership).`,
+        type: 'ORDER',
+        priority: 'HIGH',
+        action_url: '/#secOwnerOrders',
+        related_order_id: result.order.id
+      });
+
+      await createAndDispatchNotification({
+        target_role: 'CUSTOMER',
+        customer_id: customerId,
+        title: 'Order Placed Successfully',
+        message: `🔐 Your Pickup PIN for Subscription Order #${result.order_number} is ${result.pickup_pin}. Show this PIN when collecting your order.`,
+        type: 'QUEUE',
+        priority: 'NORMAL',
+        action_url: '/#secQueueProgress',
+        related_order_id: result.order.id
+      });
+    } catch (nErr) {
+      console.error('Notification dispatch error:', nErr.message);
+    }
+
+    return res.json({
+      success: true,
+      message: `🎉 Order #${result.order_number} placed successfully using your subscription meal!`,
+      data: result.order,
+      order_number: result.order_number,
+      pickup_pin: result.pickup_pin,
+      remaining_meals: result.remaining_meals
+    });
+
+  } catch (err) {
+    console.error('Error placing subscription order:', err);
+    res.status(400).json({ success: false, message: err.message || 'Failed to place subscription order.' });
   }
 });
 
