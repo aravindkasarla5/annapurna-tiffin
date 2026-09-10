@@ -19266,14 +19266,9 @@ class TiffinApp {
             </div>
 
             ${isActive ? `
-              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button type="button" class="btn-primary-block" onclick="app.orderWithSubscription('${sub.id}')" style="flex: 1; min-width: 120px; background: linear-gradient(135deg, #FF9800, #F57C00); color: #FFF; font-weight: 800;">
-                  <i class="fa-solid fa-cart-shopping"></i> Order
-                </button>
-                <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="flex: 1; min-width: 140px; background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold); font-weight: 700;">
-                  <i class="fa-solid fa-qrcode"></i> View Passes (${sub.remaining_meals})
-                </button>
-              </div>
+              <button type="button" class="btn-primary-block" onclick="app.viewSubscriptionPasses('${sub.id}')" style="background: linear-gradient(135deg, #1A1A2E, #16213E); border: 1px solid var(--accent-gold); color: var(--accent-gold);">
+                <i class="fa-solid fa-qrcode"></i> View Meal Passes (${sub.remaining_meals} Available)
+              </button>
             ` : (isCompleted ? `
               <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <button type="button" class="btn-secondary-outline" onclick="app.viewSubscriptionPasses('${sub.id}')" style="flex: 1; padding: 8px; font-size: 0.8rem; border-color: #2196F3; color: #64B5F6; font-weight: 700;">
