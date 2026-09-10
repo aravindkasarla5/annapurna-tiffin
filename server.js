@@ -5739,11 +5739,30 @@ app.patch('/api/orders/:id/status', authenticateToken, requireRole('OWNER'), asy
   }
 
   // 🚨 ONLINE PAYMENT VERIFICATION: Owner/Kitchen Operator cannot mark an ONLINE PAYMENT order as "Ready" until payment is verified!
+  // NOTE: Subscription / Meal Pass Orders are pre-covered by the customer's subscription and are exempt from online payment screenshot verification.
   if (newOrderStatus === 'Ready') {
     const payMethod = (order.payment_method || '').toLowerCase().trim();
+    const payStatus = (order.payment_status || '').toLowerCase().trim();
+    const orderNotes = (order.notes || '').toLowerCase().trim();
+
+    let itemsArr = [];
+    try {
+      itemsArr = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
+    } catch (e) {
+      itemsArr = [];
+    }
+
+    const hasSubItem = Array.isArray(itemsArr) && itemsArr.some(it => it && (it.subscription_meal || it.subscription_id || (it.tiffin_id && String(it.tiffin_id).startsWith('sub_meal_'))));
+
+    const isSubscriptionOrder =
+      payMethod.includes('subscription') ||
+      payStatus.includes('subscription') ||
+      orderNotes.includes('subscription order') ||
+      orderNotes.includes('subscription meal') ||
+      hasSubItem;
+
     const isCod = payMethod.includes('cash') || payMethod.includes('cod');
-    if (!isCod) {
-      const payStatus = (order.payment_status || '').toLowerCase().trim();
+    if (!isCod && !isSubscriptionOrder) {
       const isVerified = payStatus.includes('paid') || payStatus.includes('verified') || payStatus === 'referral' || payMethod === 'referral';
       if (!isVerified) {
         return res.status(400).json({
